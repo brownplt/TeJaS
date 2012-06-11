@@ -3,6 +3,7 @@ open ListExt
 open JQuery_syntax
 open TypImpl
 open JQuery_env
+open JQuery_subtyping
 open Exp
 
 
