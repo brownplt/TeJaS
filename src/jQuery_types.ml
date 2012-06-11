@@ -441,13 +441,18 @@ module Make (Pat : SET) = struct
       | TRegex pat1, TRegex pat2 ->
         (cache, P.is_subset IdMap.empty pat1 pat2)
       | TPrim p1, TPrim p2 -> (cache, p1 = p2)
-      | TId n1, TId n2 -> (cache, n1 = n2)
+      | TId n1, TId n2 -> (cache, n1 = n2) ||| (fun c ->
+        try
+          let (t1, _) = IdMap.find n1 (fst env) in
+          let (t2, _) = IdMap.find n2 (fst env) in
+          subtype_typ env c t1 t2
+        with Not_found -> (c, false))
+      | TUnion(_, t11, t12), t2 -> (* order matters -- left side must be split first! *)
+        subtype_typ env cache t11 t2 &&& (fun c -> subtype_typ env c t12 t2)
       | t1, TUnion(_, t21, t22) ->
         subtype_typ env cache t1 t21 ||| (fun c -> subtype_typ env c t1 t22)
-      | t1, TInter(_, t21, t22) ->
+      | t1, TInter(_, t21, t22) -> (* order matters -- right side must be split first! *)
         subtype_typ env cache t1 t21 &&& (fun c -> subtype_typ env c t1 t22)
-      | TUnion(_, t11, t12), t2 ->
-        subtype_typ env cache t11 t2 &&& (fun c -> subtype_typ env c t12 t2)
       | TInter(_, t11, t12), t2 ->
         subtype_typ env cache t11 t2 ||| (fun c -> subtype_typ env c t12 t2)
       | TApp(t1, args1), TApp(t2, args2) ->
@@ -488,12 +493,18 @@ module Make (Pat : SET) = struct
       
   and subtype_mult lax env cache m1 m2 = 
     let subtype_mult = subtype_mult lax env in
-    let subtype_typ = subtype_typ lax env in
+    let subtype_typ = subtype_typ lax env in (* ok for now because there are no MId binding forms in Mult *)
     let open SigmaPair in
+    let (|||) c thunk = if (snd c) then c else thunk (fst c) in
     let addIfSuccess (cache, ret) = (SPMap.add (SMults (m1, m2)) ret cache, ret) in
     try (cache, SPMap.find (SMults (m1, m2)) cache)
     with Not_found -> addIfSuccess (match m1, m2 with
-    | MId x, MId y -> (cache, x = y) (* not canonical, but easy enough *)
+    | MId x, MId y -> (cache, x = y) ||| (fun c ->
+        try
+          let (mx, _) = IdMap.find x (snd env) in
+          let (my, _) = IdMap.find y (snd env) in
+          subtype_mult c mx my
+        with Not_found -> (c, false))
     | MPlain t1, MPlain t2 -> subtype_typ cache t1 t2 (* ditto *)
     | MOne (MPlain t1), MOne (MPlain t2)
     | MOne (MPlain t1), MZeroOne (MPlain t2)
