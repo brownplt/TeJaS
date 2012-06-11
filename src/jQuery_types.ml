@@ -30,7 +30,6 @@ module Make (Pat : SET) = struct
   type typ = 
     | TBot
     | TTop
-    | TUnit
     | TPrim of string
     | TRegex of pat
     | TId of id
@@ -50,8 +49,6 @@ module Make (Pat : SET) = struct
     | MZeroPlus of multiplicity
     | MSum of multiplicity * multiplicity
   and sigma = STyp of typ | SMult of multiplicity
-
-  type typenv = (typ * kind) IdMap.t
 
   let rec apply_name n typ = match typ with
     | TUnion(None, t1, t2) -> TUnion(n, t1, t2)
@@ -103,7 +100,6 @@ module Make (Pat : SET) = struct
       match t with
       | TBot -> text "Bot"
       | TTop -> text "Top"
-      | TUnit -> text "()"
       | TPrim s -> text ("@" ^ s)
       | TRegex pat -> text (P.pretty pat)
       | TId name -> squish [text "'"; text name]
@@ -175,7 +171,7 @@ module Make (Pat : SET) = struct
       | SMult m -> multiplicity m
   end
 
-(* free type variables *)
+  (* free type variables *)
   let rec free_sigma_ids s = match s with
     | STyp t -> free_typ_ids t
     | SMult m -> free_mult_ids m
@@ -200,7 +196,6 @@ module Make (Pat : SET) = struct
     match t with
     | TBot
     | TTop
-    | TUnit
     | TPrim _
     | TRegex _ -> (empty, empty)
     | TId x -> (singleton x, empty)
@@ -236,7 +231,6 @@ module Make (Pat : SET) = struct
     and typ_help typ : typ = match typ with
       | TBot
       | TTop
-      | TUnit
       | TPrim _ 
       | TRegex _ -> typ
       | TApp(f, args) -> TApp(typ_help f, List.map sigma_help args)
@@ -260,12 +254,12 @@ module Make (Pat : SET) = struct
               | KArrow _ -> 
                 if not (IdSet.mem y free_t) then ((y,k)::new_yks, typ_substs, mult_substs)
                 else 
-                  let x = fresh_var (IdMapExt.keys typ_substs) in
+                  let x = fresh_var ((IdMapExt.keys typ_substs) @ IdSetExt.to_list free_t) in
                   ((x,k)::new_yks, IdMap.add y (STyp (TId x)) typ_substs, mult_substs)
               | KMult _ ->
                 if not (IdSet.mem y free_m) then ((y,k)::new_yks, typ_substs, mult_substs)
                 else 
-                  let x = fresh_var (IdMapExt.keys mult_substs) in
+                  let x = fresh_var ((IdMapExt.keys mult_substs) @ IdSetExt.to_list free_m) in
                   ((x,k)::new_yks, typ_substs, IdMap.add y (SMult (MId x)) mult_substs))
               ([], IdMap.empty, IdMap.empty) yks in
           let new_yks = List.rev rev_new_yks in
@@ -311,7 +305,6 @@ module Make (Pat : SET) = struct
     match t with
     | TBot -> t
     | TTop -> t
-    | TUnit -> t
     | TPrim _ -> t
     | TRegex _ -> t
     | TId _ -> t
@@ -354,7 +347,7 @@ module Make (Pat : SET) = struct
     match m with
     | MPlain t -> MOne (MPlain (canonical_type t))
     | MId _ -> MOne m
-    | MZero _ -> MZero (MPlain TUnit)
+    | MZero _ -> MZero (MPlain TBot)
     | MOne m -> c m
     | MZeroOne (MPlain t) -> MZeroOne (MPlain (canonical_type t))
     | MZeroOne (MId _) -> m
@@ -431,12 +424,13 @@ module Make (Pat : SET) = struct
     | _ -> (cache, false)
 
   and subtype_typ lax env cache t1 t2 : (bool SPMap.t * bool) =
-    let subtype_typ = subtype_typ lax env in
+    let subtype_sigma = subtype_sigma lax in
+    let subtype_typ = subtype_typ lax in
     let open SigmaPair in
     let (|||) c thunk = if (snd c) then c else thunk (fst c) in
     let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
-    let subtype_typ_list c t1 t2 = c &&& (fun c -> subtype_typ c t1 t2) in
-    let subtype_sigma_list c t1 t2 = c &&& (fun c -> subtype_sigma lax env c t1 t2) in
+    let subtype_typ_list c t1 t2 = c &&& (fun c -> subtype_typ env c t1 t2) in
+    let subtype_sigma_list c t1 t2 = c &&& (fun c -> subtype_sigma env c t1 t2) in
     let addIfSuccess (cache, ret) = (SPMap.add (STyps (t1, t2)) ret cache, ret) in
     try (cache, SPMap.find (STyps (t1, t2)) cache)
     with Not_found -> begin addIfSuccess (if simpl_equiv t1 t2 
@@ -449,13 +443,13 @@ module Make (Pat : SET) = struct
       | TPrim p1, TPrim p2 -> (cache, p1 = p2)
       | TId n1, TId n2 -> (cache, n1 = n2)
       | t1, TUnion(_, t21, t22) ->
-        subtype_typ cache t1 t21 ||| (fun c -> subtype_typ c t1 t22)
+        subtype_typ env cache t1 t21 ||| (fun c -> subtype_typ env c t1 t22)
       | t1, TInter(_, t21, t22) ->
-        subtype_typ cache t1 t21 &&& (fun c -> subtype_typ c t1 t22)
+        subtype_typ env cache t1 t21 &&& (fun c -> subtype_typ env c t1 t22)
       | TUnion(_, t11, t12), t2 ->
-        subtype_typ cache t11 t2 &&& (fun c -> subtype_typ c t12 t2)
+        subtype_typ env cache t11 t2 &&& (fun c -> subtype_typ env c t12 t2)
       | TInter(_, t11, t12), t2 ->
-        subtype_typ cache t11 t2 ||| (fun c -> subtype_typ c t12 t2)
+        subtype_typ env cache t11 t2 ||| (fun c -> subtype_typ env c t12 t2)
       | TApp(t1, args1), TApp(t2, args2) ->
         if (List.length args1 <> List.length args2) then (cache, false)
         else List.fold_left2 subtype_sigma_list (cache, true) ((STyp t1)::args1) ((STyp t2)::args2)
@@ -479,7 +473,16 @@ module Make (Pat : SET) = struct
         else 
           let args1' = fill (List.length args2 - List.length args1) var1 args1 in
           (List.fold_left2 subtype_typ_list (cache, true) (ret1::args1') (ret2::args2))
-      (* still need to handle TForall... *)
+      | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
+        (* Kernel rule *)
+        subtype_sigma env cache s1 s2 (* bounds must be invariant, since e.g. *)
+        &&& (fun c -> subtype_sigma env c s2 s1) (* (forall a <: int. ref a) !<: (forall a <: Top. ref a) *)
+        &&& (fun c ->
+          let t2 = typ_typ_subst x2 (TId x1) t2 in
+          let env' = match s1 with
+            | STyp t -> (IdMap.add x1 (t, KStar) (fst env), snd env)
+            | SMult m -> (fst env, IdMap.add x1 (m, KMult KStar) (snd env)) in
+          subtype_typ env' c t1 t2)
       | _ -> (cache, false))
     end
       
@@ -522,13 +525,18 @@ module Make (Pat : SET) = struct
     | MId _, _ -> (cache, false) (* not canonical! *)
     )
 
-(* SUBTYPING ONLY WORKS ON CANONICAL FORMS *)
+  and cache : bool SPMap.t ref = ref SPMap.empty
+
+  (* SUBTYPING ONLY WORKS ON CANONICAL FORMS *)
   let subtype_sigma lax env s1 s2 =
-    snd (subtype_sigma lax env SPMap.empty (canonical_sigma s1) (canonical_sigma s2))
+    (let (c, r) = (subtype_sigma lax env !cache (canonical_sigma s1) (canonical_sigma s2))
+     in cache := c; r)
   let subtype_typ lax env t1 t2 =
-    snd (subtype_typ lax env SPMap.empty (canonical_type t1) (canonical_type t2))
+    (let (c, r) = (subtype_typ lax env !cache (canonical_type t1) (canonical_type t2))
+     in cache := c; r)
   let subtype_mult lax env m1 m2 =
-    snd (subtype_mult lax env SPMap.empty (canonical_multiplicity m1) (canonical_multiplicity m2))
+    (let (c, r) = (subtype_mult lax env !cache (canonical_multiplicity m1) (canonical_multiplicity m2))
+     in cache := c; r)
 
 
   exception Typ_error of Pos.t * string
@@ -541,6 +549,7 @@ module Make (Pat : SET) = struct
     end
 
   let string_of_typ = FormatExt.to_string Pretty.typ
+  let string_of_mult = FormatExt.to_string Pretty.multiplicity
   let string_of_kind = FormatExt.to_string Pretty.kind
 
   (* UNIFICATION *)
@@ -561,8 +570,7 @@ module Make (Pat : SET) = struct
   and collect_unify_typ (typs, mults) t1 t2 = 
     match t1, t2 with
     | TBot, TBot
-    | TTop, TTop
-    | TUnit, TUnit -> Some (typs, mults)
+    | TTop, TTop -> Some (typs, mults)
     | TUnion(_, t11, t12), TUnion(_, t21, t22)
     | TInter(_, t11, t12), TInter(_, t21, t22) ->
       collect_unify_typ (typs, mults) t11 t21 &&&

@@ -78,7 +78,7 @@ and check' (env : env) (default_typ : TypImpl.typ option) (exp : exp) (typ : Typ
     (* Printf.eprintf "Check': Synthing type for expression\n"; *)
     let synth_typ = synth env default_typ exp in
     (* Printf.printf "Checking %s <?: %s\n" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ)); *)
-    if not (subtype_typ ((* lax *)true) env synth_typ typ) then begin
+    if not (subtype_typ ((* lax *)true) (env.typ_ids, env.mult_ids) synth_typ typ) then begin
       (* Printf.printf "failed.\n"; *)
       typ_mismatch (Exp.pos exp)
         (sprintf "%%expected %s to have type %s, got %s" 
