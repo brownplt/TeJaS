@@ -12,26 +12,28 @@ let partition_env (env : env) =
   | BTypBound (t, k) -> (ids, IdMap.add id (t, k) typs, mults)
   | BMultBound (m, k) -> (ids, typs, IdMap.add id (m, k) mults)) env (IdMap.empty, IdMap.empty, IdMap.empty)
 
-let print_env env fmt : unit =
+let print_env env =
   let (id_typs, typ_ids, mult_ids) = partition_env env in
   let unname t = if (!TypImpl.Pretty.useNames) then replace_name None t else t in
-  vert [text "Types of term identifiers:";
-        vert (IdMapExt.map_to_list (fun id t -> 
-          horz [text id; text "="; (TypImpl.Pretty.typ (unname t))]) id_typs);
-        empty; 
-        text "Bounded type variables:";
-        vert (IdMapExt.map_to_list (fun id (t, k) -> 
-          horz [text id; 
+  let cut : printer = fun fmt -> Format.pp_print_cut fmt () in
+  [cut;
+   squish [IdMapExt.p_map "Types of term identifiers: " empty
+              text (fun t -> TypImpl.Pretty.typ (unname t)) 
+              id_typs;
+           text ","];
+   squish [IdMapExt.p_map "Bounded type variables: " empty
+              text 
+              (fun (t, k) -> 
                 vert [horz [text "="; TypImpl.Pretty.typ (unname t)];
-                      horz [text "::"; TypImpl.Pretty.kind k]]]) typ_ids);
-        vert (IdMapExt.map_to_list (fun id (m, k) -> 
-          horz [text id; 
-                vert [horz [text "="; TypImpl.Pretty.multiplicity m];
-                      horz [text "::"; TypImpl.Pretty.kind k]]]) mult_ids);
-        empty
-       ] 
-    fmt;
-  Format.pp_print_flush fmt ()
+                      horz [text "::"; TypImpl.Pretty.kind k]]) typ_ids;
+           text ","];
+   IdMapExt.p_map "" empty
+     text
+     (fun (m, k) -> 
+       vert [horz [text "="; TypImpl.Pretty.multiplicity m];
+             horz [text "::"; TypImpl.Pretty.kind k]]) mult_ids;
+   cut
+  ]
 
 
 let empty_env : env = IdMap.empty

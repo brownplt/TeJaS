@@ -51,10 +51,10 @@ let main () =
   let rec print_arith a = match a with
     | Var n -> squish [text "x_"; int n]
     | Zero -> text "Zero"
-    | Plus (n1, n2) -> horz [text "Plus"; parens (horzOrVert [squish [print_arith n1; text ","];
-                                                              print_arith n2])]
-    | Times (n1, n2) -> horz [text "Times"; parens (horzOrVert [squish [int n1; text ","];
-                                                                print_arith n2])] in
+    | Plus (n1, n2) -> horz [text "Plus"; parens [squish [print_arith n1; text ","];
+                                                  print_arith n2]]
+    | Times (n1, n2) -> horz [text "Times"; parens [squish [int n1; text ","];
+                                                    print_arith n2]] in
   let rec eval a = match a with (* not quite true arithmetic eval -- times of negative numbers is weird *)
     | Var n -> 1
     | Zero -> 0
@@ -163,7 +163,7 @@ let main () =
     with Typ_error(p, e) -> (text "FAILED: "; text e; newline ()) end;
     text "Cache hits:   "; int !JQuery_subtyping.cache_hits; newline ();
     text "Cache misses: "; int !JQuery_subtyping.cache_misses; newline ();
-    text "Cache is:"; newline (); JQuery_subtyping.print_cache std_formatter; newline()
+    JQuery_subtyping.print_cache "Cache is: " std_formatter; newline()
   end in
   (* test1 500; *)
   (* test2 500 *)

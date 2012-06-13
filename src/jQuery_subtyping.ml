@@ -174,27 +174,28 @@ and subtype_mult lax env cache m1 m2 =
 
 and cache : bool SPMap.t ref = ref SPMap.empty
 
-let print_cache fmt =
+let print_cache lbl =
   let open SigmaPair in
   let open Format in
   let open FormatExt in
   let open JQuery_env in
-  SPMapExt.p_map 
+  let cut fmt = Format.pp_print_cut fmt () in
+  SPMapExt.p_map lbl cut
     (fun (env, sp) -> match sp with
     | STyps (t1, t2) -> 
       pair
-        (horz [text "Env:"; braces (print_env env)])
-        (squish [text "STyps"; pair (TypImpl.Pretty.typ t1) (TypImpl.Pretty.typ t2)])
+        (label_braces "Env: " cut (print_env env))
+        (label_pair "STyps" (TypImpl.Pretty.typ t1) (TypImpl.Pretty.typ t2))
     | SMults (m1, m2) -> 
       pair
-        (horz [text "Env:"; braces (print_env env)])
-        (squish [text "SMults"; pair (TypImpl.Pretty.multiplicity m1) (TypImpl.Pretty.multiplicity m2)])
+        (label_braces "Env: " cut (print_env env))
+        (label_pair "SMults" (TypImpl.Pretty.multiplicity m1) (TypImpl.Pretty.multiplicity m2))
     | SMultTyp (m1, t2) -> 
       pair
-        (horz [text "Env:"; braces (print_env env)])
-        (squish [text "SMultTyp"; pair (TypImpl.Pretty.multiplicity m1) (TypImpl.Pretty.typ t2)]))
+        (label_braces "Env: " cut (print_env env))
+        (label_pair "SMultTyp" (TypImpl.Pretty.multiplicity m1) (TypImpl.Pretty.typ t2)))
     (fun b -> text (string_of_bool b))
-    !cache fmt
+    !cache
 
 (* SUBTYPING ONLY WORKS ON CANONICAL FORMS *)
 let subtype_sigma lax env s1 s2 =

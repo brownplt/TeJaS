@@ -38,31 +38,31 @@ end = struct
     
   let typ t = TypImpl.Pretty.typ t
   let rec exp e = match e with
-    | EConst(_, c) -> enclose "\"" "\"" (text c)
+    | EConst(_, c) -> string c
     | EAssertTyp(_, t, e) ->
-      parens (hov 1 2 [text "assert-typ"; parens (typ t); exp e])
+      parens [hov 1 2 [text "assert-typ"; parens [typ t]; exp e]]
     | EId(_, x) -> text x
-    | EApp (_, f, args) -> parens (hov 1 1 (text "app" :: exp f :: map exp args))
+    | EApp (_, f, args) -> parens [hov 1 1 (text "app" :: exp f :: map exp args)]
     | EFunc (_, name, args, body) ->
-      parens ( squish [ text "fun "; 
-                        begin match name with None -> empty | Some n -> text n end; 
-                        parens (horz (map text args));
-                        exp body])
+      parens [squish [ text "fun "; 
+                       begin match name with None -> empty | Some n -> text n end; 
+                       parens [horz (map text args)];
+                       exp body]]
     | ELet (_, x, bound, body) ->
-      parens (vert [ horz [ text "let";
-                            parens (vert (map bind [(x, bound)]))];
-                     exp body ])
+      parens [ vert [horz [ text "let";
+                            parens (map bind [(x, bound)])];
+                     exp body ]]
     | ERec (_, binds, body) ->
-      parens (vert [ horz [ text "rec"; parens (vert (map rec_bind binds)) ];
-                     exp body ])
-    | ESeq (_, e1, e2) -> parens (hov 1 0 [ text "seq"; exp e1; exp e2 ])
-    | ECheat (_, t, e) -> parens (hov 1 0 [horz [ text "cheat"; typ t]; exp e ])
+      parens [ horz [ text "rec"; parens (map rec_bind binds) ];
+               exp body ]
+    | ESeq (_, e1, e2) -> parens [hov 1 0 [ text "seq"; exp e1; exp e2 ]]
+    | ECheat (_, t, e) -> parens [hov 1 0 [horz [ text "cheat"; typ t]; exp e ]]
 
   and bind (x, e) = 
-    parens (horz [text x; exp e])
+    parens [text x; exp e]
 
   and rec_bind (x, t, e) = 
-    parens (horz [text x; text ":"; typ t; exp e])
+    parens [text x; text ":"; typ t; exp e]
 
 end
 

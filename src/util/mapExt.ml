@@ -12,7 +12,7 @@ module type S = sig
   val values : 'a t -> 'a list
   val union : ('a -> 'a -> 'a) -> 'a t -> 'a t -> 'a t
   val join : (key -> 'a -> 'a -> 'a) -> 'a t -> 'a t -> 'a t
-  val p_map : (key -> printer) -> ('a -> printer) -> 'a t -> printer
+  val p_map : string -> (key -> printer) -> ('a -> printer) -> 'a t -> printer
   val diff : 'a t -> 'a t -> 'a t
   val filter : (key -> 'a -> bool) -> 'a t -> 'a t
 end
@@ -54,10 +54,11 @@ module Make (Ord: Map.OrderedType) (Map : Map.S with type key = Ord.t) = struct
         Map.add k v acc
     in Map.fold mk m1 m2 (* m2 is the accumulator *)
 
-  let p_map p_key p_val t = 
-    braces (
-      vert (List.map (fun (k, v) -> brackets (horzOrVert [ horz [p_key k; text "=>"]; p_val v ]))
-              (to_list t)))
+  let p_map label cut p_key p_val t = 
+    label_braces label cut
+      (add_sep_between (text ",")
+         (List.map (fun (k, v) -> label_brackets "" cut [horz [p_key k; text "=>"]; p_val v ])
+            (to_list t)))
 
   let diff m1 m2 = 
     let fn key v acc =

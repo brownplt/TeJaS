@@ -70,19 +70,19 @@ module Pretty = struct
   let rec parensIf r s =
     let pr = priority r in
     let ps = priority s in
-    if (pr < ps || pr = 4 && ps = 4) then parens (p_re s) else p_re s 
+    if (pr < ps || pr = 4 && ps = 4) then parens [p_re s] else p_re s 
   and p_re re = match re with
     | InSet chs -> let ranges = list_to_ranges (CharSet.elements chs) in
-        brackets (horz (map range ranges))
+        brackets (map range ranges)
     | NotInSet chs -> let ranges = list_to_ranges (CharSet.elements chs) in
-        brackets (horz ((text "^")::(map range ranges)))
+        brackets ((text "^")::(map range ranges))
     | Alt (re1, re2) -> squish [parensIf re re1; text "|"; parensIf re re2]
     | Star re -> squish [parensIf re re; text "*"]
     | Empty -> text "empty"
     | String s -> text s
     | Inter(r1, r2) -> squish [parensIf re r1; text "&"; parensIf re r2]
     | Concat (re1, re2) -> squish [parensIf re re1; parensIf re re2]
-    | Negate re -> squish [text "^"; parens (parensIf re re)]
+    | Negate re -> squish [text "^"; parens [parensIf re re]]
     | Subtract(r1, r2) -> squish [parensIf re r1; text "\\"; parensIf re r2]
 
   let string_of_re = FormatExt.to_string p_re

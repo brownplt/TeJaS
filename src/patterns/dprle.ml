@@ -20,10 +20,10 @@ module Set : Sig.SET = struct
     match t with
       | Pat p -> text (P.pretty p)
       | Var x -> text (Id.string_of_id x)
-      | Union (t1, t2) -> parens (horz [ text "Union"; prf t1; prf t2 ])
-      | Inter (t1, t2) -> parens (horz [ text "Inter"; prf t1; prf t2 ])
-      | Diff (t1, t2) -> parens (horz [ text "Diff"; prf t1; prf t2 ])
-      | Not t' -> parens (horz [ text "Not"; prf t' ])
+      | Union (t1, t2) -> parens [ text "Union"; prf t1; prf t2 ]
+      | Inter (t1, t2) -> parens [ text "Inter"; prf t1; prf t2 ]
+      | Diff (t1, t2) -> parens [ text "Diff"; prf t1; prf t2 ]
+      | Not t' -> parens [ text "Not"; prf t' ]
       | Empty -> text "Empty"
       | All -> text "All"
 

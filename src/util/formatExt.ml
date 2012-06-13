@@ -29,7 +29,12 @@ let sep = inter (fun fmt -> pp_print_space fmt ())
 let rec squish (lst : printer list) (fmt : formatter) : unit = match lst with
   | x :: xs -> x fmt; squish xs fmt
   | [] -> ()
- 
+
+let add_sep_between sep items =
+  if items = [] then [] else
+  let rec repl n tl = if n <= 0 then tl else repl (n-1) (sep::tl) in
+  let seps = repl (List.length items - 1) [empty] in
+  List.map2 (fun item s -> squish[item; s]) items seps 
  
 let vert (p : printer list) (fmt : formatter) : unit = 
   pp_open_vbox fmt 0;
@@ -75,22 +80,45 @@ let int n fmt = pp_print_int fmt n
  
 let float f fmt = pp_print_float fmt f
  
-let enclose l r (inner : printer) (fmt : formatter) = 
+let enclose label l r (inner : printer list) (fmt : formatter) = 
   pp_open_hvbox fmt 2;
-  pp_print_string fmt l;
-  inner fmt;
-  pp_print_string fmt r;
+  pp_open_hbox fmt ();
+  pp_print_string fmt label;
+  l fmt;
+  pp_close_box fmt ();
+  pp_print_cut fmt ();
+  sep inner fmt;
+  pp_print_break fmt 0 (-2);
+  r fmt;
   pp_close_box fmt ()
- 
-let parens = enclose "(" ")"
- 
-let braces = enclose "{" "}"
- 
-let brackets = enclose "[" "]"
 
-let angles = enclose "<" ">"
+let label l = enclose l empty empty
+ 
+let label_parens l cut = enclose l (squish [cut; text "("]) (squish [text ")"])
+let parens = label_parens "" empty
+ 
+let label_braces l cut = enclose l (squish [cut; text "{"]) (squish [text "}"])
+let braces = label_braces "" empty
+ 
+let label_brackets l cut = enclose l (squish [cut; text "["]) (squish [text "]"])
+let brackets = label_brackets "" empty
 
-let pair p1 p2 = parens (horzOrVert [squish [p1; text ","]; p2])
+let label_angles l cut = enclose l (squish [cut; text "<"]) (squish [text ">"])
+let angles = label_angles "" empty
+
+let string s = enclose "" (text "\"") (text "\"") [text (Str.global_replace (Str.regexp_string "\"") "\\\"" s)]
+
+let label_pair l p1 p2 fmt = 
+  pp_open_hvbox fmt 1;
+  pp_open_hbox fmt ();
+  pp_print_string fmt l;
+  pp_print_string fmt "(";
+  pp_close_box fmt ();
+  sep [squish [p1; text ","]; p2] fmt;
+  pp_print_string fmt ")";
+  pp_close_box fmt ()
+
+let pair = label_pair ""
 
 let to_string (f : 'a -> printer) (x : 'a) : string  =
   f x str_formatter;

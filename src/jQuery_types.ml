@@ -80,11 +80,11 @@ module Make (Pat : SET) = struct
     let useNames = ref true
     let rec kind k = match k with
       | KStar -> text "*"
-      | KMult k -> squish [text "M"; angles (kind k)]
+      | KMult k -> squish [text "M"; angles [kind k]]
       | KArrow (ks, k) -> 
         horz [horz (intersperse (text ",") (map pr_kind ks)); text "=>"; kind k]
     and pr_kind k = match k with
-      | KArrow _ -> parens (kind k)
+      | KArrow _ -> parens [kind k]
       | _ -> kind k
 
 
@@ -103,8 +103,8 @@ module Make (Pat : SET) = struct
       | TPrim s -> text ("@" ^ s)
       | TRegex pat -> text (P.pretty pat)
       | TId name -> squish [text "'"; text name]
-      | TUnion (name, t1, t2) -> namedType name (parens (horzOrVert [horz[p t1; text "U"]; p t2]))
-      | TInter (name, t1, t2) -> namedType name (parens (horzOrVert [horz[p t1; text "&"]; p t2]))
+      | TUnion (name, t1, t2) -> namedType name (parens [horz[p t1; text "U"]; p t2])
+      | TInter (name, t1, t2) -> namedType name (parens [horz[p t1; text "&"]; p t2])
       | TForall (name, alpha, bound, body) -> begin
         let binding = match bound with
           | STyp TTop -> text alpha
@@ -120,7 +120,7 @@ module Make (Pat : SET) = struct
       | TApp (t, ts) ->
         (match ts with
         | [] -> horz [typ t; text "<>"]
-        | _ -> parens (squish [typ t; angles (horz (intersperse (text ",") (map sigma ts)))]))
+        | _ -> parens [squish [typ t; angles (intersperse (text ",") (map sigma ts))]])
       | TArrow (name, tt::arg_typs, varargs, r_typ) ->
         let multiLine = horzOnly ||
           List.exists (fun at -> match at with 
@@ -131,16 +131,16 @@ module Make (Pat : SET) = struct
           | a::b::ls -> horz [a;b] :: pairOff ls in
         let vararg = match varargs with
           | None -> []
-          | Some t -> [horz[squish [parens(horz[typ' true t]); text "..."]]] in
+          | Some t -> [horz[squish [parens [typ' true t]; text "..."]]] in
         let argTexts = 
           (intersperse (text "*") 
              ((map (fun at -> begin match at with
-             | TArrow _ -> parens (horz [typ' true at])
+             | TArrow _ -> parens [typ' true at]
              | _ -> typ' true at 
              end) arg_typs) @ vararg)) in
         namedType name 
           (hnestOrHorz 0
-             [ squish [brackets (typ tt); 
+             [ squish [brackets [typ tt]; 
                        (if multiLine 
                         then vert (pairOff (text " " :: argTexts)) 
                         else horz (empty::argTexts))] ;
@@ -148,10 +148,10 @@ module Make (Pat : SET) = struct
       | TArrow (name, arg_typs, varargs, r_typ) ->
         let vararg = match varargs with
           | None -> []
-          | Some t -> [horz[squish [parens(horz[typ' true t]); text "..."]]] in
+          | Some t -> [horz[squish [parens [typ' true t]; text "..."]]] in
         let argText = horz (intersperse (text "*") 
                               ((map (fun at -> begin match at with
-                              | TArrow _ -> parens (horz [typ' true at])
+                              | TArrow _ -> parens [typ' true at]
                               | _ -> typ' true at 
                               end) arg_typs) @ vararg)) in
         namedType name (hnestOrHorz 0 [ argText; horz [text "->"; typ r_typ ]])
@@ -160,12 +160,12 @@ module Make (Pat : SET) = struct
       match m with
       | MPlain t -> typ t
       | MId name -> squish [text "`"; text name]
-      | MZero m -> squish [text "0"; angles (p m)]
-      | MOne m -> squish [text "1"; angles (p m)]
-      | MZeroOne m -> squish [text "01"; angles (p m)]
-      | MOnePlus m -> squish [text "1+"; angles (p m)]
-      | MZeroPlus m -> squish [text "0+"; angles (p m)]
-      | MSum(m1, m2) -> squish [text "Sum"; angles (horzOrVert [horz[p m1; text "++"]; p m2])]
+      | MZero m -> squish [text "0"; angles [p m]]
+      | MOne m -> squish [text "1"; angles [p m]]
+      | MZeroOne m -> squish [text "01"; angles [p m]]
+      | MOnePlus m -> squish [text "1+"; angles [p m]]
+      | MZeroPlus m -> squish [text "0+"; angles [p m]]
+      | MSum(m1, m2) -> squish [text "Sum"; angles [horz[p m1; text "++"]; p m2]]
     and sigma s = match s with
       | STyp t -> typ t
       | SMult m -> multiplicity m
