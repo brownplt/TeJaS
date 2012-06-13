@@ -15,24 +15,21 @@ let partition_env (env : env) =
 let print_env env =
   let (id_typs, typ_ids, mult_ids) = partition_env env in
   let unname t = if (!TypImpl.Pretty.useNames) then replace_name None t else t in
-  let cut : printer = fun fmt -> Format.pp_print_cut fmt () in
-  [cut;
-   squish [IdMapExt.p_map "Types of term identifiers: " empty
+  [squish [IdMapExt.p_map "Types of term identifiers: " empty
               text (fun t -> TypImpl.Pretty.typ (unname t)) 
               id_typs;
            text ","];
    squish [IdMapExt.p_map "Bounded type variables: " empty
               text 
               (fun (t, k) -> 
-                vert [horz [text "="; TypImpl.Pretty.typ (unname t)];
-                      horz [text "::"; TypImpl.Pretty.kind k]]) typ_ids;
+                horzOrVert [TypImpl.Pretty.typ (unname t);
+                            horz [text "::"; TypImpl.Pretty.kind k]]) typ_ids;
            text ","];
-   IdMapExt.p_map "" empty
+   IdMapExt.p_map "Bounded mult variables: " empty
      text
      (fun (m, k) -> 
-       vert [horz [text "="; TypImpl.Pretty.multiplicity m];
-             horz [text "::"; TypImpl.Pretty.kind k]]) mult_ids;
-   cut
+       horzOrVert [TypImpl.Pretty.multiplicity m;
+                   horz [text "::"; TypImpl.Pretty.kind k]]) mult_ids;
   ]
 
 
@@ -49,14 +46,14 @@ let bind_rec_typ_id (x : id) recIds (s : sigma) (env : env) =
   | STyp t -> IdMap.add x (BTypBound(t, k)) env
   | SMult m -> IdMap.add x (BMultBound(m, k)) env
 
-let bind_typ_id x t env = bind_rec_typ_id x [] t env
+let bind_typ_id x s env = bind_rec_typ_id x [] s env
 
 let bind_recursive_types (xts : (id * typ) list) (env : env) =
   let env' = List.fold_left (fun ids (x, t) -> IdMap.add x (BTypBound(t, KStar)) ids) env xts in
   timefn "Bindrec/Kind checking" (List.fold_left (fun env (x, t) -> bind_typ_id x (STyp t) env) env') xts
 
 let unchecked_bind_typ_ids (xts : (id * typ) list) (env : env) =
-  List.fold_left (fun ids (x, t) -> IdMap.add x (BTypBound(t, KStar)) ids) env  
+  List.fold_left (fun ids (x, t) -> IdMap.add x (BTypBound(t, KStar)) ids) env xts
 
 let lookup_id x env = 
   match IdMap.find x env with BTermTyp t -> t | _ -> raise Not_found

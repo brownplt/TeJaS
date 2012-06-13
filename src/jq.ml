@@ -15,7 +15,7 @@ type arith =
 
 let main () =
   Random.self_init();
-  pp_set_margin std_formatter 110;
+  pp_set_margin std_formatter 120;
   pp_set_max_indent std_formatter 10000;
   let num_to_typ n t = match n with
     | -1 -> MZeroOne t
@@ -154,11 +154,11 @@ let main () =
                                   TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))]))))
         (doLet "g" (cheatTyp (TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))])))
            (EApp(p, EId(p, "f"), [EId (p, "g")]))) in
-    let retTyp = (TApp(TId("jQ"), [SMult (MZeroOne (MPlain (TId "a")))])) in
+    let retTyp = (TApp(TId("jQ"), [SMult (MZeroOne (MPlain (TId "b")))])) in
     begin try
       text "Typechecking: Is"; newline ();
       JQuery_syntax.Pretty.exp exp std_formatter; text " : "; print_typ retTyp; newline ();
-      with_typ_exns (fun () -> check empty_env None exp retTyp);
+      with_typ_exns (fun () -> check (unchecked_bind_typ_ids [("a", TId "b")] empty_env) None exp retTyp);
       text "Succeeded"; newline ();
     with Typ_error(p, e) -> (text "FAILED: "; text e; newline ()) end;
     text "Cache hits:   "; int !JQuery_subtyping.cache_hits; newline ();

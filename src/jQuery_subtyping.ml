@@ -21,6 +21,7 @@ let rec expose_typ env t = match t with
 
 (* returns an env containing only the (transitively) free variables in s *)
 let rec project s env =
+  let union map1 map2 = IdMap.fold IdMap.add map1 map2 in
   let (free_t, free_m) = free_sigma_ids s in
   IdMap.fold (fun id bind acc ->
     if not (IdSet.mem id free_t || IdSet.mem id free_m) then acc
@@ -29,10 +30,10 @@ let rec project s env =
         | BTermTyp t -> project (STyp t) env
         | BTypBound(t, _) -> project (STyp t) env
         | BMultBound(m, _) -> project (SMult m) env in
-      IdMap.fold IdMap.add trans acc) env IdMap.empty
-let project_mult_typ m t env = project (SMult m) (project (STyp t) env)
-let project_typs t1 t2 env = project (STyp t1) (project (STyp t2) env)
-let project_mults m1 m2 env = project (SMult m1) (project (SMult m2) env)
+      union (IdMap.add id bind acc) trans) env IdMap.empty
+let project_mult_typ m t env = IdMap.fold IdMap.add (project (SMult m) env) (project (STyp t) env)
+let project_typs t1 t2 env = IdMap.fold IdMap.add (project (STyp t1) env) (project (STyp t2) env)
+let project_mults m1 m2 env = IdMap.fold IdMap.add (project (SMult m1) env) (project (SMult m2) env)
 
 
 let pat_env (env : env) : pat IdMap.t =

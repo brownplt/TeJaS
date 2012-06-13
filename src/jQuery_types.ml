@@ -355,7 +355,7 @@ module Make (Pat : SET) = struct
         (equivalent_mult env m11 m22 && equivalent_mult env m12 m21)
     | _ -> false
 
-(* canonical forms *)
+  (* canonical forms *)
   let rec canonical_sigma s = match s with
     | STyp t -> STyp (canonical_type t)
     | SMult m -> SMult (canonical_multiplicity m)
