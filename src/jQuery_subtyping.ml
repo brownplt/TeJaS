@@ -3,15 +3,47 @@ open JQuery_syntax
 open TypImpl
 open ListExt
 
+
+
 module SigmaPair = struct
-  type t = STyps of typ * typ | SMults of multiplicity * multiplicity | SMultTyp of multiplicity * typ
+  type s = STyps of typ * typ | SMults of multiplicity * multiplicity | SMultTyp of multiplicity * typ
+  type t = env * s
   let compare = Pervasives.compare
 end
 module SPMap = Map.Make (SigmaPair)
 module SPMapExt = MapExt.Make (SigmaPair) (SPMap)
 
+let rec expose_typ env t = match t with
+  | TId x -> 
+    (try (match IdMap.find x env with BTypBound (t, _) -> expose_typ env t | _ -> None)
+     with Not_found -> None)
+  | t -> Some t
 
-let rec subtype_sigma lax env cache s1 s2 = 
+(* returns an env containing only the (transitively) free variables in s *)
+let rec project s env =
+  let (free_t, free_m) = free_sigma_ids s in
+  IdMap.fold (fun id bind acc ->
+    if not (IdSet.mem id free_t || IdSet.mem id free_m) then acc
+    else 
+      let trans = match bind with
+        | BTermTyp(t, _) -> project (STyp t) env
+        | BTypBound(t, _) -> project (STyp t) env
+        | BMultBound(m, _) -> project (SMult m) env in
+      IdMap.fold IdMap.add trans acc) env IdMap.empty
+let project_mult_typ m t env = project (SMult m) (project (STyp t) env)
+let project_typs t1 t2 env = project (STyp t1) (project (STyp t2) env)
+let project_mults m1 m2 env = project (SMult m1) (project (SMult m2) env)
+
+
+let pat_env (env : env) : pat IdMap.t =
+  let select_pat_bound (x, t) = match t with
+    | BTermTyp(TRegex p, _) -> Some (x, p)
+    | _ -> None in
+  List.fold_right (fun (x,p) env -> IdMap.add x p env)
+    (filter_map select_pat_bound (IdMap.bindings env))
+    IdMap.empty
+
+let rec subtype_sigma lax (env : env) cache s1 s2 = 
   let open SigmaPair in
   match s1, s2 with
   | STyp t1, STyp t2 -> subtype_typ lax env cache t1 t2
@@ -20,7 +52,7 @@ let rec subtype_sigma lax env cache s1 s2 =
   | SMult m1, STyp t2 -> 
     if lax then
       let (cache, ret) = subtype_mult lax env cache m1 (MZeroPlus (MPlain t2)) in
-      (SPMap.add (SMultTyp (m1, t2)) ret cache, ret)
+      (SPMap.add (project_mult_typ m1 t2 env, SMultTyp (m1, t2)) ret cache, ret)
     else
       (cache, false)
   (* ************************** *)
@@ -34,22 +66,22 @@ and subtype_typ lax env cache t1 t2 : (bool SPMap.t * bool) =
   let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
   let subtype_typ_list c t1 t2 = c &&& (fun c -> subtype_typ env c t1 t2) in
   let subtype_sigma_list c t1 t2 = c &&& (fun c -> subtype_sigma env c t1 t2) in
-  let addIfSuccess (cache, ret) = (SPMap.add (STyps (t1, t2)) ret cache, ret) in
-  try (cache, SPMap.find (STyps (t1, t2)) cache)
-  with Not_found -> begin addIfSuccess (if simpl_equiv t1 t2 
-    then (cache, true)
+  let addToCache (cache, ret) = (SPMap.add (project_typs t1 t2 env, STyps (t1, t2)) ret cache, ret) in
+  try (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
+  with Not_found -> begin addToCache (if t1 = t2 then (cache, true)
     else match t1, t2 with
     | _, TTop
     | TBot, _ -> (cache, true)
     | TRegex pat1, TRegex pat2 ->
-      (cache, P.is_subset IdMap.empty pat1 pat2)
+      (cache, P.is_subset (pat_env env) pat1 pat2)
     | TPrim p1, TPrim p2 -> (cache, p1 = p2)
-    | TId n1, TId n2 -> (cache, n1 = n2) ||| (fun c ->
-      try
-        let (t1, _) = IdMap.find n1 (fst env) in
-        let (t2, _) = IdMap.find n2 (fst env) in
-        subtype_typ env c t1 t2
-      with Not_found -> (c, false))
+    | TId n1, t2 when t2 = TId n1 -> cache, true (* SA-Refl-TVar *)
+    | TId n1, _ -> (* SA-Trans-TVar *)
+      (try
+         (match IdMap.find n1 env with 
+         | BTypBound (t1, _) -> subtype_typ env cache t1 t2
+         | _ -> cache, false)
+       with Not_found -> cache, false)
     | TUnion(_, t11, t12), t2 -> (* order matters -- left side must be split first! *)
       subtype_typ env cache t11 t2 &&& (fun c -> subtype_typ env c t12 t2)
     | t1, TUnion(_, t21, t22) ->
@@ -83,14 +115,13 @@ and subtype_typ lax env cache t1 t2 : (bool SPMap.t * bool) =
         (List.fold_left2 subtype_typ_list (cache, true) (ret1::args1') (ret2::args2))
     | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
       (* Kernel rule *)
-      subtype_sigma env cache s1 s2 (* bounds must be invariant, since e.g. *)
-      &&& (fun c -> subtype_sigma env c s2 s1) (* (forall a <: int. ref a) !<: (forall a <: Top. ref a) *)
-      &&& (fun c ->
+      if not (equivalent_sigma env s1 s2) then cache, false
+      else 
         let t2 = typ_typ_subst x2 (TId x1) t2 in
-        let env' = match s1 with
-          | STyp t -> (IdMap.add x1 (t, KStar) (fst env), snd env)
-          | SMult m -> (fst env, IdMap.add x1 (m, KMult KStar) (snd env)) in
-        subtype_typ env' c t1 t2)
+        let env' = match s2 with
+          | STyp t -> IdMap.add x1 (BTypBound (t, KStar)) env
+          | SMult m -> IdMap.add x1 (BMultBound (m, KMult KStar)) env in
+        subtype_typ env' cache t1 t2
     | _ -> (cache, false))
   end
     
@@ -98,17 +129,17 @@ and subtype_mult lax env cache m1 m2 =
   let subtype_mult = subtype_mult lax env in
   let subtype_typ = subtype_typ lax env in (* ok for now because there are no MId binding forms in Mult *)
   let open SigmaPair in
-  let (|||) c thunk = if (snd c) then c else thunk (fst c) in
-  let addIfSuccess (cache, ret) = (SPMap.add (SMults (m1, m2)) ret cache, ret) in
-  try (cache, SPMap.find (SMults (m1, m2)) cache)
-  with Not_found -> addIfSuccess (match m1, m2 with
-  | MId x, MId y -> (cache, x = y) ||| (fun c ->
-    try
-      let (mx, _) = IdMap.find x (snd env) in
-      let (my, _) = IdMap.find y (snd env) in
-      subtype_mult c mx my
-    with Not_found -> (c, false))
-  | MPlain t1, MPlain t2 -> subtype_typ cache t1 t2 (* ditto *)
+  let addToCache (cache, ret) = (SPMap.add (project_mults m1 m2 env, SMults (m1, m2)) ret cache, ret) in
+  try (cache, SPMap.find (project_mults m1 m2 env, SMults (m1, m2)) cache)
+  with Not_found -> addToCache (match m1, m2 with
+  | MId n1, t2 when t2 = MId n1 -> cache, true (* SA-Refl-TVar *)
+  | MId n1, _ -> (* SA-Trans-TVar *)
+    (try
+       (match IdMap.find n1 env with 
+       | BMultBound (m1, _) -> subtype_mult cache m1 m2
+       | _ -> cache, false)
+     with Not_found -> cache, false)
+  | MPlain t1, MPlain t2 -> subtype_typ cache t1 t2
   | MOne (MPlain t1), MOne (MPlain t2)
   | MOne (MPlain t1), MZeroOne (MPlain t2)
   | MOne (MPlain t1), MOnePlus (MPlain t2) -> subtype_typ cache t1 t2
@@ -135,8 +166,7 @@ and subtype_mult lax env cache m1 m2 =
   | MZeroPlus m1', MZeroPlus m2' -> subtype_mult cache m1' m2'
   | MZeroPlus _, _ -> (cache, false) (* not canonical! *)
   | MSum _, _
-  | MPlain _, _
-  | MId _, _ -> (cache, false) (* not canonical! *)
+  | MPlain _, _ -> (cache, false) (* not canonical! *)
   )
 
 and cache : bool SPMap.t ref = ref SPMap.empty

@@ -2,8 +2,8 @@ open Prelude
 open ListExt
 open JQuery_syntax
 open TypImpl
-open JQuery_env
 open JQuery_subtyping
+open JQuery_env
 open Exp
 
 
@@ -79,7 +79,11 @@ and check' (env : env) (default_typ : TypImpl.typ option) (exp : exp) (typ : Typ
     (* Printf.eprintf "Check': Synthing type for expression\n"; *)
     let synth_typ = synth env default_typ exp in
     (* Printf.printf "Checking %s <?: %s\n" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ)); *)
-    if not (subtype_typ ((* lax *)true) (env.typ_ids, env.mult_ids) synth_typ typ) then begin
+    let env = 
+      IdMap.fold (fun x (t,k) map -> IdMap.add x (BTypBound (t,k)) map)
+        env.typ_ids
+        (IdMap.fold (fun x (m,k) map -> IdMap.add x (BMultBound (m,k)) map) env.mult_ids IdMap.empty) in
+    if not (subtype_typ ((* lax *)true) env synth_typ typ) then begin
       (* Printf.printf "failed.\n"; *)
       typ_mismatch (Exp.pos exp)
         (sprintf "%%expected %s to have type %s, got %s" 

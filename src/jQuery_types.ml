@@ -281,18 +281,78 @@ module Make (Pat : SET) = struct
   let mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> t | _ -> failwith "impossible"
   let mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> m | _ -> failwith "impossible"
 
-(* simple equivalence *)
-  let rec simpl_equiv t1 t2 = if (replace_name None t1) = (replace_name None t2) then true else match t1, t2 with
-    | TForall(_, alpha, bound1, typ1), TForall(_, beta, bound2, typ2) ->
-      begin match bound1, bound2 with
-      | STyp b1, STyp b2 -> simpl_equiv b1 b2 && 
-        (if alpha = beta then simpl_equiv typ1 typ2
-         else simpl_equiv (typ_typ_subst alpha (TId beta) typ1) typ2)
-      | SMult m1, SMult m2 -> (m1 = m2) &&
-        (if alpha = beta then simpl_equiv typ1 typ2
-         else simpl_equiv (typ_typ_subst alpha (TId beta) typ1) typ2)
-      | _, _ -> false
-      end
+
+  type binding = BTermTyp of typ * kind | BTypBound of typ * kind | BMultBound of multiplicity * kind
+
+  type env = binding IdMap.t
+
+  (* simple structural equivalence -- e.g. up to permutation of parts of Union or Inter or Sum 
+   * and can be extended to objects later... *)
+  let rec equivalent_sigma (env : env) s1 s2 =
+    match s1, s2 with
+    | STyp t1, STyp t2 -> equivalent_typ env t1 t2
+    | SMult m1, SMult m2 -> equivalent_mult env m1 m2
+    | _ -> false
+  and equivalent_typ env t1 t2 = match t1, t2 with
+    | TBot, TBot
+    | TTop, TTop -> true
+    | TPrim p1, TPrim p2 -> p1 = p2
+    | TRegex p1, TRegex p2 -> P.is_equal p1 p2
+    | TId n1, TId n2 -> 
+      (n1 = n2) || 
+        (try 
+           (match IdMap.find n1 env, IdMap.find n2 env with
+           | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
+           | BTermTyp(t1, k1), BTermTyp(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
+           | BMultBound(m1, k1), BMultBound(m2, k2) -> k1 = k2 && equivalent_mult env m1 m2
+           | _ -> false)
+         with Not_found -> false)
+    | TUnion(_, t11, t12), TUnion(_, t21, t22)
+    | TInter(_, t11, t12), TInter(_, t21, t22) ->
+      (equivalent_typ env t11 t21 && equivalent_typ env t12 t22) ||
+        (equivalent_typ env t11 t22 && equivalent_typ env t12 t21)
+    | TForall(_, alpha, s1, t1), TForall(_, beta, s2, t2) ->
+      equivalent_sigma env s1 s2 && (match s1 with
+      | SMult _ -> equivalent_typ env t1 (mult_typ_subst beta (MId alpha) t2)
+      | STyp _ -> equivalent_typ env t1 (typ_typ_subst beta (TId alpha) t2))
+    | TArrow(_, t1s, v1o, t1r), TArrow(_, t2s, v2o, t2r) ->
+      if (List.length t1s <> List.length t2s) then false else
+        (match v1o, v2o with
+        | None, None -> List.for_all2 (equivalent_typ env) (t1r::t1s) (t2r::t2s)
+        | Some v1, Some v2 -> List.for_all2 (equivalent_typ env) (t1r::v1::t1s) (t2r::v2::t2s)
+        | _ -> false)
+    | TLambda(_, args1, ret1), TLambda(_, args2, ret2) ->
+      if (List.length args1 <> List.length args2) then false 
+      else if not (List.for_all2 (fun (_, k1) (_, k2) -> k1 = k2) args1 args2) then false
+      else 
+        let ret2 = List.fold_left2 (fun r (x1,k1) (x2,k2) -> 
+          match k1 with
+          | KMult _ -> mult_typ_subst x2 (MId x1) r
+          | _ -> typ_typ_subst x2 (TId x1) r) ret2 args1 args2
+        in equivalent_typ env ret1 ret2
+    | TApp(t1, args1), TApp(t2, args2) ->
+      if (List.length args1 <> List.length args2) then false 
+      else equivalent_typ env t1 t2 && List.for_all2 (equivalent_sigma env) args1 args2
+    | _ -> false
+  and equivalent_mult env m1 m2 = match m1, m2 with
+    | MPlain t1, MPlain t2 -> equivalent_typ env t1 t2
+    | MId n1, MId n2 -> 
+      (n1 = n2) || 
+        (try 
+           (match IdMap.find n1 env, IdMap.find n2 env with
+           | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
+           | BTermTyp(t1, k1), BTermTyp(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
+           | BMultBound(m1, k1), BMultBound(m2, k2) -> k1 = k2 && equivalent_mult env m1 m2
+           | _ -> false)
+         with Not_found -> false)
+    | MZero m1, MZero m2
+    | MOne m1, MOne m2
+    | MZeroOne m1, MZeroOne m2
+    | MOnePlus m1, MOnePlus m2
+    | MZeroPlus m1, MZeroPlus m2 -> equivalent_mult env m1 m2
+    | MSum(m11, m12), MSum(m21, m22) ->
+      (equivalent_mult env m11 m21 && equivalent_mult env m12 m22) ||
+        (equivalent_mult env m11 m22 && equivalent_mult env m12 m21)
     | _ -> false
 
 (* canonical forms *)
@@ -327,14 +387,10 @@ module Make (Pat : SET) = struct
       | t, TTop -> t
       | TBot, _
       | _, TBot -> TBot
-      | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) -> begin
-        match bound1, bound2 with
-        | STyp b1, STyp b2 -> 
-          if simpl_equiv b1 b2 
-          then TForall(n, alpha, bound1, canonical_type (TInter (None, typ1, typ_typ_subst beta (TId alpha) typ2)))
-          else TInter(n, t1, t2)
-        | _, _ -> TInter(n, t1, t2)
-      end
+      | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) -> 
+        if equivalent_sigma IdMap.empty bound1 bound2
+        then TForall(n, alpha, bound1, canonical_type (TInter (None, typ1, typ_typ_subst beta (TId alpha) typ2)))
+        else TInter(n, t1, t2)
       | t1, t2 -> if t1 = t2 then t1 else TInter(n, t1, t2)
     end
     | TForall (n, alpha, bound, typ) -> TForall(n, alpha, canonical_sigma bound, c typ)
@@ -342,8 +398,8 @@ module Make (Pat : SET) = struct
 
   and canonical_multiplicity m = 
     let c = canonical_multiplicity in
-  (* Invariant: will never return MPlain or MId, and
-   * if there are no MIds then it will never return MSum *)
+    (* Invariant: will never return MPlain or MId, and
+     * if there are no MIds then it will never return MSum *)
     match m with
     | MPlain t -> MOne (MPlain (canonical_type t))
     | MId _ -> MOne m
@@ -411,69 +467,5 @@ module Make (Pat : SET) = struct
   let string_of_typ = FormatExt.to_string Pretty.typ
   let string_of_mult = FormatExt.to_string Pretty.multiplicity
   let string_of_kind = FormatExt.to_string Pretty.kind
-
-  (* UNIFICATION *)
-  let (&&&) opt thunk = match opt with None -> None | Some c -> thunk c
-  type sconstraint = Bound of sigma | Equal of sigma
-  type constraintTable = sconstraint list IdMap.t
-  let addConstraint id constr table =
-    try 
-      let existing = IdMap.find id table in
-      IdMap.add id (constr::existing) table
-    with Not_found ->
-      IdMap.add id [constr] table
-  let rec collect_unify_sigma c s1 s2 : (constraintTable * constraintTable) option =
-    match s1, s2 with
-    | STyp t1, STyp t2 -> collect_unify_typ c t1 t2
-    | SMult m1, SMult m2 -> collect_unify_mult c m1 m2
-    | _, _ -> Some (IdMap.empty, IdMap.empty)
-  and collect_unify_typ (typs, mults) t1 t2 = 
-    match t1, t2 with
-    | TBot, TBot
-    | TTop, TTop -> Some (typs, mults)
-    | TUnion(_, t11, t12), TUnion(_, t21, t22)
-    | TInter(_, t11, t12), TInter(_, t21, t22) ->
-      collect_unify_typ (typs, mults) t11 t21 &&&
-        (fun c -> collect_unify_typ c t12 t22)
-    | TArrow(_, args1, var1, ret1), TArrow(_, args2, var2, ret2) ->
-      if (List.length args1 <> List.length args2) then None
-      else 
-        let args1' = match var1 with None -> args1 | Some v -> v :: args1 in
-        let args2' = match var2 with None -> args2 | Some v -> v :: args2 in
-        List.fold_left2 (fun c t1 t2 -> c &&& (fun c -> collect_unify_typ c t1 t2)) 
-          (Some (typs, mults)) (ret1::args1') (ret2::args2')
-    | TId x, t
-    | t, TId x -> begin
-      if (t == TId x) then (Some (typs, mults))
-      else if (IdSet.mem x (fst (free_typ_ids t))) then None (* occurs check failed *)
-      else (* ought to check kinds *)
-        Some (addConstraint x (Equal (STyp t)) typs, mults)
-    end
-    | TForall(_, alpha, bound, body), t
-    | t, TForall(_, alpha, bound, body) ->
-      begin match bound with
-      | STyp _ ->
-        let typs' = addConstraint alpha (Bound bound) typs in
-        collect_unify_typ (typs', mults) t body
-      | SMult _ ->
-        let mults' = addConstraint alpha (Bound bound) mults in
-        collect_unify_typ (typs, mults') t body
-      end
-    | _ -> None
-  and collect_unify_mult (typs, mults) m1 m2 = 
-    match m1, m2 with
-    | MPlain t1, MPlain t2 -> collect_unify_typ (typs, mults) t1 t2
-    | MZero m1, MZero m2
-    | MOne m1, MOne m2
-    | MZeroOne m1, MZeroOne m2
-    | MOnePlus m1, MOnePlus m2
-    | MZeroPlus m1, MZeroPlus m2 ->
-      collect_unify_mult (typs, mults) m1 m2
-    | MSum(m11, m12), MSum(m21, m22) ->
-      collect_unify_mult (typs, mults) m11 m21 &&&
-        (fun c -> collect_unify_mult c m12 m22)
-    | MId x, m
-    | m, MId x -> Some (typs, addConstraint x (Equal (SMult m)) mults)
-    | _ -> None
 end
 
