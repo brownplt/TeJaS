@@ -6,6 +6,7 @@ module type S = sig
 
   val from_list : (key * 'a) list -> 'a t
   val to_list : 'a t -> (key * 'a) list
+  val map_to_list : (key -> 'a -> 'b) -> 'a t -> 'b list
   val find_default : 'a t -> key -> 'a -> 'a
   val keys : 'a t -> key list
   val values : 'a t -> 'a list
@@ -30,6 +31,9 @@ module Make (Ord: Map.OrderedType) (Map : Map.S with type key = Ord.t) = struct
   let to_list m = 
     Map.fold (fun k v lst -> (k, v) :: lst) m []
 
+  let map_to_list f m =
+    Map.fold (fun k v acc -> (f k v)::acc) m []
+
   let keys m =
       Map.fold (fun k _ lst -> k :: lst) m []
 
@@ -51,8 +55,9 @@ module Make (Ord: Map.OrderedType) (Map : Map.S with type key = Ord.t) = struct
     in Map.fold mk m1 m2 (* m2 is the accumulator *)
 
   let p_map p_key p_val t = 
-    vert (List.map (fun (k, v) -> brackets (horz [ p_key k; p_val v ]))
-            (to_list t))
+    braces (
+      vert (List.map (fun (k, v) -> brackets (horzOrVert [ horz [p_key k; text "=>"]; p_val v ]))
+              (to_list t)))
 
   let diff m1 m2 = 
     let fn key v acc =

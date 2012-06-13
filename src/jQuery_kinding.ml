@@ -4,8 +4,6 @@ open TypImpl
 
 exception Kind_error of string
 
-type kind_env = kind IdMap.t * kind IdMap.t
-
 let valid_prims = ref (IdSetExt.from_list [ ])
 
 let list_prims () = IdSetExt.to_list !valid_prims
@@ -36,11 +34,11 @@ let rec well_formed_kind k = match k with
     | _ -> well_formed_kind k) args
       && well_formed_kind ret
 
-let rec kind_check_sigma (env : kind_env) (recIds : id list) (s : sigma) : kind = match s with
+let rec kind_check_sigma (env : env) (recIds : id list) (s : sigma) : kind = match s with
   | STyp t -> kind_check_typ env recIds t
   | SMult m -> kind_check_mult env recIds m
 
-and kind_check_typ (env : kind_env) (recIds : id list) (typ : typ) : kind = match typ with
+and kind_check_typ (env : env) (recIds : id list) (typ : typ) : kind = match typ with
   | TTop
   | TBot
   | TRegex _ -> KStar
@@ -64,7 +62,18 @@ and kind_check_typ (env : kind_env) (recIds : id list) (typ : typ) : kind = matc
     KStar
   | TId x -> 
     begin 
-      try IdMap.find x (fst env)
+      try 
+        (match IdMap.find x env with
+        | BTypBound (_, (KMult _ as k)) -> 
+          raise (Kind_error (x ^ " is bound to TypBound(" ^ (string_of_kind k) ^ "); that should be impossible!"))
+        | BTypBound (_, k) -> k
+        | BTermTyp _ -> raise (Kind_error (x ^ " is a term variable, not a type variable"))
+        | BMultBound (_, (KMult _ as k)) ->
+          raise (Kind_error (x ^ " is bound to MultBound(" ^ (string_of_kind k)
+                             ^ "); expected KStar or KArrow(_, _)"))
+        | BMultBound (_, k) ->
+          raise (Kind_error (x ^ " is bound to MultBound(" ^ (string_of_kind k)
+                             ^ "); that should be impossible!")))
       with Not_found ->
         if (not (List.mem x recIds)) then
           (* let strfmt = Format.str_formatter in *)
@@ -79,13 +88,16 @@ and kind_check_typ (env : kind_env) (recIds : id list) (typ : typ) : kind = matc
     end
   | TForall (_, x, s, t) ->
     let k1 = kind_check_sigma env recIds s in
-    let k2 = kind_check_typ ((IdMap.add x KStar (fst env)), snd env) recIds t in
+    let env' = match s with 
+      | STyp t -> IdMap.add x (BTypBound(t, k1)) env
+      | SMult m -> IdMap.add x (BMultBound(m, k1)) env in
+    let k2 = kind_check_typ env' recIds t in
     if k1 <> k2 then kind_mismatch_typ t k1 k2 else k1
   | TLambda (_, args, t) ->
     let env' = fold_right (fun (x, k) env -> 
       match k with
-      | KMult _ -> (fst env, IdMap.add x k (snd env))
-      | _ -> (IdMap.add x k (fst env), snd env)) args env in
+      | KMult _ -> IdMap.add x (BMultBound(MZeroPlus(MPlain TTop), k)) env
+      | _ -> IdMap.add x (BTypBound(TTop, k)) env) args env in
     KArrow (List.map snd2 args, kind_check_typ env' recIds t)
   | TApp (t_op, s_args) ->
     begin 

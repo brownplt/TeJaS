@@ -155,12 +155,15 @@ let main () =
         (doLet "g" (cheatTyp (TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))])))
            (EApp(p, EId(p, "f"), [EId (p, "g")]))) in
     let retTyp = (TApp(TId("jQ"), [SMult (MZeroOne (MPlain (TId "a")))])) in
-    try
+    begin try
       text "Typechecking: Is"; newline ();
       JQuery_syntax.Pretty.exp exp std_formatter; text " : "; print_typ retTyp; newline ();
       with_typ_exns (fun () -> check empty_env None exp retTyp);
-      text "Succeeded"; newline ()
-    with Typ_error(p, e) -> (text "FAILED: "; text e; newline ())
+      text "Succeeded"; newline ();
+    with Typ_error(p, e) -> (text "FAILED: "; text e; newline ()) end;
+    text "Cache hits:   "; int !JQuery_subtyping.cache_hits; newline ();
+    text "Cache misses: "; int !JQuery_subtyping.cache_misses; newline ();
+    text "Cache is:"; newline (); JQuery_subtyping.print_cache std_formatter; newline()
   end in
   (* test1 500; *)
   (* test2 500 *)

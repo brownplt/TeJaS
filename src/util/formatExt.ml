@@ -90,6 +90,8 @@ let brackets = enclose "[" "]"
 
 let angles = enclose "<" ">"
 
+let pair p1 p2 = parens (horzOrVert [squish [p1; text ","]; p2])
+
 let to_string (f : 'a -> printer) (x : 'a) : string  =
   f x str_formatter;
   flush_str_formatter ()

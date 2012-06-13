@@ -282,7 +282,7 @@ module Make (Pat : SET) = struct
   let mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> m | _ -> failwith "impossible"
 
 
-  type binding = BTermTyp of typ * kind | BTypBound of typ * kind | BMultBound of multiplicity * kind
+  type binding = BTermTyp of typ | BTypBound of typ * kind | BMultBound of multiplicity * kind
 
   type env = binding IdMap.t
 
@@ -303,7 +303,7 @@ module Make (Pat : SET) = struct
         (try 
            (match IdMap.find n1 env, IdMap.find n2 env with
            | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
-           | BTermTyp(t1, k1), BTermTyp(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
+           | BTermTyp t1, BTermTyp t2 -> equivalent_typ env t1 t2
            | BMultBound(m1, k1), BMultBound(m2, k2) -> k1 = k2 && equivalent_mult env m1 m2
            | _ -> false)
          with Not_found -> false)
@@ -341,7 +341,7 @@ module Make (Pat : SET) = struct
         (try 
            (match IdMap.find n1 env, IdMap.find n2 env with
            | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
-           | BTermTyp(t1, k1), BTermTyp(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
+           | BTermTyp t1, BTermTyp t2 -> equivalent_typ env t1 t2
            | BMultBound(m1, k1), BMultBound(m2, k2) -> k1 = k2 && equivalent_mult env m1 m2
            | _ -> false)
          with Not_found -> false)

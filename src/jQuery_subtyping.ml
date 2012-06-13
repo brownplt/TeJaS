@@ -26,7 +26,7 @@ let rec project s env =
     if not (IdSet.mem id free_t || IdSet.mem id free_m) then acc
     else 
       let trans = match bind with
-        | BTermTyp(t, _) -> project (STyp t) env
+        | BTermTyp t -> project (STyp t) env
         | BTypBound(t, _) -> project (STyp t) env
         | BMultBound(m, _) -> project (SMult m) env in
       IdMap.fold IdMap.add trans acc) env IdMap.empty
@@ -37,11 +37,14 @@ let project_mults m1 m2 env = project (SMult m1) (project (SMult m2) env)
 
 let pat_env (env : env) : pat IdMap.t =
   let select_pat_bound (x, t) = match t with
-    | BTermTyp(TRegex p, _) -> Some (x, p)
+    | BTermTyp (TRegex p) -> Some (x, p)
     | _ -> None in
   List.fold_right (fun (x,p) env -> IdMap.add x p env)
     (filter_map select_pat_bound (IdMap.bindings env))
     IdMap.empty
+
+let cache_hits = ref 0
+let cache_misses = ref 0
 
 let rec subtype_sigma lax (env : env) cache s1 s2 = 
   let open SigmaPair in
@@ -67,8 +70,8 @@ and subtype_typ lax env cache t1 t2 : (bool SPMap.t * bool) =
   let subtype_typ_list c t1 t2 = c &&& (fun c -> subtype_typ env c t1 t2) in
   let subtype_sigma_list c t1 t2 = c &&& (fun c -> subtype_sigma env c t1 t2) in
   let addToCache (cache, ret) = (SPMap.add (project_typs t1 t2 env, STyps (t1, t2)) ret cache, ret) in
-  try (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
-  with Not_found -> begin addToCache (if t1 = t2 then (cache, true)
+  try incr cache_hits; (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
+  with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
     else match t1, t2 with
     | _, TTop
     | TBot, _ -> (cache, true)
@@ -130,8 +133,8 @@ and subtype_mult lax env cache m1 m2 =
   let subtype_typ = subtype_typ lax env in (* ok for now because there are no MId binding forms in Mult *)
   let open SigmaPair in
   let addToCache (cache, ret) = (SPMap.add (project_mults m1 m2 env, SMults (m1, m2)) ret cache, ret) in
-  try (cache, SPMap.find (project_mults m1 m2 env, SMults (m1, m2)) cache)
-  with Not_found -> addToCache (match m1, m2 with
+  try incr cache_hits; (cache, SPMap.find (project_mults m1 m2 env, SMults (m1, m2)) cache)
+  with Not_found -> decr cache_hits; incr cache_misses; addToCache (match m1, m2 with
   | MId n1, t2 when t2 = MId n1 -> cache, true (* SA-Refl-TVar *)
   | MId n1, _ -> (* SA-Trans-TVar *)
     (try
@@ -170,6 +173,28 @@ and subtype_mult lax env cache m1 m2 =
   )
 
 and cache : bool SPMap.t ref = ref SPMap.empty
+
+let print_cache fmt =
+  let open SigmaPair in
+  let open Format in
+  let open FormatExt in
+  let open JQuery_env in
+  SPMapExt.p_map 
+    (fun (env, sp) -> match sp with
+    | STyps (t1, t2) -> 
+      pair
+        (horz [text "Env:"; braces (print_env env)])
+        (squish [text "STyps"; pair (TypImpl.Pretty.typ t1) (TypImpl.Pretty.typ t2)])
+    | SMults (m1, m2) -> 
+      pair
+        (horz [text "Env:"; braces (print_env env)])
+        (squish [text "SMults"; pair (TypImpl.Pretty.multiplicity m1) (TypImpl.Pretty.multiplicity m2)])
+    | SMultTyp (m1, t2) -> 
+      pair
+        (horz [text "Env:"; braces (print_env env)])
+        (squish [text "SMultTyp"; pair (TypImpl.Pretty.multiplicity m1) (TypImpl.Pretty.typ t2)]))
+    (fun b -> text (string_of_bool b))
+    !cache fmt
 
 (* SUBTYPING ONLY WORKS ON CANONICAL FORMS *)
 let subtype_sigma lax env s1 s2 =

@@ -79,10 +79,6 @@ and check' (env : env) (default_typ : TypImpl.typ option) (exp : exp) (typ : Typ
     (* Printf.eprintf "Check': Synthing type for expression\n"; *)
     let synth_typ = synth env default_typ exp in
     (* Printf.printf "Checking %s <?: %s\n" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ)); *)
-    let env = 
-      IdMap.fold (fun x (t,k) map -> IdMap.add x (BTypBound (t,k)) map)
-        env.typ_ids
-        (IdMap.fold (fun x (m,k) map -> IdMap.add x (BMultBound (m,k)) map) env.mult_ids IdMap.empty) in
     if not (subtype_typ ((* lax *)true) env synth_typ typ) then begin
       (* Printf.printf "failed.\n"; *)
       typ_mismatch (Exp.pos exp)
@@ -108,7 +104,7 @@ and synth' env default_typ exp : typ =
     | Some t -> 
       Printf.eprintf "Warning: Unbound identifier %s at %s\n" x (Pos.toString p);
       Printf.eprintf "Currently bound identifiers are:\n";
-      IdMap.iter (fun id _ -> Printf.eprintf "%s, " id) (id_env env);
+      IdMap.iter (fun id b -> match b with BTermTyp _ -> Printf.eprintf "%s, " id | _ -> ()) env;
       Printf.eprintf "\n";
       t (* Should probably warn about undefined identifier here *)
   end
