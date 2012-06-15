@@ -60,6 +60,9 @@ and kind_check_typ (env : env) (recIds : id list) (typ : typ) : kind = match typ
     List.iter assert_kind (result_typ :: arg_typs);
     (match varargs with None -> () | Some v -> assert_kind v);
     KStar
+  | TDom (_, t, sel) -> 
+    let k = kind_check_typ env recIds t in
+    if k <> KStar then kind_mismatch_typ t k KStar else KStar
   | TId x -> 
     begin 
       try 
@@ -133,4 +136,41 @@ and kind_check_typ (env : env) (recIds : id list) (typ : typ) : kind = match typ
                    (sprintf "not a type operator:\n%s" (string_of_typ t_op)))
     end
 
-and kind_check_mult _ _ _ = KStar
+and kind_check_mult env recIds (mult : multiplicity) = match mult with
+  | MId x -> 
+    begin 
+      try 
+        (match IdMap.find x env with
+        | BMultBound (_, (KMult _ as k)) -> k
+        | BMultBound (_, k) ->
+          raise (Kind_error (x ^ " is bound to MultBound(" ^ (string_of_kind k)
+                             ^ "); that should be impossible!"))
+        | BTypBound (_, (KMult _ as k)) -> 
+          raise (Kind_error (x ^ " is bound to TypBound(" ^ (string_of_kind k) ^ "); that should be impossible!"))
+        | BTypBound (_, k) -> 
+          raise (Kind_error (x ^ " is bound to TypBound(" ^ (string_of_kind k)
+                             ^ "); expected KMult(_)"))
+        | BTermTyp _ -> raise (Kind_error (x ^ " is a term variable, not a type variable")))
+      with Not_found ->
+        if (not (List.mem x recIds)) then
+          (* let strfmt = Format.str_formatter in *)
+          (* let envText = (IdMap.iter (fun id k ->  *)
+          (*   FormatExt.horz [FormatExt.text id; FormatExt.text "="; Pretty.kind k] strfmt; *)
+          (*   Format.pp_print_newline strfmt () *)
+          (* ) env); Format.flush_str_formatter() in *)
+          let s = (sprintf "mult variable %s is unbound in env" x (* envText *)) in
+          (* Printf.printf "%s" s; print_newline(); *)
+          raise (Kind_error s)
+        else KMult KStar
+    end
+  | MZero m
+  | MOne m
+  | MZeroOne m
+  | MOnePlus m
+  | MZeroPlus m -> kind_check_mult env recIds m
+  | MSum(m1, m2) ->
+    let k1 = kind_check_mult env recIds m1 in
+    let k2 = kind_check_mult env recIds m2 in
+    if k1 <> k2 then raise (Kind_error ((string_of_mult mult) ^ " has inconsistently kinded components"))
+    else k1
+  | MPlain t -> kind_check_typ env recIds t

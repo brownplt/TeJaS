@@ -148,17 +148,21 @@ let main () =
     let open JQuery_env in
     let doLet x b e = ELet(p, x, b, e) in
     let cheatTyp t = ECheat(p, t, EConst(p, "")) in
+    let tDom = TDom(None, TId "a", Css.all) in
     let exp = 
       doLet "f" (cheatTyp (TArrow(None,
-                                  [TApp(TId("jQ"), [SMult (MOnePlus (MPlain (TId "a")))])], None,
+                                  [TApp(TId("jQ"), [SMult (MOnePlus (MPlain (tDom)))])], None,
                                   TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))]))))
         (doLet "g" (cheatTyp (TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))])))
            (EApp(p, EId(p, "f"), [EId (p, "g")]))) in
     let retTyp = (TApp(TId("jQ"), [SMult (MZeroOne (MPlain (TId "b")))])) in
+    let env = (unchecked_bind_typ_ids [("a", TId "b")] empty_env) in
     begin try
       text "Typechecking: Is"; newline ();
       JQuery_syntax.Pretty.exp exp std_formatter; text " : "; print_typ retTyp; newline ();
-      with_typ_exns (fun () -> check (unchecked_bind_typ_ids [("a", TId "b")] empty_env) None exp retTyp);
+      text "in environment"; newline ();
+      braces (print_env env) std_formatter; text "?"; newline ();
+      with_typ_exns (fun () -> check env None exp retTyp);
       text "Succeeded"; newline ();
     with Typ_error(p, e) -> (text "FAILED: "; text e; newline ()) end;
     text "Cache hits:   "; int !JQuery_subtyping.cache_hits; newline ();

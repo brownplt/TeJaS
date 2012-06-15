@@ -1,7 +1,8 @@
 open Prelude
 
 module P = Dprle.Set
-module TypImpl = JQuery_types.Make (P)
+module Css = Css.DummyCSS
+module TypImpl = JQuery_types.Make (P) (Css)
 
 type const = string
 

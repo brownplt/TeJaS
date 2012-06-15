@@ -1,8 +1,9 @@
 open Prelude
 open Sig
+open Css
 open ListExt
 
-module Make (Pat : SET) = struct
+module Make (Pat : SET) (Css : CSS) = struct
 
   let num_typ_errors = ref 0
 
@@ -18,8 +19,7 @@ module Make (Pat : SET) = struct
   let get_num_typ_errors () = !num_typ_errors
 
   type pat = Pat.t
-  module Pat = Pat
-  module P = Pat
+  type sel = Css.t
 
 
   type kind = 
@@ -39,6 +39,7 @@ module Make (Pat : SET) = struct
     | TArrow of string option * typ list * typ option * typ
     | TLambda of string option * (id * kind) list * typ
     | TApp of typ * sigma list
+    | TDom of string option * typ * sel
   and multiplicity = 
     | MPlain of typ
     | MId of id
@@ -55,6 +56,7 @@ module Make (Pat : SET) = struct
     | TInter(None, t1, t2) -> TInter(n, t1, t2)
     | TForall(None, x, t, b) -> TForall(n, x, t, b)
     | TArrow(None, t1, t2, t3) -> TArrow(n, t1, t2, t3)
+    | TDom(None, t, sel) -> TDom(n, t, sel)
     | _ -> typ
 
   and name_of typ =  match typ with
@@ -62,6 +64,7 @@ module Make (Pat : SET) = struct
     | TInter(name, _, _) -> name
     | TForall(name, _, _, _) -> name
     | TArrow(name, _, _, _) -> name
+    | TDom(name, _, _) -> name
     | _ -> None
 
   and replace_name n typ = match typ with
@@ -69,6 +72,7 @@ module Make (Pat : SET) = struct
     | TInter(_, t1, t2) -> TInter(n, t1, t2)
     | TForall(_, x, t, b) -> TForall(n, x, t, b)
     | TArrow(_, t1, t2, t3) -> TArrow(n, t1, t2, t3)
+    | TDom(_, t, sel) -> TDom(n, t, sel)
     | _ -> typ
 
 
@@ -101,7 +105,7 @@ module Make (Pat : SET) = struct
       | TBot -> text "Bot"
       | TTop -> text "Top"
       | TPrim s -> text ("@" ^ s)
-      | TRegex pat -> text (P.pretty pat)
+      | TRegex pat -> text (Pat.pretty pat)
       | TId name -> squish [text "'"; text name]
       | TUnion (name, t1, t2) -> namedType name (parens [horz[p t1; text "U"]; p t2])
       | TInter (name, t1, t2) -> namedType name (parens [horz[p t1; text "&"]; p t2])
@@ -155,6 +159,8 @@ module Make (Pat : SET) = struct
                               | _ -> typ' true at 
                               end) arg_typs) @ vararg)) in
         namedType name (hnestOrHorz 0 [ argText; horz [text "->"; typ r_typ ]])
+      | TDom (name, t, sel) ->
+        namedType name (horzOrVert [horz [typ t; text "@"]; Css.p_css sel])
     and multiplicity m =
       let p = multiplicity in
       match m with
@@ -199,7 +205,11 @@ module Make (Pat : SET) = struct
     | TPrim _
     | TRegex _ -> (empty, empty)
     | TId x -> (singleton x, empty)
-    | TLambda (_, xks, t) -> let (ts, ms) = (free_typ_ids t) in (diff ts (from_list (map fst2 xks)), ms)
+    | TLambda (_, xks, t) -> 
+      let (ts, ms) = (free_typ_ids t) in
+      let (xts, yms) = List.partition (fun (_, k) -> match k with KMult _ -> true | _ -> false) xks in
+      let (xs, ys) = (from_list (map fst2 xts), from_list (map fst2 yms)) in
+      (diff ts xs, diff ms ys)
     | TApp (t, ss) -> map_pair unions (List.split (free_typ_ids t :: (map free_sigma_ids ss)))
     | TInter (_, t1, t2)
     | TUnion (_, t1, t2) ->
@@ -214,6 +224,7 @@ module Make (Pat : SET) = struct
       let (f1t, f1m) = (free_sigma_ids bound) in
       let (f2t, f2m) = (free_typ_ids typ) in
       (remove alpha (union f1t f2t), union f1m f2m)
+    | TDom(_, t, _) -> free_typ_ids t
 
   let rec subst x (s : sigma) (sigma : sigma) : sigma =
     let rec sigma_help sigma : sigma = match sigma with
@@ -273,7 +284,8 @@ module Make (Pat : SET) = struct
       | TUnion (name, t1, t2) -> TUnion (name, typ_help t1, typ_help t2)
       | TArrow (name, args, var, ret) -> TArrow (name, map typ_help args, opt_map typ_help var, typ_help ret)
       | TForall (name, alpha, bound, body) -> if x = alpha then typ else
-          TForall (name, alpha, sigma_help bound, typ_help body)
+          TForall (name, alpha, sigma_help bound, typ_help body) (* fix capture avoidance here too *)
+      | TDom (name, t, sel) -> TDom(name, typ_help t, sel)
     in sigma_help sigma
 
   let typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> t | _ -> failwith "impossible"
@@ -297,7 +309,7 @@ module Make (Pat : SET) = struct
     | TBot, TBot
     | TTop, TTop -> true
     | TPrim p1, TPrim p2 -> p1 = p2
-    | TRegex p1, TRegex p2 -> P.is_equal p1 p2
+    | TRegex p1, TRegex p2 -> Pat.is_equal p1 p2
     | TId n1, TId n2 -> 
       (n1 = n2) || 
         (try 
@@ -333,6 +345,8 @@ module Make (Pat : SET) = struct
     | TApp(t1, args1), TApp(t2, args2) ->
       if (List.length args1 <> List.length args2) then false 
       else equivalent_typ env t1 t2 && List.for_all2 (equivalent_sigma env) args1 args2
+    | TDom(_, t1, sel1), TDom(_, t2, sel2) ->
+      equivalent_typ env t1 t2 && Css.is_equal sel1 sel2
     | _ -> false
   and equivalent_mult env m1 m2 = match m1, m2 with
     | MPlain t1, MPlain t2 -> equivalent_typ env t1 t2
@@ -395,6 +409,7 @@ module Make (Pat : SET) = struct
     end
     | TForall (n, alpha, bound, typ) -> TForall(n, alpha, canonical_sigma bound, c typ)
     | TArrow (n, args, var, ret) -> TArrow (n, map c args, opt_map c var, c ret)
+    | TDom(n, t, sel) -> TDom(n, c t, sel)
 
   and canonical_multiplicity m = 
     let c = canonical_multiplicity in

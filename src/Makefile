@@ -4,7 +4,7 @@ OBJDIR=../obj
 comma:= ,
 empty:=
 space:= $(empty) $(empty)
-INCLUDES = util,RegLang,patterns
+INCLUDES = util,RegLang,patterns,css
 
 OCAMLBUILD = ocamlbuild -build-dir $(OBJDIR) -libs unix,str \
 	-menhir "menhir --stdlib \"C:\cygwin\usr\local\share\menhir\"" \

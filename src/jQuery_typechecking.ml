@@ -94,7 +94,10 @@ and synth' env default_typ exp : typ =
   match exp with
   | EConst (p, _) -> TId "String" (* for now *)
   | EAssertTyp(p, t, e) ->
-    ignore (synth env default_typ e); (* make sure e is well-typed at some type *)
+    (* Printf.eprintf "Synth: AssertTyp that %s has type %s\n" (string_of_exp e) (string_of_typ t); *)
+    (* Printf.eprintf "%s\n" (string_of_bool (subtype env (synth env default_typ e) t)); *)
+    let _ = JQuery_kinding.kind_check_typ env [] t in
+    let _ = check env default_typ e t in
     t
   | EId (p, x) -> begin
     try 
@@ -148,7 +151,7 @@ and synth' env default_typ exp : typ =
     (* Printf.eprintf "Synth EApp: Checking function body\n"; *)
     check_app (synth env default_typ f)
   | ECheat(p, t, _) -> t
-  | EFunc _ -> TArrow(None, [], Some TBot, TTop)
+  | EFunc _ -> TArrow(None, [], Some TBot, TTop) (* TODO *)
   | ELet (_, x, e1, e2) -> synth (bind_id x (synth env default_typ e1) env) default_typ e2
   | ESeq (_, e1, e2) -> begin match synth env default_typ e1 with
       TBot -> (* e1 will not return; no need to typecheck e2 *)
