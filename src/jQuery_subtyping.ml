@@ -99,24 +99,24 @@ and subtype_typ lax env cache t1 t2 : (bool SPMap.t * bool) =
       else List.fold_left2 subtype_sigma_list (cache, true) ((STyp t1)::args1) ((STyp t2)::args2)
     | TArrow (_, args1, None, ret1), TArrow (_, args2, None, ret2) ->
       if (List.length args1 <> List.length args2) then (cache, false)
-      else (List.fold_left2 subtype_typ_list (cache, true) (ret1::args1) (ret2::args2))
+      else (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1))
     | TArrow (_, args1, None, ret1), TArrow (_, args2, Some var2, ret2) ->
       if (List.length args1 < List.length args2) then (cache, false)
       else 
         let args2' = fill (List.length args1 - List.length args2) var2 args2 in
-        (List.fold_left2 subtype_typ_list (cache, true) (ret1::args1) (ret2::args2'))
+        (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2') (ret2::args1))
     | TArrow (_, args1, Some var1, ret1), TArrow (_, args2, None, ret2) ->
       if (List.length args1 > List.length args2) then (cache, false)
       else 
         let args1' = fill (List.length args2 - List.length args1) var1 args1 in
-        (List.fold_left2 subtype_typ_list (cache, true) (ret1::args1') (ret2::args2))
+        (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
     | TArrow (_, args1, Some var1, ret1), TArrow (_, args2, Some var2, ret2) ->
       if (List.length args1 > List.length args2) then
         let args2' = fill (List.length args1 - List.length args2) var2 args2 in
-        (List.fold_left2 subtype_typ_list (cache, true) (ret1::args1) (ret2::args2'))
+        (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2') (ret2::args1))
       else 
         let args1' = fill (List.length args2 - List.length args1) var1 args1 in
-        (List.fold_left2 subtype_typ_list (cache, true) (ret1::args1') (ret2::args2))
+        (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
     | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
       (* Kernel rule *)
       if not (equivalent_sigma env s1 s2) then cache, false
