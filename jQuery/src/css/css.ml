@@ -57,22 +57,156 @@ module Cross2Sets (Src1 : Set.S) (Src2 : Set.S) (Dst : Set.S) = struct
   let cross (f : Src1.elt -> Src2.elt -> Dst.elt) (s1 : Src1.t) (s2 : Src2.t) : Dst.t =
     Src1.fold (fun elt1 acc ->
       Src2.fold (fun elt2 acc ->
-	Dst.add (f elt1 elt2) acc) s2 acc) s1 Dst.empty
+        Dst.add (f elt1 elt2) acc) s2 acc) s1 Dst.empty
 end
 
-module RealCSS : CSS = struct
+module RealCSS = struct
+
+
   type atomic = TSel of string | USel
   and spec = | SpId of string | SpClass of string
-	     | SpAttrib of string | SpPseudo of string
+             | SpAttrib of string | SpPseudo of string
   and simple = atomic * spec list
   and adj = A of adj * simple | AS of simple
   and sib = S of sib * adj | SA of adj
   and kid = K of kid * sib | KS of sib
   and desc = D of desc * kid | DK of kid
   and sel = desc
+
+  module Pretty = struct
+    open FormatExt
+    let rec pretty_atomic a =
+      match a with 
+      | USel -> text "*"
+      | TSel t -> text t
+    and pretty_simple (a, _) = pretty_atomic a
+    and pretty_adj a = match a with
+      | AS s -> pretty_simple s
+      | A (a, s) -> horzOrVert [pretty_adj a; text "+"; pretty_simple s]
+    and pretty_sib s = match s with
+      | SA a -> pretty_adj a
+      | S (s, a) -> horzOrVert [pretty_sib s; text "~"; pretty_adj a]
+    and pretty_kid k = match k with
+      | KS s -> pretty_sib s
+      | K (k, s) -> horzOrVert [pretty_kid k; text ">"; pretty_sib s]
+    and pretty_desc d = match d with
+      | DK k -> pretty_kid k
+      | D (d, k) -> horzOrVert [pretty_desc d;  pretty_kid k]
+    let pretty_sel = pretty_desc
+  end
+  type combinator = Desc | Kid | Sib | Adj
+
+  type regsel = simple * ((combinator * simple) list)
+
+  let sel2regsel s = 
+    let rec simple2regsel s = [Desc, s]
+    and adj2regsel a = match a with
+      | AS s -> simple2regsel s
+      | A(a, s) -> match adj2regsel a, simple2regsel s with
+        | ra, (_,s)::tl -> ra @ (Adj, s) :: tl
+        | _ -> failwith "impossible"
+    and sib2regsel s = match s with
+      | SA a -> adj2regsel a
+      | S(s, a) -> match sib2regsel s, adj2regsel a with
+        | rs, (_, a)::tl -> rs @ (Sib, a) :: tl
+        | _ -> failwith "impossible"
+    and kid2regsel k = match k with
+      | KS s -> sib2regsel s
+      | K(k, s) -> match kid2regsel k, sib2regsel s with
+        | rk, (_,s)::tl -> rk @ (Kid, s) :: tl
+        | _ -> failwith "impossible"
+    and desc2regsel d = match d with
+      | DK k -> kid2regsel k
+      | D(d, k) -> match desc2regsel d, kid2regsel k with
+        | rd, (_, k)::tl -> rd @ (Desc, k) :: tl
+        | _ -> failwith "impossible"
+    in match desc2regsel s with
+    | [] -> failwith "impossible"
+    | (_, s)::tl -> (s, tl)
+
+  let regsel2sel (rs : regsel) =
+    let al = let (s, l) = rs in
+      List.map (fun (c, s) -> (c, AS s)) ((Desc, s)::l) in
+    let rec s2a al = match al with
+      | [] -> []
+      | (c, a1)::(Adj, (AS s2))::tl -> s2a ((c, A(a1, s2))::tl)
+      | (c, a1)::tl -> (c, a1)::s2a tl in
+    let sl = List.map (fun (c, a) -> (c, SA a)) (s2a al) in
+    let rec a2sib sl = match sl with
+      | [] -> []
+      | (c, s1)::(Sib, (SA a2))::tl -> a2sib ((c, S(s1, a2))::tl)
+      | (c, s1)::tl -> (c, s1)::a2sib tl in
+    let kl = List.map (fun (c, s) -> (c, KS s)) (a2sib sl) in
+    let rec s2k kl = match kl with
+      | [] -> []
+      | (c, k1)::(Kid, (KS s2))::tl -> s2k ((c, K(k1, s2))::tl)
+      | (c, k1)::tl -> (c, k1)::s2k tl in
+    let dl = List.map (fun (c, k) -> (c, DK k)) (s2k kl) in
+    let rec k2d dl = match dl with
+      | [] -> []
+      | (c, d1)::(Desc, (DK k2))::tl -> k2d ((c, D(d1, k2))::tl)
+      | (c, d1)::tl -> (c, d1)::k2d tl in 
+    match (k2d dl) with
+        | [(Desc, d)] -> d
+        | _ -> failwith "impossible"
+
+  let n = ref (-1)
+  let fresh_var () = (* a, b, ... z, aa, bb, ..., zz, ... *)
+    incr n;
+    String.make (1 + (!n / 26)) (Char.chr (Char.code 'a' + (!n mod 26)))
+
+  let random_regsel len = 
+    let random_simple () = (TSel (fresh_var ()), []) in
+    let random_comb () = match Random.int 4 with
+      | 0 -> Adj
+      | 1 -> Sib
+      | 2 -> Kid
+      | _ -> Desc in
+    (random_simple (), List.map (fun _ -> (random_comb (), random_simple ())) (iota len))
+      
+  let random_sel len =
+    let rec random_simple () = (TSel (fresh_var ()), []) 
+    and random_adj len =
+      if len = 0 then AS (random_simple ()) else
+        A (random_adj (len - 1), random_simple ()) 
+    and random_sib len =
+      if len = 0 then SA (random_adj len) else
+        let split = Random.int len in
+        S (random_sib split, random_adj (len - split - 1)) 
+    and random_kid len =
+      if len = 0 then KS (random_sib len) else
+        let split = Random.int len in
+        K (random_kid split, random_sib (len - split - 1)) 
+    and random_desc len =
+      if len = 0 then DK (random_kid len) else
+        let split = Random.int len in
+        D (random_desc split, random_kid (len - split - 1)) in
+    random_desc len
+
+  let rec testSels num = 
+    let testRegsel r =
+      sel2regsel (regsel2sel r) = r in
+    let testSel s =
+      let open FormatExt in
+      horzOrVert [horz [Pretty.pretty_sel s; text "="];
+                  Pretty.pretty_sel (regsel2sel (sel2regsel s))] 
+        Format.std_formatter; 
+      Format.print_newline ();
+      regsel2sel (sel2regsel s) = s in
+    if num = 0 then true else begin
+      n := -1;
+      let r = random_regsel (Random.int 10) in
+      let s = random_sel (Random.int 10) in
+      (testRegsel r) && (testSel s) && (testSels (num-1))
+    end
+
+
   let rec adj2list a = begin match a with AS s -> [s] | A(a, s) -> List.append (adj2list a) [s]  end
   (* ... and for the others, too ... *)
-  type combinator = Desc | Kid | Sib | Adj
+
+      
+
+
   module SelOrdered = struct
     type t = sel
     let compare = compare
@@ -179,10 +313,13 @@ module RealCSS : CSS = struct
   let is_equal _ _ = true
   let example _ = None
 
-  let concat_selectors s1 comb s2 = SelSet.empty
-    (* let module SelSetSet = Set.Make(SelSet) in *)
-    (* let module SelSelCross = Cross2Sets (SelSet) (SelSet) (SelSetSet) in *)
-    (* let inters = SelSelCross.cross (match comb with Adj -> adj | Sib -> sib | Kid -> kid | _ -> desc) s1 s2 in *)
+  let concat_sels (s1 : desc) (comb : combinator) (s2 : desc) : desc = 
+    let (rs1, rs1tl) = sel2regsel s1 in
+    let (rs2, rs2tl) = sel2regsel s2 in
+    regsel2sel (rs1, rs1tl @ (comb, rs2) :: rs2tl)
+ let concat_selectors s1 comb s2 =
+    let module SelSelCross = Cross2Sets (SelSet) (SelSet) (SelSet) in
+    SelSelCross.cross (fun s1 s2 -> concat_sels s1 comb s2) s1 s2
     (* SelSetSet.fold SelSet.union inters SelSet.empty *)
     
   let pretty_sel s = FormatExt.text "(|dummy|)"
