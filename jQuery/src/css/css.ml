@@ -121,10 +121,11 @@ module RealCSS = struct
       horzOrVert (fst (pretty_list pretty_kid empty (rev_collect_d d [])))
     let pretty_sel = pretty_desc
     let pretty_regsel (s, css) =
-      List.fold_left 
-        (fun p (c, s) -> 
-          parens [p; text (match c with Adj -> "+" | Sib -> "~" | Kid -> ">" | _ -> ""); pretty_simple s])
-        (pretty_simple s) css
+      horzOrVert (List.fold_left 
+                     (fun p (c, s) -> 
+                       [squish [parens p; text (match c with Adj -> " +" | Sib -> " ~" | Kid -> " >" | _ -> "")];
+                        pretty_simple s])
+                     [pretty_simple s] css)
   end
 
   type regsel = simple * ((combinator * simple) list)
@@ -193,7 +194,8 @@ module RealCSS = struct
       | 1 -> Sib
       | 2 -> Kid
       | _ -> Desc in
-    (random_simple (), List.map (fun _ -> (random_comb (), random_simple ())) (iota len))
+    let first = random_simple () in
+    (first, List.map (fun _ -> (random_comb (), random_simple ())) (iota len))
       
   let random_sel len =
     let rec random_simple () = (TSel (fresh_var ()), []) 
@@ -217,14 +219,14 @@ module RealCSS = struct
   let rec testSels num = 
     let testRegsel r =
       let open FormatExt in
-      horzOrVert [horz [Pretty.pretty_regsel r; text "="];
+      horzOrVert [horz [text "Unprec:"; Pretty.pretty_regsel r; text "="];
                   Pretty.pretty_regsel (sel2regsel (regsel2sel r))] 
         Format.std_formatter; 
       Format.print_newline ();
       sel2regsel (regsel2sel r) = r in
     let testSel s =
       let open FormatExt in
-      horzOrVert [horz [Pretty.pretty_sel s; text "="];
+      horzOrVert [horz [text "Prec:  "; Pretty.pretty_sel s; text "="];
                   Pretty.pretty_sel (regsel2sel (sel2regsel s))] 
         Format.std_formatter; 
       Format.print_newline ();
@@ -232,6 +234,7 @@ module RealCSS = struct
     if num = 0 then true else begin
       n := -1;
       let r = random_regsel (Random.int 10) in
+      n := -1;
       let s = random_sel (Random.int 10) in
       (testRegsel r) && (testSel s) && (testSels (num-1))
     end
