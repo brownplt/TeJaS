@@ -65,36 +65,67 @@ module RealCSS = struct
 
   type atomic = TSel of string | USel
   and spec = | SpId of string | SpClass of string
-             | SpAttrib of string | SpPseudo of string
+             | SpAttrib of string * (oper * string) option | SpPseudo of string
+  and oper = AOEquals | AOStartsWith | AOEndsWith | AOPrefixedWith | AOContainsClass | AOSubstring
   and simple = atomic * spec list
   and adj = A of adj * simple | AS of simple
   and sib = S of sib * adj | SA of adj
   and kid = K of kid * sib | KS of sib
   and desc = D of desc * kid | DK of kid
   and sel = desc
+  type combinator = Desc | Kid | Sib | Adj
 
   module Pretty = struct
     open FormatExt
+    let pretty_list p_item p_comb lst =
+      (add_sep_between p_comb (List.rev_map p_item lst), List.length lst > 1)
     let rec pretty_atomic a =
       match a with 
       | USel -> text "*"
       | TSel t -> text t
-    and pretty_simple (a, _) = pretty_atomic a
-    and pretty_adj a = match a with
-      | AS s -> pretty_simple s
-      | A (a, s) -> horzOrVert [pretty_adj a; text "+"; pretty_simple s]
-    and pretty_sib s = match s with
-      | SA a -> pretty_adj a
-      | S (s, a) -> horzOrVert [pretty_sib s; text "~"; pretty_adj a]
-    and pretty_kid k = match k with
-      | KS s -> pretty_sib s
-      | K (k, s) -> horzOrVert [pretty_kid k; text ">"; pretty_sib s]
-    and pretty_desc d = match d with
-      | DK k -> pretty_kid k
-      | D (d, k) -> horzOrVert [pretty_desc d;  pretty_kid k]
+    and pretty_spec s = List.map (fun s -> match s with
+      | SpId s -> squish [text "#"; text s]
+      | SpClass s -> squish [text "."; text s]
+      | SpAttrib (s, None) -> brackets [text s]
+      | SpAttrib (s, Some (op, v)) -> begin match op with
+        | AOEquals -> brackets [squish [text s; text "="; string v]]
+        | AOStartsWith -> brackets [squish [text s; text "^="; string v]]
+        | AOEndsWith -> brackets [squish [text s; text "$="; string v]]
+        | AOPrefixedWith -> brackets [squish [text s; text "|="; string v]]
+        | AOContainsClass -> brackets [squish [text s; text "~="; string v]]
+        | AOSubstring -> brackets [squish [text s; text "*="; string v]]
+      end
+      | SpPseudo s -> squish [text ":"; text s]) s
+    and pretty_simple (a, s) = squish (pretty_atomic a :: pretty_spec s)
+    and parensOrHOV (lst, b) =
+      if b then parens [horzOrVert lst] else horzOrVert lst
+    and pretty_adj a : printer = 
+      let rec rev_collect_a a acc = match a with
+      | AS s -> s :: acc
+      | A (a, s) -> rev_collect_a a (s :: acc) in
+      parensOrHOV (pretty_list pretty_simple (text " +") (rev_collect_a a []))
+    and pretty_sib s = 
+      let rec rev_collect_s s acc = match s with
+      | SA a -> a :: acc
+      | S (s, a) -> rev_collect_s s (a :: acc) in
+      parensOrHOV (pretty_list pretty_adj (text " ~") (rev_collect_s s []))
+    and pretty_kid k = 
+      let rec rev_collect_k k acc = match k with
+      | KS s -> s :: acc
+      | K (k, s) -> rev_collect_k k (s :: acc) in
+      parensOrHOV (pretty_list pretty_sib (text " >") (rev_collect_k k []))
+    and pretty_desc d = 
+      let rec rev_collect_d d acc = match d with
+      | DK k -> k :: acc
+      | D (d, k) -> rev_collect_d d (k :: acc) in
+      horzOrVert (fst (pretty_list pretty_kid empty (rev_collect_d d [])))
     let pretty_sel = pretty_desc
+    let pretty_regsel (s, css) =
+      List.fold_left 
+        (fun p (c, s) -> 
+          parens [p; text (match c with Adj -> "+" | Sib -> "~" | Kid -> ">" | _ -> ""); pretty_simple s])
+        (pretty_simple s) css
   end
-  type combinator = Desc | Kid | Sib | Adj
 
   type regsel = simple * ((combinator * simple) list)
 
@@ -185,6 +216,11 @@ module RealCSS = struct
 
   let rec testSels num = 
     let testRegsel r =
+      let open FormatExt in
+      horzOrVert [horz [Pretty.pretty_regsel r; text "="];
+                  Pretty.pretty_regsel (sel2regsel (regsel2sel r))] 
+        Format.std_formatter; 
+      Format.print_newline ();
       sel2regsel (regsel2sel r) = r in
     let testSel s =
       let open FormatExt in
