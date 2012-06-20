@@ -372,45 +372,41 @@ module RealCSS = struct
            ) (iota (List.length slist - 1))) in
       union clause1 (union clause2 clause3)
 
-  let pairings (raiseSimpleAdj : 'simple -> 'adj) (raiseAdjSib : 'adj -> 'sib)
-      (combSib : combinator) (combAdj : combinator) empty union singleton inter 
-      (collectAdjSimples : 'adj -> 'simple list)
-      (collectSibAdjs : 'sib -> 'adj list) 
-      (uncollectSibAdjs : 'adj list -> 'sib)
-      concat (s  : 'sib) (t : 'adj) =
-    let rec pair_off (ss : 'adj list) (ts : 'simple list) =
+  let pairings raise1 raise2 comb1 comb2 empty union singleton 
+      inter collect1 collect2 uncollect2 concat s t =
+    let rec pair_off ss ts =
       match List.rev ss, List.rev ts with
-      | [], _ -> singleton (raiseAdjSib t)
+      | [], _ -> singleton (raise2 t)
       | _, [] -> failwith "impossible"
       | ssrev, [t] ->
         let clause1 = 
-          singleton (uncollectSibAdjs (ss @ [(raiseSimpleAdj t)])) in
+          singleton (uncollect2 (ss @ [(raise1 t)])) in
         let clause2 = match ssrev with 
           | [] -> empty
           | sN::sfrontrev -> 
             let sfront = List.rev sfrontrev in
-            concat combSib (singleton (uncollectSibAdjs sfront))
-              (inter (raiseAdjSib sN) (raiseAdjSib (raiseSimpleAdj t))) in
+            concat comb1 (singleton (uncollect2 sfront))
+              (inter (raise2 sN) (raise2 (raise1 t))) in
         union clause1 clause2
       | sN::sfrontrev, tM::tfrontrev ->
         let sfront = List.rev sfrontrev in
         let tfront = List.rev tfrontrev in
-        let clause1 = concat combAdj (pair_off ss tfront)
-          (singleton (raiseAdjSib (raiseSimpleAdj tM))) in
-        let clause2 = concat combAdj (pair_off sfront tfront)
-          (inter (raiseAdjSib sN) (raiseAdjSib (raiseSimpleAdj tM))) in
+        let clause1 = concat comb2 (pair_off ss tfront)
+          (singleton (raise2 (raise1 tM))) in
+        let clause2 = concat comb2 (pair_off sfront tfront)
+          (inter (raise2 sN) (raise2 (raise1 tM))) in
         union clause1 clause2 in
-    let ss : 'adj list = collectSibAdjs s in
-    let ts : 'simple list = collectAdjSimples t in
+    let ss = collect2 s in
+    let ts = collect1 t in
     (match List.rev ss, List.rev ts with
     | sN::(_::_ as sfrontrev), tM::(_::_ as tfrontrev) -> 
       let sfront = List.rev sfrontrev in
       let tfront = List.rev tfrontrev in
-      concat combAdj (pair_off sfront tfront) 
-        (inter (raiseAdjSib sN) (raiseAdjSib (raiseSimpleAdj tM)))
+      concat comb2 (pair_off sfront tfront) 
+        (inter (raise2 sN) (raise2 (raise1 tM)))
     | _, _ -> failwith "impossible")
 
-  let rec intersect_sels (s1 : sel) (s2 : sel) =
+  let rec intersect_sels s1 s2 =
     let rec simple_inter s1 s2 = canonical s1 s2
     and adj_inter a1 a2 = 
       let module Simple2Adj = Map2Sets(SimpleSet)(AdjSet) in 
@@ -459,22 +455,23 @@ module RealCSS = struct
         (fun a -> SibSet.singleton (SA a))
         (concat_sibs Sib) SibSet.union SibSet.empty s t
         
-    and interleavings_desc (s : desc) (t : desc) = 
+    and interleavings_desc s t = 
       interleavings desc_inter collect_d uncollect_d
         (fun k -> SelSet.singleton (DK k))
         (concat_descs Desc) SelSet.union SelSet.empty s t
 
-    and pairings_sib_adj s (t : adj) = 
-      pairings (fun (s: simple) -> (AS s)) (fun (a : adj) -> (SA a)) Sib Adj SibSet.empty
+    and pairings_sib_adj s t = 
+      pairings (fun s -> (AS s)) (fun a -> (SA a)) Sib Adj SibSet.empty
         SibSet.union SibSet.singleton sib_inter collect_a collect_s 
         uncollect_s concat_sibs
         s t
-    and pairings_desc_child d (k : kid) = 
-      pairings (fun (s : sib) -> (KS s)) (fun (k : kid) -> (DK k)) Desc Kid SelSet.empty
+    and pairings_desc_child d k =
+      pairings (fun s -> (KS s)) (fun k -> (DK k)) Desc Kid SelSet.empty
         SelSet.union SelSet.singleton desc_inter collect_k collect_d
         uncollect_d concat_descs
         d k in
     
+    (* actually do the intersection! *) 
     desc_inter s1 s2
       
   let intersect s1 s2 = 
