@@ -266,14 +266,14 @@ module RealCSS = struct
     let testRegsel r =
       let open FormatExt in
       label "Unprec:"  [horz [Pretty.pretty_regsel r; text "="];
-                        Pretty.pretty_regsel (sel2regsel (regsel2sel r))]
+                        Pretty.pretty_regsel (desc2regsel (regsel2desc r))]
         Format.std_formatter; 
       Format.print_newline ();
       desc2regsel (regsel2desc r) = r in
     let testSel s =
       let open FormatExt in
       label "Prec:  " [horz [Pretty.pretty_sel s; text "="];
-                       Pretty.pretty_sel (regsel2sel (sel2regsel s))]
+                       Pretty.pretty_sel (regsel2desc (desc2regsel s))]
         Format.std_formatter; 
       Format.print_newline ();
       regsel2desc (desc2regsel s) = s in
@@ -482,12 +482,14 @@ module RealCSS = struct
     let module SelSelCross = Cross2Sets (SelSet) (SelSet) (SelSetSet) in
     let inters = SelSelCross.cross intersect_sels s1 s2 in
     SelSetSet.fold SelSet.union inters SelSet.empty
-  let intersections _ = SelSet.empty
+  let intersections ss = match ss with 
+    | [] -> SelSet.empty
+    | hd::tl -> List.fold_left intersect hd tl
   let union = SelSet.union
   let unions ss = List.fold_left union SelSet.empty ss
   let negate _ = SelSet.empty
   let subtract = SelSet.diff
-  let singleton s = SelSet.add s SelSet.empty
+  let singleton s = SelSet.singleton s
   let singleton_string _ = None
   let var _ = SelSet.empty
   let pretty _ = "()"
