@@ -98,7 +98,8 @@ module RealCSS = struct
       | SpPseudo s -> squish [text ":"; text s]) s
     and pretty_simple (a, s) = squish (pretty_atomic a :: pretty_spec s)
     and parensOrHOV (lst, b) =
-      if b then parens [horzOrVert lst] else horzOrVert lst
+      let parens = enclose 1 "" empty (text "(") (text ")") in
+      if b then parens lst else horzOrVert lst
     and pretty_adj a : printer = 
       let rec rev_collect_a a acc = match a with
       | AS s -> s :: acc
@@ -121,6 +122,7 @@ module RealCSS = struct
       horzOrVert (fst (pretty_list pretty_kid empty (rev_collect_d d [])))
     let pretty_sel = pretty_desc
     let pretty_regsel (s, css) =
+      let parens = enclose 1 "" empty (text "(") (text ")") in
       horzOrVert (List.fold_left 
                      (fun p (c, s) -> 
                        [squish [parens p; text (match c with Adj -> " +" | Sib -> " ~" | Kid -> " >" | _ -> "")];
@@ -219,15 +221,15 @@ module RealCSS = struct
   let rec testSels num = 
     let testRegsel r =
       let open FormatExt in
-      horzOrVert [horz [text "Unprec:"; Pretty.pretty_regsel r; text "="];
-                  Pretty.pretty_regsel (sel2regsel (regsel2sel r))] 
+      label "Unprec:"  [horz [Pretty.pretty_regsel r; text "="];
+                        Pretty.pretty_regsel (sel2regsel (regsel2sel r))]
         Format.std_formatter; 
       Format.print_newline ();
       sel2regsel (regsel2sel r) = r in
     let testSel s =
       let open FormatExt in
-      horzOrVert [horz [text "Prec:  "; Pretty.pretty_sel s; text "="];
-                  Pretty.pretty_sel (regsel2sel (sel2regsel s))] 
+      label "Prec:  " [horz [Pretty.pretty_sel s; text "="];
+                       Pretty.pretty_sel (regsel2sel (sel2regsel s))]
         Format.std_formatter; 
       Format.print_newline ();
       regsel2sel (sel2regsel s) = s in

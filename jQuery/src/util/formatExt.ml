@@ -80,33 +80,33 @@ let int n fmt = pp_print_int fmt n
  
 let float f fmt = pp_print_float fmt f
  
-let enclose label l r (inner : printer list) (fmt : formatter) = 
-  pp_open_hvbox fmt 2;
+let enclose indent label cut l r (inner : printer list) (fmt : formatter) =
+  pp_open_hvbox fmt indent;
   pp_open_hbox fmt ();
   pp_print_string fmt label;
   l fmt;
   pp_close_box fmt ();
-  pp_print_cut fmt ();
+  cut fmt;
   sep inner fmt;
-  pp_print_break fmt 0 (-2);
+  if cut != empty then pp_print_break fmt 0 (0 - indent);
   r fmt;
   pp_close_box fmt ()
 
-let label l = enclose l empty empty
+let label l = enclose 2 l empty empty empty
  
-let label_parens l cut = enclose l (squish [cut; text "("]) (squish [text ")"])
+let label_parens l cut = enclose 2 l cut (text "(") (text ")")
 let parens = label_parens "" empty
  
-let label_braces l cut = enclose l (squish [cut; text "{"]) (squish [text "}"])
+let label_braces l cut = enclose 2 l cut (text "{") (text "}")
 let braces = label_braces "" empty
  
-let label_brackets l cut = enclose l (squish [cut; text "["]) (squish [text "]"])
+let label_brackets l cut = enclose 2 l cut (text "[") (text "]")
 let brackets = label_brackets "" empty
 
-let label_angles l cut = enclose l (squish [cut; text "<"]) (squish [text ">"])
+let label_angles l cut = enclose 2 l cut (text "<") (text ">")
 let angles = label_angles "" empty
 
-let string s = enclose "" (text "\"") (text "\"") [text (Str.global_replace (Str.regexp_string "\"") "\\\"" s)]
+let string s = enclose 2 "" empty (text "\"") (text "\"") [text (Str.global_replace (Str.regexp_string "\"") "\\\"" s)]
 
 let label_pair l p1 p2 fmt = 
   pp_open_hvbox fmt 1;
