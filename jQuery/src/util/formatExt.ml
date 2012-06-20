@@ -106,7 +106,7 @@ let brackets = label_brackets "" empty
 let label_angles l cut = enclose 2 l cut (text "<") (text ">")
 let angles = label_angles "" empty
 
-let string s = enclose 2 "" empty (text "\"") (text "\"") [text (Str.global_replace (Str.regexp_string "\"") "\\\"" s)]
+let string s = enclose 2 "" empty (text "\"") (text "\"") [text (String.escaped s)]
 
 let label_pair l p1 p2 fmt = 
   pp_open_hvbox fmt 1;
