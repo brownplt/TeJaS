@@ -121,7 +121,8 @@ module RealCSS = struct
     let surround s1 s2 r = concats [R.singleton s1; r; R.singleton s2]
     let ident = concat (R.range [('a', 'z'); ('A', 'Z')])
       (R.star (R.range [('a', 'z'); ('A', 'Z'); ('0', '9'); ('_', '_')]))
-    let noDelims = R.negate (alts (List.map (fun r -> R.singleton r) ["["; "("; "{"; "}"; ")"; "]"; "\""; "\""]))
+    (* let ident = R.range [('a', 'z')] *) (* debugging only *)
+    let noDelims = R.negate (R.range (List.map (fun r -> (r, r)) ['['; '{'; '}'; ']'; '"']))
     let comb2regex c = 
       let comb = match c with
       | Desc -> alt (R.singleton ">") (R.singleton "_")
@@ -151,12 +152,12 @@ module RealCSS = struct
            )])
       ) ss in
       let fallback = (R.star (R.negate (R.singleton "}"))) in
-      surround "{" "}" (concats (ra::rss(* @[R.star fallback] *)))
+      surround "{" "}" (concats (ra::rss@[fallback]))
     let rec adj2regex a = match a with
       | AS s -> simple2regex s
       | A(a, s) -> concats [adj2regex a; comb2regex Adj; simple2regex s]
     let rec sib2regex s = match s with
-      | SA a -> adj2regex a
+      | SA a -> concat (R.star (concat (adj2regex (AS (USel, []))) (comb2regex Sib))) (adj2regex a)
       | S(s, a) -> concats [sib2regex s;
                             R.star (concat (comb2regex Sib) (adj2regex (AS (USel, []))));
                             comb2regex Sib; adj2regex a]
@@ -164,7 +165,7 @@ module RealCSS = struct
       | KS s -> sib2regex s
       | K(k, s) -> concats [kid2regex k; comb2regex Kid; sib2regex s]
     let rec desc2regex d = match d with
-      | DK k -> kid2regex k
+      | DK k -> concat (R.star (concat (kid2regex (KS (SA (AS (USel, []))))) (comb2regex Desc))) (kid2regex k)
       | D(d, k) -> concats [desc2regex d;
                             R.star (concat (comb2regex Desc) (kid2regex (KS (SA (AS (USel, []))))));
                             comb2regex Desc; kid2regex k]
@@ -199,6 +200,9 @@ module RealCSS = struct
   module AdjSet = Set.Make (AdjOrdered)
   module SimpleSet = Set.Make (SimpleOrdered)
   module SelSetExt = SetExt.Make (SelSet)
+  module KidSetExt = SetExt.Make (KidSet)
+  module SibSetExt = SetExt.Make (SibSet)
+  module AdjSetExt = SetExt.Make (AdjSet)
 
   let concat_selectors_gen toRegsel1 fromRegsel cross s1 comb s2 =
     let helper d1 comb d2 =
@@ -441,6 +445,7 @@ module RealCSS = struct
   let rec intersect_sels s1 s2 =
     let rec simple_inter s1 s2 = canonical s1 s2
     and adj_inter a1 a2 = 
+      if a1 = a2 then AdjSet.singleton a1 else
       let module Simple2Adj = Map2Sets(SimpleSet)(AdjSet) in 
       match a1, a2 with
       | A (a1a, a1s), AS a2s -> 
@@ -451,6 +456,7 @@ module RealCSS = struct
       | AS s1, AS s2 -> Simple2Adj.map (fun s -> AS s) (simple_inter s1 s2)
       | _ -> adj_inter a2 a1
     and sib_inter s1 s2 = 
+      if s1 = s2 then SibSet.singleton s1 else
       let module Adj2Sib = Map2Sets(AdjSet)(SibSet) in
       match s1, s2 with
       | S(s1s, s1a), SA (AS s2s) -> 
@@ -460,6 +466,7 @@ module RealCSS = struct
       | SA a1, SA a2 -> Adj2Sib.map (fun a -> SA a) (adj_inter a1 a2)
       | _ -> sib_inter s2 s1
     and kid_inter k1 k2 = 
+      if k1 = k2 then KidSet.singleton k1 else
       let module Sib2Kid = Map2Sets (SibSet) (KidSet) in
       match k1, k2 with
       | K(k1k, k1s), KS s -> 
@@ -470,6 +477,7 @@ module RealCSS = struct
       | KS s1, KS s2 -> Sib2Kid.map (fun s -> KS s) (sib_inter s1 s2)
       | _ -> kid_inter k2 k1
     and desc_inter d1 d2 =
+      if d1 = d2 then SelSet.singleton d1 else
       let module Kid2Desc = Map2Sets (KidSet) (SelSet) in
       match d1, d2 with
       | D(d1d, d1k), DK (KS s) ->
@@ -479,8 +487,12 @@ module RealCSS = struct
       | DK k1, DK k2 -> Kid2Desc.map (fun k -> DK k) (kid_inter k1 k2)
       | _ -> desc_inter d2 d1
     and canonical (s1a, s1s) (s2a, s2s) = 
-      if (s1a != s2a) then SimpleSet.empty
-      else (* TODO *) SimpleSet.empty
+      if (s1a <> s2a) then SimpleSet.empty
+      else 
+        let specs = ListExt.remove_dups (s1s @ s2s) in
+        if (List.length (List.filter (fun s -> match s with SpId _ -> true | _ -> false) specs) > 1)
+        then SimpleSet.empty
+        else SimpleSet.singleton (s1a, specs)
         
     and interleavings_sib s t = 
       let module InterSib = Interleavings (SibSelector) in
@@ -518,13 +530,23 @@ module RealCSS = struct
   let var _ = SelSet.empty
   let pretty _ = "()"
   let is_empty _ = true
+  let make_regex s =
+    R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s))
   let is_overlapped s1 s2 =
-    let r1 = R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s1)) in
-    let r2 = R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s2)) in
+    if SelSet.is_empty s1 || SelSet.is_empty s2 then false else
+    (* remove any obvious overlap *)
+    let (s1, s2) = (SelSet.diff s1 s2, SelSet.diff s2 s1) in
+    if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else
+    let r1 = make_regex s1 in
+    let r2 = make_regex s2 in
     R.is_overlapped r1 r2
   let is_subset (_ : 'a IdMap.t) s1 s2 =
-    let r1 = R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s1)) in
-    let r2 = R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s2)) in
+    if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else
+    (* remove any obvious overlap *)
+    let (s1, s2) = (SelSet.diff s1 s2, SelSet.diff s2 s1) in
+    if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else
+    let r1 = make_regex s1 in
+    let r2 = make_regex s2 in
     let open FormatExt in
     horzOrVert [text (R.pretty r1); text "<="; text (R.pretty r2)] Format.std_formatter;
     Format.print_newline();

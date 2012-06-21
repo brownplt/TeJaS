@@ -61,7 +61,8 @@ module Pretty = struct
                 text (Char.escaped c2)]
 
   let priority s = match s with
-    | String _ -> 0
+    | String _ 
+    | InSet _ -> 0
     | Star _ -> 1
     | Concat _ -> 2
     | Negate _ -> 3
