@@ -442,6 +442,14 @@ module RealCSS = struct
       | _, _ -> failwith "impossible16")
   end
 
+  let canonical (s1a, s1s) (s2a, s2s) = 
+    if (s1a <> s2a) then SimpleSet.empty
+    else 
+      let specs = ListExt.remove_dups (s1s @ s2s) in
+      if (List.length (List.filter (fun s -> match s with SpId _ -> true | _ -> false) specs) > 1)
+      then SimpleSet.empty
+      else SimpleSet.singleton (s1a, specs)
+
   let rec intersect_sels s1 s2 =
     let rec simple_inter s1 s2 = canonical s1 s2
     and adj_inter a1 a2 = 
@@ -486,13 +494,6 @@ module RealCSS = struct
       | D(d1d, d1k), D(d2d, d2k) -> interleavings_desc d1 d2
       | DK k1, DK k2 -> Kid2Desc.map (fun k -> DK k) (kid_inter k1 k2)
       | _ -> desc_inter d2 d1
-    and canonical (s1a, s1s) (s2a, s2s) = 
-      if (s1a <> s2a) then SimpleSet.empty
-      else 
-        let specs = ListExt.remove_dups (s1s @ s2s) in
-        if (List.length (List.filter (fun s -> match s with SpId _ -> true | _ -> false) specs) > 1)
-        then SimpleSet.empty
-        else SimpleSet.singleton (s1a, specs)
         
     and interleavings_sib s t = 
       let module InterSib = Interleavings (SibSelector) in
@@ -528,18 +529,8 @@ module RealCSS = struct
   let singleton s = empty (* TODO *)
   let singleton_string _ = None
   let var _ = SelSet.empty
-  let pretty _ = "()"
-  let is_empty _ = true
   let make_regex s =
     R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s))
-  let is_overlapped s1 s2 =
-    if SelSet.is_empty s1 || SelSet.is_empty s2 then false else
-    (* remove any obvious overlap *)
-    let (s1, s2) = (SelSet.diff s1 s2, SelSet.diff s2 s1) in
-    if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else
-    let r1 = make_regex s1 in
-    let r2 = make_regex s2 in
-    R.is_overlapped r1 r2
   let is_subset (_ : 'a IdMap.t) s1 s2 =
     if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else
     (* remove any obvious overlap *)
@@ -551,8 +542,6 @@ module RealCSS = struct
     horzOrVert [text (R.pretty r1); text "<="; text (R.pretty r2)] Format.std_formatter;
     Format.print_newline();
     R.is_subset r1 r2
-  let is_equal _ _ = true
-  let example _ = None
 
     
   let pretty_sel s = Pretty.pretty_sel s
@@ -646,4 +635,13 @@ module RealCSS = struct
     end
 
 
+  let pretty s = (SelSetExt.p_set Pretty.pretty_sel s Format.str_formatter; Format.flush_str_formatter())
+  let is_empty s = SelSet.exists (fun sel -> 
+    (List.exists (fun sim -> not (SimpleSet.is_empty (canonical sim sim))) (List.map snd (desc2regsel sel)))) s
+  let is_overlapped s1 s2 = 
+    not (SelSet.is_empty (intersect s1 s2))
+  let is_equal s1 s2 = (is_subset IdMap.empty s1 s2) && (is_subset IdMap.empty s2 s1)
+  let example s = 
+    let pretty_sel s = (Pretty.pretty_sel s Format.str_formatter; Format.flush_str_formatter()) in
+    try Some (pretty_sel (SelSet.choose s)) with Not_found -> None
 end
