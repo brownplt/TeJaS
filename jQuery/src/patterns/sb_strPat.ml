@@ -59,7 +59,17 @@ let negate v = match v with
   | Set s -> Set (S.negate s)
   | Reg r -> Reg (R.negate r)
 
-let concat _ _ = failwith "concat NYI"
+let concat v1 v2 = match v1, v2 with
+  | Set s1, Set s2 -> Reg (R.concat (S.to_nfa s1) (S.to_nfa s2))
+  | Reg r1, Reg r2 -> Reg (R.concat r1 r2)
+  | Set s, Reg r -> Reg (R.concat (S.to_nfa s) r)
+  | Reg r, Set s -> Reg (R.concat r (S.to_nfa s))
+
+let star v = match v with
+  | Set s -> Reg (R.star (S.to_nfa s))
+  | Reg r -> Reg (R.star r)
+
+let range ranges = Reg (R.range ranges)
 
 let is_empty v = match v with
   | Set s -> S.is_empty s

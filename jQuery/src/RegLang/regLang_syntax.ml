@@ -24,9 +24,9 @@ let compare re1 re2 = match (re1, re2) with
 
 let any_str = Star (NotInSet CharSet.empty)
 
-let build_range first last =
+let one_range first last =
   let ascii_first, ascii_last = Char.code first, Char.code last in
-    if not (ascii_last > ascii_first) then
+    if not (ascii_last >= ascii_first) then
       failwith (sprintf "Bad character range in regex %s-%s" 
                   (Char.escaped first)
                   (Char.escaped last))
@@ -35,6 +35,8 @@ let build_range first last =
         if i > ascii_last then chars
         else f (i + 1) (CharSet.add (Char.chr i) chars) in
         f ascii_first CharSet.empty
+let range ranges =
+  InSet (List.fold_left (fun r (c1, c2) -> CharSet.union r (one_range c1 c2)) CharSet.empty ranges)
 
 module Pretty = struct
 
@@ -73,16 +75,16 @@ module Pretty = struct
     if (pr < ps || pr = 4 && ps = 4) then parens [p_re s] else p_re s 
   and p_re re = match re with
     | InSet chs -> let ranges = list_to_ranges (CharSet.elements chs) in
-        brackets (map range ranges)
+        brackets [squish (map range ranges)]
     | NotInSet chs -> let ranges = list_to_ranges (CharSet.elements chs) in
-        brackets ((text "^")::(map range ranges))
+        brackets ((text "^")::[squish (map range ranges)])
     | Alt (re1, re2) -> squish [parensIf re re1; text "|"; parensIf re re2]
-    | Star re -> squish [parensIf re re; text "*"]
+    | Star r -> squish [parensIf re r; text "*"]
     | Empty -> text "empty"
     | String s -> text s
     | Inter(r1, r2) -> squish [parensIf re r1; text "&"; parensIf re r2]
     | Concat (re1, re2) -> squish [parensIf re re1; parensIf re re2]
-    | Negate re -> squish [text "^"; parens [parensIf re re]]
+    | Negate r -> squish [text "^"; parens [parensIf re r]]
     | Subtract(r1, r2) -> squish [parensIf re r1; text "\\"; parensIf re r2]
 
   let string_of_re = FormatExt.to_string p_re

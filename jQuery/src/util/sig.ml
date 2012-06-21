@@ -25,6 +25,8 @@ module type PAT = sig
   val intersections : t list -> t
   val union : t -> t -> t
   val unions : t list -> t
+  val star : t -> t
+  val range : (char * char) list -> t
   val negate : t -> t
   val subtract : t -> t -> t
   val concat : t -> t -> t

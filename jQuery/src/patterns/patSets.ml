@@ -72,6 +72,23 @@ let subtract v1 v2 = intersect v1 (negate v2)
 let concat _ _ =
   failwith "concat not implemented--probably should not be"
 
+let star _ = failwith "star not implemented for patSets"
+
+let one_range first last =
+  let ascii_first, ascii_last = Char.code first, Char.code last in
+    if not (ascii_last >= ascii_first) then
+      failwith (sprintf "Bad character range %s-%s" 
+                  (Char.escaped first)
+                  (Char.escaped last))
+    else
+      let rec f i chars = 
+        if i > ascii_last then chars
+        else f (i + 1) (StringSet.add (String.make 1 (Char.chr i)) chars) in
+        f ascii_first StringSet.empty
+let range ranges =
+  Finite (List.fold_left (fun r (first, last) -> StringSet.union r (one_range first last)) StringSet.empty ranges)
+
+
 let is_overlapped v1 v2 = match v1, v2 with
   | Finite set1, Finite set2 ->
     not (StringSet.is_empty (StringSet.inter set1 set2))

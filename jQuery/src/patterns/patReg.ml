@@ -32,7 +32,7 @@ let singleton str = (to_nfa (R.String str), R.String str)
 
 let singleton_string (p, _) = gen_string p
 
-let empty = (new_nfa_states 0 1, R.String "()")
+let empty = (new_nfa_states 0 1, R.String "(empty)")
 
 let all = (new_sigmastar (), R.Star (R.String "."))
 
@@ -72,6 +72,16 @@ let negate (pat, s) =
 
 let concat (p1, s1) (p2, s2) = 
   (Nfa.simple_concat p1 p2, R.Concat (s1, s2))
+
+let range ranges = 
+  let r = R.range ranges in
+  (to_nfa r, r)
+
+let star (p, r) =
+  let p' = copy_nfa p in
+  add_trans p' p.s Epsilon p.f;
+  add_trans p' p.f Epsilon p.s;
+  (p', R.Star r)
 
 let is_empty (p, _) = Nfa.is_empty p
 

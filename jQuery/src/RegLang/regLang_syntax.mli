@@ -23,7 +23,7 @@ val compare : regex -> regex -> int
 
 val any_str : regex
 
-val build_range : char -> char -> CharSet.t
+val range : (char * char) list -> regex
 
 module Pretty : sig
 

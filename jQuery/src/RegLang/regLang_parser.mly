@@ -51,7 +51,7 @@ chardescs :
   | chardesc chardescs { Alt($1, $2) }
 
 chardesc :
-  | CHAR HYPHEN CHAR { InSet (build_range $1 $3) }
+  | CHAR HYPHEN CHAR { range [$1, $3] }
   | CHAR { InSet (CharSet.singleton $1) }
   | CARET chardesc { match $2 with
                        | InSet chs -> NotInSet chs

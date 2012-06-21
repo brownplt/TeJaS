@@ -21,6 +21,7 @@ module Cross2Sets (Src1 : Set.S) (Src2 : Set.S) (Dst : Set.S) = struct
 end
 
 module RealCSS = struct
+  module R = Sb_strPat
 
   type atomic = TSel of string | USel
   and spec = | SpId of string | SpClass of string
@@ -36,27 +37,31 @@ module RealCSS = struct
 
   type regsel = ((combinator * simple) list)
 
-  let rec simple2regsel s = [Desc, s]
-  and adj2regsel a = match a with
-    | AS s -> simple2regsel s
-    | A(a, s) -> match adj2regsel a, simple2regsel s with
+  let rec simple2regsel c s = [c, s]
+  and adj2regsel c a = match a with
+    | AS s -> simple2regsel c s
+    | A(a, s) -> match adj2regsel c a, simple2regsel c s with
       | ra, (_,s)::tl -> ra @ (Adj, s) :: tl
-      | _ -> failwith "impossible"
-  and sib2regsel s = match s with
-    | SA a -> adj2regsel a
-    | S(s, a) -> match sib2regsel s, adj2regsel a with
+      | _ -> failwith "impossible1"
+  and sib2regsel c s = match s with
+    | SA a -> adj2regsel c a
+    | S(s, a) -> match sib2regsel c s, adj2regsel c a with
       | rs, (_, a)::tl -> rs @ (Sib, a) :: tl
-      | _ -> failwith "impossible"
-  and kid2regsel k = match k with
-    | KS s -> sib2regsel s
-    | K(k, s) -> match kid2regsel k, sib2regsel s with
+      | _ -> failwith "impossible2"
+  and kid2regsel c k = match k with
+    | KS s -> sib2regsel c s
+    | K(k, s) -> match kid2regsel c k, sib2regsel c s with
       | rk, (_,s)::tl -> rk @ (Kid, s) :: tl
-      | _ -> failwith "impossible"
-  and desc2regsel d = match d with
-    | DK k -> kid2regsel k
-    | D(d, k) -> match desc2regsel d, kid2regsel k with
+      | _ -> failwith "impossible3"
+  and desc2regsel c d = match d with
+    | DK k -> kid2regsel c k
+    | D(d, k) -> match desc2regsel c d, kid2regsel c k with
       | rd, (_, k)::tl -> rd @ (Desc, k) :: tl
-      | _ -> failwith "impossible"
+      | _ -> failwith "impossible4"
+  let adj2regsel = adj2regsel Adj
+  let sib2regsel = sib2regsel Sib
+  let kid2regsel = kid2regsel Kid
+  let desc2regsel = desc2regsel Desc
 
   let (regsel2adj, regsel2sib, regsel2kid, regsel2desc) =
     let regsel2adjs rs =
@@ -90,21 +95,82 @@ module RealCSS = struct
     let regsel2desc rs =
       match (kids2descs (sibs2kids (adjs2sibs (regsel2adjs rs)))) with
       | [(Desc, d)] -> d
-      | _ -> failwith "impossible" in
+      | d -> failwith "impossible5" in
     let regsel2kid rs =
       match (sibs2kids (adjs2sibs (regsel2adjs rs))) with
       | [(Kid, k)] -> k
-      | _ -> failwith "impossible" in
+      | k -> failwith "impossible6" in
     let regsel2sib rs =
       match (adjs2sibs (regsel2adjs rs)) with
       | [(Sib, s)] -> s
-      | _ -> failwith "impossible" in
+      | s -> failwith "impossible7" in
     let regsel2adj rs =
       match (regsel2adjs rs) with
       | [(Adj, a)] -> a
-      | _ -> failwith "impossible" in
+      | a -> failwith "impossible8" in
 
     (regsel2adj, regsel2sib, regsel2kid, regsel2desc)
+
+
+  module AsRegex = struct
+    let concat r1 r2 = R.concat r1 r2
+    let concats rs = match rs with [] -> R.empty | r::rs -> List.fold_left concat r rs
+    let alt r1 r2 = R.union r1 r2
+    let alts rs = match rs with [] -> R.empty | r::rs -> List.fold_left alt r rs
+    let option r = alt r R.empty
+    let surround s1 s2 r = concats [R.singleton s1; r; R.singleton s2]
+    let ident = concat (R.range [('a', 'z'); ('A', 'Z')])
+      (R.star (R.range [('a', 'z'); ('A', 'Z'); ('0', '9'); ('_', '_')]))
+    let noDelims = R.negate (alts (List.map (fun r -> R.singleton r) ["["; "("; "{"; "}"; ")"; "]"; "\""; "\""]))
+    let comb2regex c = 
+      let comb = match c with
+      | Desc -> alt (R.singleton ">") (R.singleton "_")
+      | Kid -> R.singleton ">"
+      | Sib -> alt (R.singleton "+") (R.singleton "~")
+      | Adj -> R.singleton "+" in
+      surround "{{" "}}" comb
+    let simple2regex (a, ss) = 
+      let ra = match a with
+        | TSel s -> R.singleton s
+        | USel -> option ident in
+      let rss = List.map (fun s -> match s with
+        | SpId s -> concat (R.singleton "#") (R.singleton s)
+        | SpClass s -> concat (R.singleton ".") (R.singleton s)
+        | SpPseudo s -> concat (R.singleton ":") (R.singleton s)
+        | SpAttrib (a, None) -> surround "[" "]" (R.singleton a)
+        | SpAttrib (a, Some (o, v)) -> surround "[" "]" 
+          (concats [R.singleton a; R.singleton "="; surround "\"" "\"" (match o with
+          | AOEquals -> R.singleton v
+          | AOStartsWith -> concat (R.singleton v) (R.star noDelims)
+          | AOEndsWith -> concat (R.star noDelims) (R.singleton v)
+          | AOPrefixedWith -> concats [R.singleton v; option (R.singleton "-"); R.star noDelims]
+          | AOContainsClass -> concats [option (concat (R.star noDelims) (R.singleton " "));
+                                        R.singleton v;
+                                        option (concat (R.star noDelims) (R.singleton " "))]
+          | AOSubstring -> concats [R.star noDelims; R.singleton v; R.star noDelims]
+           )])
+      ) ss in
+      let fallback = (R.star (R.negate (R.singleton "}"))) in
+      surround "{" "}" (concats (ra::rss(* @[R.star fallback] *)))
+    let rec adj2regex a = match a with
+      | AS s -> simple2regex s
+      | A(a, s) -> concats [adj2regex a; comb2regex Adj; simple2regex s]
+    let rec sib2regex s = match s with
+      | SA a -> adj2regex a
+      | S(s, a) -> concats [sib2regex s;
+                            R.star (concat (comb2regex Sib) (adj2regex (AS (USel, []))));
+                            comb2regex Sib; adj2regex a]
+    let rec kid2regex k = match k with
+      | KS s -> sib2regex s
+      | K(k, s) -> concats [kid2regex k; comb2regex Kid; sib2regex s]
+    let rec desc2regex d = match d with
+      | DK k -> kid2regex k
+      | D(d, k) -> concats [desc2regex d;
+                            R.star (concat (comb2regex Desc) (kid2regex (KS (SA (AS (USel, []))))));
+                            comb2regex Desc; kid2regex k]
+
+    let sel2regex s = desc2regex s
+  end
 
 
   module SelOrdered = struct
@@ -163,9 +229,9 @@ module RealCSS = struct
       let rec helper a acc = match a with
         | AS s -> s :: acc
         | A (a, s) -> helper a (s :: acc) in
-      List.rev (helper a [])
+      helper a []
     let fromParts slist = match slist with
-      | [] -> failwith "impossible"
+      | [] -> failwith "impossible9"
       | s::tl -> List.fold_left (fun a s -> A (a, s)) (AS s) tl
     let concat comb s1 s2 = 
       let module AdjAdjCross = Cross2Sets (AdjSet) (AdjSet) (AdjSet) in
@@ -183,9 +249,9 @@ module RealCSS = struct
       let rec helper s acc = match s with
         | SA a -> a :: acc
         | S (s, a) -> helper s (a :: acc) in
-      List.rev (helper s [])
+      helper s []
     let fromParts alist = match alist with
-      | [] -> failwith "impossible"
+      | [] -> failwith "impossible10"
       | a::tl -> List.fold_left (fun s a -> S (s, a)) (SA a) tl
     let concat comb s1 s2 = 
       let module SibSibCross = Cross2Sets (SibSet) (SibSet) (SibSet) in
@@ -202,9 +268,9 @@ module RealCSS = struct
       let rec helper k acc = match k with
         | KS s -> s :: acc
         | K (k, s) -> helper k (s :: acc) in
-      List.rev (helper k [])
+      helper k []
     let fromParts slist = match slist with
-      | [] -> failwith "impossible"
+      | [] -> failwith "impossible11"
       | s::tl -> List.fold_left (fun k s -> K (k, s)) (KS s) tl
     let concat comb s1 s2 = 
       let module KidKidCross = Cross2Sets (KidSet) (KidSet) (KidSet) in
@@ -221,9 +287,9 @@ module RealCSS = struct
       let rec helper d acc = match d with
         | DK k -> k :: acc
         | D (d, k) -> helper d (k :: acc) in
-      List.rev (helper d [])
+      helper d []
     let fromParts klist = match klist with
-      | [] -> failwith "impossible"
+      | [] -> failwith "impossible12"
       | k::tl -> List.fold_left (fun d k -> D (d, k)) (DK k) tl
     let concat comb s1 s2 = 
       let module SelSelCross = Cross2Sets (SelSet) (SelSet) (SelSet) in
@@ -275,7 +341,7 @@ module RealCSS = struct
     let pretty_sel = pretty_desc
     let pretty_regsel (rs : ((combinator * simple) list)) =
       match rs with
-      | [] -> failwith "impossible"
+      | [] -> failwith "impossible13"
       | (c, s)::css ->
       let parens = enclose 1 "" empty (text "(") (text ")") in
       horzOrVert (List.fold_left 
@@ -283,7 +349,7 @@ module RealCSS = struct
                        [squish [parens p; 
                                 text (match c with
                                 | Adj -> " +" | Sib -> " ~" 
-                                | Kid -> " >" | _ -> "")];
+                                | Kid -> " >" | Desc -> "")];
                         pretty_simple s])
                      [pretty_simple s] css)
   end
@@ -302,7 +368,7 @@ module RealCSS = struct
       let tlist = UnifSel.toParts t in
       match slist, tlist with
       | [], _
-      | _, [] -> failwith "impossible"
+      | _, [] -> failwith "impossible14"
       | [_], _
       | _, [_] -> inter_single s t
       | s1::s2N, t1::t2M ->
@@ -316,18 +382,22 @@ module RealCSS = struct
           UnifSel.concat UnifSel.comb t1set inter2 in
         let clause3 =
           let inter_lists ss ts =
-            interleavings (UnifSel.fromParts ss) (UnifSel.fromParts ts) in
+            match ss, ts with
+            | [], [] -> UnifSel.SetOfSel.empty
+            | [], _ -> UnifSel.SetOfSel.singleton (UnifSel.fromParts ts)
+            | _, [] -> UnifSel.SetOfSel.singleton (UnifSel.fromParts ss)
+            | _ -> interleavings (UnifSel.fromParts ss) (UnifSel.fromParts ts) in
           List.fold_left UnifSel.SetOfSel.union UnifSel.SetOfSel.empty
             (List.map (fun i ->
               List.fold_left UnifSel.SetOfSel.union UnifSel.SetOfSel.empty
                 (List.map (fun j ->
-                  let (s1i, siN) = ListExt.split_at i slist in
-                  let (t1j, tjM) = ListExt.split_at j tlist in
+                  let (s1i, siN) = ListExt.split_at (i+1) slist in
+                  let (t1j, tjM) = ListExt.split_at (j+1) tlist in
                   let inter_ij = inter_lists s1i t1j in
                   let inter_NM = inter_lists siN tjM in
                   UnifSel.concat UnifSel.comb inter_ij inter_NM
-                 ) (iota (List.length tlist - 1)))
-             ) (iota (List.length slist - 1))) in
+                 ) (iota (List.length tlist - 2)))
+             ) (iota (List.length slist - 2))) in
         UnifSel.SetOfSel.union clause1 (UnifSel.SetOfSel.union clause2 clause3)
   end
 
@@ -336,15 +406,17 @@ module RealCSS = struct
       let rec pair_off ss ts =
         match List.rev ss, List.rev ts with
         | [], _ -> LooseSel.SetOfSel.singleton (LooseSel.fromParts [t])
-        | _, [] -> failwith "impossible"
+        | _, [] -> failwith "impossible15"
         | ssrev, [t] ->
           let clause1 = 
             LooseSel.SetOfSel.singleton (LooseSel.fromParts (ss @ [TightSel.fromParts [t]])) in
           let clause2 = match ssrev with 
             | [] -> LooseSel.SetOfSel.empty
             | sN::sfrontrev -> 
-              let sfront = List.rev sfrontrev in
-              LooseSel.concat LooseSel.comb (LooseSel.SetOfSel.singleton (LooseSel.fromParts sfront))
+              let sfrontSet = match List.rev sfrontrev with
+                | [] -> LooseSel.SetOfSel.empty
+                | sfront -> LooseSel.SetOfSel.singleton (LooseSel.fromParts sfront) in
+              LooseSel.concat LooseSel.comb sfrontSet
                 (inter (LooseSel.fromParts [sN]) (LooseSel.fromParts [TightSel.fromParts [t]])) in
           LooseSel.SetOfSel.union clause1 clause2
         | sN::sfrontrev, tM::tfrontrev ->
@@ -363,7 +435,7 @@ module RealCSS = struct
         let tfront = List.rev tfrontrev in
         LooseSel.concat TightSel.comb (pair_off sfront tfront) 
           (inter (LooseSel.fromParts [sN]) (LooseSel.fromParts [TightSel.fromParts [tM]]))
-      | _, _ -> failwith "impossible")
+      | _, _ -> failwith "impossible16")
   end
 
   let rec intersect_sels s1 s2 =
@@ -446,13 +518,22 @@ module RealCSS = struct
   let var _ = SelSet.empty
   let pretty _ = "()"
   let is_empty _ = true
-  let is_overlapped _ _ = true
-  let is_subset _ _ _ = true
+  let is_overlapped s1 s2 =
+    let r1 = R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s1)) in
+    let r2 = R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s2)) in
+    R.is_overlapped r1 r2
+  let is_subset (_ : 'a IdMap.t) s1 s2 =
+    let r1 = R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s1)) in
+    let r2 = R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s2)) in
+    let open FormatExt in
+    horzOrVert [text (R.pretty r1); text "<="; text (R.pretty r2)] Format.std_formatter;
+    Format.print_newline();
+    R.is_subset r1 r2
   let is_equal _ _ = true
   let example _ = None
 
     
-  let pretty_sel s = FormatExt.text "(|dummy|)"
+  let pretty_sel s = Pretty.pretty_sel s
   let p_css t =
     if SelSet.cardinal t = 1
     then pretty_sel (SelSet.choose t)
@@ -473,7 +554,9 @@ module RealCSS = struct
       | 1 -> Sib
       | 2 -> Kid
       | _ -> Desc in
-    List.map (fun _ -> (random_comb (), random_simple ())) (iota len)
+    match List.map (fun _ -> (random_comb (), random_simple ())) (iota len) with
+    | [] -> []
+    | (_,s)::tl -> (Desc,s)::tl
       
   let random_sel len =
     let rec random_simple () = (TSel (fresh_var ()), []) 
@@ -509,11 +592,34 @@ module RealCSS = struct
         Format.std_formatter; 
       Format.print_newline ();
       regsel2desc (desc2regsel s) = s in
-    if num = 0 then true else begin
+    let testInter s1 s2 =
+      let open FormatExt in
+      let s1 = SelSet.singleton s1 in
+      let s2 = SelSet.singleton s2 in
+      let sInter = intersect s1 s2 in
+      vert [label "s1:" [p_css s1];
+            label "s2:" [p_css s2];
+            label "sInter:" [p_css sInter]] Format.std_formatter;
+      Format.print_newline();
+      if not (is_subset IdMap.empty sInter s1) then begin
+        label "sInter <!= s1:" [vert [label "s1:    " [p_css s1];
+                                      label "sInter:" [p_css sInter]]] Format.std_formatter;
+        Format.print_newline (); false
+      end else true &&
+      if not (is_subset IdMap.empty sInter s2) then begin
+        label "sInter <!= s2:" [vert [label "s2:    " [p_css s2];
+                                      label "sInter:" [p_css sInter]]] Format.std_formatter;
+        Format.print_newline (); false
+      end else true in
+    if num = 0 then begin
+      let s1 = D (DK (KS (SA (AS (TSel "b", [])))), KS (SA (AS (TSel "c", [])))) in
+      let s2 = DK (K (KS (SA (AS (TSel "a", []))), SA (AS (TSel "c", [])))) in
+      testInter s1 s2
+    end else begin
       n := -1;
-      let r = random_regsel (Random.int 10) in
+      let r = random_regsel (1 + Random.int 10) in
       n := -1;
-      let s = random_sel (Random.int 10) in
+      let s = random_sel (1 + Random.int 10) in
       (testRegsel r) && (testSel s) && (testSels (num-1))
     end
 
