@@ -244,7 +244,6 @@ module RealCSS = struct
     let concat comb s1 s2 = 
       let module AdjAdjCross = Cross2Sets (AdjSet) (AdjSet) (AdjSet) in
       concat_selectors_gen adj2regsel regsel2adj AdjAdjCross.cross s1 comb s2
-    let concat = (fun _ -> failwith "Not implemented")
     let lift sims = AdjSetExt.from_list (List.map (fun s -> AS s) (SimpleSetExt.to_list sims))
   end
   module SibSelector = struct
@@ -583,9 +582,9 @@ module RealCSS = struct
         match List.rev ss, List.rev ts with
         | [], _ -> LooseSel.SetOfSel.singleton (LooseSel.fromParts [t])
         | _, [] -> failwith "impossible15"
-        | ssrev, [t] ->
+        | ssrev, [t] -> Printf.printf "PCase1\n";
           let clause1 = 
-            LooseSel.SetOfSel.singleton (LooseSel.fromParts (ss @ [TightSel.fromParts [t]])) in
+            LooseSel.SetOfSel.singleton (LooseSel.fromParts (ss @ [TightSel.fromParts [t]])) in (* 4T *)
           let clause2 = match ssrev with 
             | [] -> LooseSel.SetOfSel.empty
             | sN::sfrontrev -> 
@@ -595,22 +594,29 @@ module RealCSS = struct
               LooseSel.concat LooseSel.comb sfrontSet
                 (LooseSel.lift (inter sN (TightSel.fromParts [t]))) in
           LooseSel.SetOfSel.union clause1 clause2
-        | sN::sfrontrev, tM::tfrontrev ->
+        | sN::sfrontrev, tM::_ -> Printf.printf "PCase2\n";
           let sfront = List.rev sfrontrev in
-          let tfront = List.rev tfrontrev in
-          let clause1 = LooseSel.concat TightSel.comb (pair_off ss tfront)
-            (LooseSel.SetOfSel.singleton (LooseSel.fromParts [TightSel.fromParts [tM]])) in
+          let sNLen = List.length (TightSel.toParts sN) in
+          let (tfront, ttail) = ListExt.split_at (List.length ts - sNLen) ts in
+          let clause1 = 
+            let tail = (LooseSel.SetOfSel.singleton (LooseSel.fromParts [TightSel.fromParts [tM]])) in
+            match tfront with 
+            | [] -> tail
+            | _ -> LooseSel.concat TightSel.comb (pair_off ss tfront) tail in
           let clause2 = LooseSel.concat TightSel.comb (pair_off sfront tfront)
-            (LooseSel.lift (inter sN (TightSel.fromParts [tM]))) in
+            (LooseSel.lift (inter sN (TightSel.fromParts ttail))) in
           LooseSel.SetOfSel.union clause1 clause2 in
       let ss = LooseSel.toParts s in
       let ts = TightSel.toParts t in
-      (match List.rev ss, List.rev ts with
-      | sN::(_::_ as sfrontrev), tM::(_::_ as tfrontrev) -> 
+      (match List.rev ss, ts with
+      | sN::((_::_) as sfrontrev), _::_ -> 
         let sfront = List.rev sfrontrev in
-        let tfront = List.rev tfrontrev in
-        LooseSel.concat TightSel.comb (pair_off sfront tfront) 
-          (LooseSel.lift (inter sN (TightSel.fromParts [tM])))
+        let sNLen = List.length (TightSel.toParts sN) in
+        let (tfront, ttail) = ListExt.split_at (List.length ts - sNLen) ts in
+        let paired = (pair_off sfront tfront) in
+        let last = LooseSel.lift (inter sN (TightSel.fromParts ttail)) in
+        LooseSel.concat TightSel.comb paired last (* (LooseSel.concat TightSel.comb last last) (* LAST LAST *) *)
+          
       | _, _ -> failwith "impossible16")
   end
 
@@ -651,13 +657,13 @@ module RealCSS = struct
       let answer = if k1 = k2 then KidSet.singleton k1 else
         let module Sib2Kid = Map2Sets (SibSet) (KidSet) in
         match k1, k2 with
-        | K(k1k, k1s), KS s -> 
+        | K(k1k, k1s), KS s -> Printf.printf "KCase1\n";
           Sib2Kid.map (fun s -> K(k1k, s)) (sib_inter k1s s)
-        | K(k1k, k1s), K (k2k, k2s) ->
+        | K(k1k, k1s), K (k2k, k2s) ->Printf.printf "KCase2\n";
           let module KidSibCross = Cross2Sets (KidSet) (SibSet) (KidSet) in
           KidSibCross.cross (fun k s -> K(k,s)) (kid_inter k1k k2k) (sib_inter k1s k2s)
-        | KS s1, KS s2 -> Sib2Kid.map (fun s -> KS s) (sib_inter s1 s2)
-        | _ -> kid_inter k2 k1
+        | KS s1, KS s2 -> Printf.printf "KCase3\n"; Sib2Kid.map (fun s -> KS s) (sib_inter s1 s2)
+        | _ -> Printf.printf "KCase4\n"; kid_inter k2 k1
       in
       vert [label "k1:" [Pretty.pretty_kid k1];
             label "k2:" [Pretty.pretty_kid k2];
@@ -669,12 +675,12 @@ module RealCSS = struct
       let answer = if d1 = d2 then SelSet.singleton d1 else
       let module Kid2Desc = Map2Sets (KidSet) (SelSet) in
       match d1, d2 with
-      | D(d1d, d1k), DK (KS s) ->
+      | D(d1d, d1k), DK (KS s) -> Printf.printf "DCase1\n";
         Kid2Desc.map (fun k -> D(d1d, k)) (kid_inter d1k (KS s))
-      | D(d1d, d1k), DK (K (d2k, d2s) as k2) -> pairings_desc_child d1 k2
-      | D(d1d, d1k), D(d2d, d2k) -> interleavings_desc d1 d2
-      | DK k1, DK k2 -> Kid2Desc.map (fun k -> DK k) (kid_inter k1 k2)
-      | _ -> desc_inter d2 d1
+      | D(d1d, d1k), DK (K (d2k, d2s) as k2) -> Printf.printf "DCase2\n"; pairings_desc_child d1 k2
+      | D(d1d, d1k), D(d2d, d2k) -> Printf.printf "DCase3\n"; interleavings_desc d1 d2
+      | DK k1, DK k2 -> Printf.printf "DCase4\n"; Kid2Desc.map (fun k -> DK k) (kid_inter k1 k2)
+      | _ -> Printf.printf "DCase5\n"; desc_inter d2 d1
       in
       vert [label "d1:" [Pretty.pretty_sel d1];
             label "d2:" [Pretty.pretty_sel d2];
@@ -818,8 +824,8 @@ module RealCSS = struct
       let m2d x = DK (m2k x) in
       (* let s1 = D (D(m2d "f", m2k "e"), K(K(m2k "d", m2s "c"), S(m2s "b", m2a "a"))) in *)
       (* let s2 = D (m2d "b", m2k "a") in *)
-      let s1 = DK (K(KS(S(m2s "d", m2a "c")), m2s "b")) in
-      let s2 = D (m2d "e", K(m2k "c", m2s "b")) in
+      let s1 = DK (K(KS(S(S(m2s "e", m2a "d"), m2a "c")), m2s "b")) in
+      let s2 = D (m2d "f", K(m2k "c", m2s "b")) in
       testInter s1 s2
     end else begin
       n := -1;
