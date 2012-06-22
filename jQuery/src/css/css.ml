@@ -203,6 +203,7 @@ module RealCSS = struct
   module KidSetExt = SetExt.Make (KidSet)
   module SibSetExt = SetExt.Make (SibSet)
   module AdjSetExt = SetExt.Make (AdjSet)
+  module SimpleSetExt = SetExt.Make (SimpleSet)
 
   let concat_selectors_gen toRegsel1 fromRegsel cross s1 comb s2 =
     let helper d1 comb d2 =
@@ -217,9 +218,11 @@ module RealCSS = struct
     type part
     val comb : combinator
     module SetOfSel : Set.S with type elt = sel
+    module SetOfPart : Set.S with type elt = part
     val toParts : sel -> part list
     val fromParts : part list -> sel
     val concat : combinator -> SetOfSel.t -> SetOfSel.t -> SetOfSel.t
+    val lift : SetOfPart.t -> SetOfSel.t
   end
 
   module AdjSelector = struct
@@ -229,6 +232,7 @@ module RealCSS = struct
     let compare = compare
     let comb = Adj
     module SetOfSel = AdjSet
+    module SetOfPart = SimpleSet
     let toParts a =
       let rec helper a acc = match a with
         | AS s -> s :: acc
@@ -241,6 +245,7 @@ module RealCSS = struct
       let module AdjAdjCross = Cross2Sets (AdjSet) (AdjSet) (AdjSet) in
       concat_selectors_gen adj2regsel regsel2adj AdjAdjCross.cross s1 comb s2
     let concat = (fun _ -> failwith "Not implemented")
+    let lift sims = AdjSetExt.from_list (List.map (fun s -> AS s) (SimpleSetExt.to_list sims))
   end
   module SibSelector = struct
     type sel = sib
@@ -249,6 +254,7 @@ module RealCSS = struct
     let compare = compare
     let comb = Sib
     module SetOfSel = SibSet
+    module SetOfPart = AdjSet
     let toParts s =
       let rec helper s acc = match s with
         | SA a -> a :: acc
@@ -260,6 +266,7 @@ module RealCSS = struct
     let concat comb s1 s2 = 
       let module SibSibCross = Cross2Sets (SibSet) (SibSet) (SibSet) in
       concat_selectors_gen sib2regsel regsel2sib SibSibCross.cross s1 comb s2
+    let lift adjs = SibSetExt.from_list (List.map (fun s -> SA s) (AdjSetExt.to_list adjs))
   end
   module KidSelector = struct
     type sel = kid
@@ -268,6 +275,7 @@ module RealCSS = struct
     let compare = compare
     let comb = Kid
     module SetOfSel = KidSet
+    module SetOfPart = SibSet
     let toParts k =       
       let rec helper k acc = match k with
         | KS s -> s :: acc
@@ -279,6 +287,7 @@ module RealCSS = struct
     let concat comb s1 s2 = 
       let module KidKidCross = Cross2Sets (KidSet) (KidSet) (KidSet) in
       concat_selectors_gen kid2regsel regsel2kid KidKidCross.cross s1 comb s2
+    let lift sibs = KidSetExt.from_list (List.map (fun s -> KS s) (SibSetExt.to_list sibs))
   end
   module DescSelector = struct
     type sel = desc
@@ -287,6 +296,7 @@ module RealCSS = struct
     let compare = compare
     let comb = Desc
     module SetOfSel = SelSet
+    module SetOfPart = KidSet
     let toParts d =
       let rec helper d acc = match d with
         | DK k -> k :: acc
@@ -298,6 +308,7 @@ module RealCSS = struct
     let concat comb s1 s2 = 
       let module SelSelCross = Cross2Sets (SelSet) (SelSet) (SelSet) in
       concat_selectors_gen desc2regsel regsel2desc SelSelCross.cross s1 comb s2
+    let lift kids = SelSetExt.from_list (List.map (fun s -> DK s) (KidSetExt.to_list kids))
   end
 
 
@@ -357,6 +368,167 @@ module RealCSS = struct
                         pretty_simple s])
                      [pretty_simple s] css)
   end
+
+
+
+
+
+  module Specificity = struct
+    let startswith haystack needle = String.length needle <= String.length haystack && String.sub haystack 0 (String.length needle) = needle
+    let endswith haystack needle = String.length needle <= String.length haystack && String.sub haystack (String.length haystack - String.length needle) (String.length needle) = needle
+    let contains haystack needle =
+      let re = Str.regexp_string needle
+      in try ignore (Str.search_forward re haystack 0); true
+        with Not_found -> false
+    let is_morespecific_spec s1 s2 v1 v2=
+      match s1, s2 with
+      | AOEquals, AOEquals -> v1 = v2
+      | AOEquals, AOStartsWith -> startswith v1 v2
+      | AOEquals, AOPrefixedWith -> startswith (v1 ^ "-") v2
+      | AOEquals, AOEndsWith -> endswith v1 v2
+      | AOEquals, AOContainsClass -> (not (String.contains v1 ' ')) && contains (" " ^ v1 ^ " ") (" " ^ v2 ^ " ")
+      | AOEquals, AOSubstring -> contains v1 v2
+      | AOStartsWith, AOEquals -> false
+      | AOStartsWith, AOStartsWith -> startswith v1 v2
+      | AOStartsWith, AOPrefixedWith -> startswith (v1 ^ "-") v2
+      | AOStartsWith, AOEndsWith -> false
+      | AOStartsWith, AOContainsClass -> (not (String.contains v1 ' ')) && startswith (v1 ^ " ") (v2 ^ " ")
+      | AOStartsWith, AOSubstring -> contains v1 v2
+      | AOEndsWith, AOEquals -> false
+      | AOEndsWith, AOStartsWith -> false
+      | AOEndsWith, AOPrefixedWith -> false
+      | AOEndsWith, AOEndsWith -> endswith v1 v2
+      | AOEndsWith, AOContainsClass -> (not (String.contains v1 ' ')) && endswith (" " ^ v1) (" " ^ v2)
+      | AOEndsWith, AOSubstring -> contains v1 v2
+      | AOPrefixedWith, AOEquals -> false
+      | AOPrefixedWith, AOStartsWith -> startswith v1 v2
+      | AOPrefixedWith, AOPrefixedWith -> startswith v1 v2
+      | AOPrefixedWith, AOEndsWith -> false
+      | AOPrefixedWith, AOContainsClass -> false
+      | AOPrefixedWith, AOSubstring -> contains v1 v2
+      | AOContainsClass, AOEquals
+      | AOContainsClass, AOStartsWith
+      | AOContainsClass, AOPrefixedWith
+      | AOContainsClass, AOEndsWith -> false
+      | AOContainsClass, AOContainsClass -> v1 = v2
+      | AOContainsClass, AOSubstring -> contains v1 v2
+      | AOSubstring, AOEquals
+      | AOSubstring, AOStartsWith
+      | AOSubstring, AOPrefixedWith
+      | AOSubstring, AOEndsWith -> false
+      | AOSubstring, AOContainsClass -> contains v1 v2
+      | AOSubstring, AOSubstring -> contains v1 v2
+
+    let is_morespecific_simple (a1a, a1s) (a2a, a2s) =
+      (a1a = a2a || a2a = USel) &&
+        List.for_all (fun s1 ->
+          List.exists (fun s2 ->
+            match s1, s2 with
+            | SpId i1, SpId i2 -> i1 = i2
+            | SpClass c1, SpClass c2 -> c1 = c2
+            | SpPseudo p1, SpPseudo p2 -> p1 = p2
+            | SpAttrib (s1name, s1prop), SpAttrib (s2name, s2prop) -> 
+              s1name = s2name && (match s1prop, s2prop with
+              | _, None -> true
+              | None, Some _ -> false
+              | Some (s1, v1), Some (s2, v2) -> is_morespecific_spec s1 s2 v1 v2)
+            | _ -> false
+          ) a2s) a1s
+
+    let is_morespecific_sib s1 s2 = 
+      let s1adjs = List.map (fun a -> (a, Sib)) (SibSelector.toParts s1) in
+      let s1sims = List.map (fun (a, comb) -> 
+        match List.map (fun s -> (s, Adj)) (AdjSelector.toParts a) with
+        | [] -> []
+        | (h,_)::tl -> (h,comb)::tl) s1adjs in
+      let s1sims = List.rev (List.flatten s1sims) in
+      let s2adjs = List.map (fun a -> (a, Sib)) (SibSelector.toParts s2) in
+      let s2sims = List.map (fun (a, comb) -> 
+        match List.map (fun s -> (s, Adj)) (AdjSelector.toParts a) with
+        | [] -> []
+        | (h,_)::tl -> (h,comb)::tl) s2adjs in
+      let s2sims = List.rev (List.flatten s2sims) in
+      let rec helper s1 s2 = match s1, s2 with
+        | _, [] -> true (* s1 is still constrained; s2 isn't *)
+        | [], _ -> false (* s2 still is constrained; s1 isn't *)
+        | [(s1s, _)], [(s2s, _)] -> is_morespecific_simple s1s s2s
+        | (s1s, Adj)::s1tl, (s2s, Adj)::s2tl ->
+          is_morespecific_simple s1s s2s && helper s1tl s2tl
+        | (s1s, Adj)::s1tl, (s2s, Sib)::s2tl ->
+          is_morespecific_simple s1s s2s &&
+            (helper s1tl s2tl || helper s1tl (((USel, []), Sib)::s2tl))
+        | (s1s, Sib)::s1tl, (s2s, Sib)::s2tl ->
+          is_morespecific_simple s1s s2s &&
+            (helper s1tl s2tl || helper s1tl (((USel, []), Sib)::s2tl))
+        | _ -> failwith "impossible combinators1" in
+      helper s1sims s2sims
+    (* let rec is_morespecific_adj a1 a2 = match a1, a2 with *)
+    (*   | A(_, a1s), AS a2s -> is_morespecific_simple a1s a2s *)
+    (*   | AS _, A _ -> false *)
+    (*   | AS a1s, AS a2s -> is_morespecific_simple a1s a2s *)
+    (*   | A(a1a, a1s), A(a2a, a2s) -> is_morespecific_simple a1s a2s && is_morespecific_adj a1a a2a *)
+    let is_morespecific_desc d1 d2 =
+      let open Format in 
+      let open FormatExt in
+      let d1kids = List.map (fun a -> (a, Desc)) (DescSelector.toParts d1) in
+      let d1sibs = List.map (fun (a, comb) -> 
+        match List.map (fun s -> (s, Kid)) (KidSelector.toParts a) with
+        | [] -> []
+        | (h,_)::tl -> (h,comb)::tl) d1kids in
+      let d1sibs = List.rev (List.flatten d1sibs) in
+      let d2kids = List.map (fun a -> (a, Desc)) (DescSelector.toParts d2) in
+      let d2sibs = List.map (fun (a, comb) -> 
+        match List.map (fun s -> (s, Kid)) (KidSelector.toParts a) with
+        | [] -> []
+        | (h,_)::tl -> (h,comb)::tl) d2kids in
+      let d2sibs = List.rev (List.flatten d2sibs) in
+      let rec helper d1 d2 = match d1, d2 with
+        | _, [] -> true (* d1 is still constrained; d2 isn't *)
+        | [], _ -> false (* d2 still is constrained; d1 isn't *)
+        | [(d1s, _)], [(d2s, _)] -> is_morespecific_sib d1s d2s
+        | (d1s, Kid)::d1tl, (d2s, Kid)::d2tl ->
+          vert [label "d1s(Kid): " [Pretty.pretty_sib d1s];
+                label "d2s(Kid): " [Pretty.pretty_sib d2s]] std_formatter;
+          print_newline ();
+          let smatch = is_morespecific_sib d1s d2s in
+          label "d1s <? d2s: " [bool smatch] std_formatter;
+          print_newline ();
+          smatch && helper d1tl d2tl
+        | (d1s, Kid)::d1tl, (d2s, Desc)::d2tl ->
+          vert [label "d1s(Kid ): " [Pretty.pretty_sib d1s];
+                label "d2s(Desc): " [Pretty.pretty_sib d2s]] std_formatter;
+          print_newline ();
+          let smatch = is_morespecific_sib d1s d2s in
+          label "d1s <? d2s: " [bool smatch] std_formatter;
+          print_newline ();
+          smatch && (helper d1tl d2tl || helper d1tl (((SA (AS (USel, []))), Desc)::d2tl))
+        | (d1s, Desc)::d1tl, (d2s, Desc)::d2tl ->
+          vert [label "d1s(Desc): " [Pretty.pretty_sib d1s];
+                label "d2s(Desc): " [Pretty.pretty_sib d2s]] std_formatter;
+          print_newline ();
+          let smatch = is_morespecific_sib d1s d2s in
+          label "d1s <? d2s: " [bool smatch] std_formatter;
+          print_newline ();
+          smatch && (helper d1tl d2tl || helper d1tl (((SA (AS (USel, []))), Desc)::d2tl))
+        | _ -> failwith "impossible combinators2" in
+      helper d1sibs d2sibs
+
+    let is_morespecific s1 s2 =
+      let open Format in
+      let open FormatExt in
+      SelSet.for_all (fun s -> 
+        label "Searching for match for: " [Pretty.pretty_sel s] std_formatter; print_newline ();
+        SelSet.exists (fun t -> 
+          label "Trying: " [Pretty.pretty_sel t] std_formatter; print_newline ();
+          is_morespecific_desc s t) s2) s1
+  end
+
+
+
+
+
+
+
 
 
   module type INTERLEAVINGS = functor (UnifSel : UniformSelector) -> sig
@@ -421,7 +593,7 @@ module RealCSS = struct
                 | [] -> LooseSel.SetOfSel.empty
                 | sfront -> LooseSel.SetOfSel.singleton (LooseSel.fromParts sfront) in
               LooseSel.concat LooseSel.comb sfrontSet
-                (inter (LooseSel.fromParts [sN]) (LooseSel.fromParts [TightSel.fromParts [t]])) in
+                (LooseSel.lift (inter sN (TightSel.fromParts [t]))) in
           LooseSel.SetOfSel.union clause1 clause2
         | sN::sfrontrev, tM::tfrontrev ->
           let sfront = List.rev sfrontrev in
@@ -429,7 +601,7 @@ module RealCSS = struct
           let clause1 = LooseSel.concat TightSel.comb (pair_off ss tfront)
             (LooseSel.SetOfSel.singleton (LooseSel.fromParts [TightSel.fromParts [tM]])) in
           let clause2 = LooseSel.concat TightSel.comb (pair_off sfront tfront)
-            (inter (LooseSel.fromParts [sN]) (LooseSel.fromParts [TightSel.fromParts [tM]])) in
+            (LooseSel.lift (inter sN (TightSel.fromParts [tM]))) in
           LooseSel.SetOfSel.union clause1 clause2 in
       let ss = LooseSel.toParts s in
       let ts = TightSel.toParts t in
@@ -438,7 +610,7 @@ module RealCSS = struct
         let sfront = List.rev sfrontrev in
         let tfront = List.rev tfrontrev in
         LooseSel.concat TightSel.comb (pair_off sfront tfront) 
-          (inter (LooseSel.fromParts [sN]) (LooseSel.fromParts [TightSel.fromParts [tM]]))
+          (LooseSel.lift (inter sN (TightSel.fromParts [tM])))
       | _, _ -> failwith "impossible16")
   end
 
@@ -474,18 +646,27 @@ module RealCSS = struct
       | SA a1, SA a2 -> Adj2Sib.map (fun a -> SA a) (adj_inter a1 a2)
       | _ -> sib_inter s2 s1
     and kid_inter k1 k2 = 
-      if k1 = k2 then KidSet.singleton k1 else
-      let module Sib2Kid = Map2Sets (SibSet) (KidSet) in
-      match k1, k2 with
-      | K(k1k, k1s), KS s -> 
-        Sib2Kid.map (fun s -> K(k1k, s)) (sib_inter k1s s)
-      | K(k1k, k1s), K (k2k, k2s) ->
-        let module KidSibCross = Cross2Sets (KidSet) (SibSet) (KidSet) in
-        KidSibCross.cross (fun k s -> K(k,s)) (kid_inter k1k k2k) (sib_inter k1s k2s)
-      | KS s1, KS s2 -> Sib2Kid.map (fun s -> KS s) (sib_inter s1 s2)
-      | _ -> kid_inter k2 k1
+      let open FormatExt in
+      let open Format in
+      let answer = if k1 = k2 then KidSet.singleton k1 else
+        let module Sib2Kid = Map2Sets (SibSet) (KidSet) in
+        match k1, k2 with
+        | K(k1k, k1s), KS s -> 
+          Sib2Kid.map (fun s -> K(k1k, s)) (sib_inter k1s s)
+        | K(k1k, k1s), K (k2k, k2s) ->
+          let module KidSibCross = Cross2Sets (KidSet) (SibSet) (KidSet) in
+          KidSibCross.cross (fun k s -> K(k,s)) (kid_inter k1k k2k) (sib_inter k1s k2s)
+        | KS s1, KS s2 -> Sib2Kid.map (fun s -> KS s) (sib_inter s1 s2)
+        | _ -> kid_inter k2 k1
+      in
+      vert [label "k1:" [Pretty.pretty_kid k1];
+            label "k2:" [Pretty.pretty_kid k2];
+            label "int:" [KidSetExt.p_set Pretty.pretty_kid answer]] std_formatter; print_newline();
+      answer
     and desc_inter d1 d2 =
-      if d1 = d2 then SelSet.singleton d1 else
+      let open FormatExt in
+      let open Format in
+      let answer = if d1 = d2 then SelSet.singleton d1 else
       let module Kid2Desc = Map2Sets (KidSet) (SelSet) in
       match d1, d2 with
       | D(d1d, d1k), DK (KS s) ->
@@ -494,7 +675,12 @@ module RealCSS = struct
       | D(d1d, d1k), D(d2d, d2k) -> interleavings_desc d1 d2
       | DK k1, DK k2 -> Kid2Desc.map (fun k -> DK k) (kid_inter k1 k2)
       | _ -> desc_inter d2 d1
-        
+      in
+      vert [label "d1:" [Pretty.pretty_sel d1];
+            label "d2:" [Pretty.pretty_sel d2];
+            label "int:" [SelSetExt.p_set Pretty.pretty_sel answer]] std_formatter; print_newline();
+      answer
+
     and interleavings_sib s t = 
       let module InterSib = Interleavings (SibSelector) in
       InterSib.interleavings sib_inter s t
@@ -505,11 +691,11 @@ module RealCSS = struct
 
     and pairings_sib_adj s t = 
       let module PairingsSibAdj = Pairings (SibSelector) (AdjSelector) in
-      PairingsSibAdj.pairings sib_inter s t
+      PairingsSibAdj.pairings adj_inter s t
 
     and pairings_desc_child d k =
       let module PairingsDescKid = Pairings (DescSelector) (KidSelector) in
-      PairingsDescKid.pairings desc_inter d k in
+      PairingsDescKid.pairings kid_inter d k in
     
     (* actually do the intersection! *) 
     desc_inter s1 s2
@@ -529,20 +715,21 @@ module RealCSS = struct
   let singleton s = empty (* TODO *)
   let singleton_string _ = None
   let var _ = SelSet.empty
-  let make_regex s =
-    R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s))
   let is_subset (_ : 'a IdMap.t) s1 s2 =
-    if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else
-    (* remove any obvious overlap *)
-    let (s1, s2) = (SelSet.diff s1 s2, SelSet.diff s2 s1) in
-    if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else
-    let r1 = make_regex s1 in
-    let r2 = make_regex s2 in
-    let open FormatExt in
-    horzOrVert [text (R.pretty r1); text "<="; text (R.pretty r2)] Format.std_formatter;
-    Format.print_newline();
-    R.is_subset r1 r2
-
+    Specificity.is_morespecific s1 s2 (* || begin *)
+    (*   let make_regex s = *)
+    (*     R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s)) in *)
+    (*   if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else *)
+    (*       (\* remove any obvious overlap *\) *)
+    (*       let (s1, s2) = (SelSet.diff s1 s2, SelSet.diff s2 s1) in *)
+    (*       if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else *)
+    (*           let r1 = make_regex s1 in *)
+    (*           let r2 = make_regex s2 in *)
+    (*           let open FormatExt in *)
+    (*           horzOrVert [text (R.pretty r1); text "<="; text (R.pretty r2)] Format.std_formatter; *)
+    (*           Format.print_newline(); *)
+    (*           R.is_subset r1 r2 *)
+    (* end *)
     
   let pretty_sel s = Pretty.pretty_sel s
   let p_css t =
@@ -622,16 +809,26 @@ module RealCSS = struct
                                       label "sInter:" [p_css sInter]]] Format.std_formatter;
         Format.print_newline (); false
       end else true in
-    if num = 0 then begin
-      let s1 = D (DK (KS (SA (AS (TSel "b", [])))), KS (SA (AS (TSel "c", [])))) in
-      let s2 = DK (K (KS (SA (AS (TSel "a", []))), SA (AS (TSel "c", [])))) in
+    if num >= 0 then begin
+      (* f e (d > c > (b ~ a)
+       * b a *)
+      let m2a x = AS (TSel x , []) in
+      let m2s x = SA (m2a x) in
+      let m2k x = KS (m2s x) in
+      let m2d x = DK (m2k x) in
+      (* let s1 = D (D(m2d "f", m2k "e"), K(K(m2k "d", m2s "c"), S(m2s "b", m2a "a"))) in *)
+      (* let s2 = D (m2d "b", m2k "a") in *)
+      let s1 = DK (K(KS(S(m2s "d", m2a "c")), m2s "b")) in
+      let s2 = D (m2d "e", K(m2k "c", m2s "b")) in
       testInter s1 s2
     end else begin
       n := -1;
       let r = random_regsel (1 + Random.int 10) in
       n := -1;
       let s = random_sel (1 + Random.int 10) in
-      (testRegsel r) && (testSel s) && (testSels (num-1))
+      (* n := -1; *)
+      (* let t = random_sel (1 + Random.int 10) in *)
+      (testRegsel r) && (testSel s) (* && (testInter s t) *) && (testSels (num-1))
     end
 
 

@@ -10,6 +10,8 @@ let nest (p : printer) (fmt : formatter) : unit =
   pp_close_box fmt ()
 
 let text s fmt = pp_print_string fmt s
+
+let bool b fmt = pp_print_bool fmt b
  
 let rec inter (sep : printer) (lst : printer list) (fmt : formatter) : unit = match lst with
     x1 :: x2 :: xs' ->
