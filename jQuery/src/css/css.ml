@@ -459,7 +459,7 @@ module RealCSS = struct
         | (s1s, Sib)::s1tl, (s2s, Sib)::s2tl ->
           is_morespecific_simple s1s s2s &&
             (helper s1tl s2tl || helper s1tl (((USel, []), Sib)::s2tl))
-        | _ -> failwith "impossible combinators1" in
+        | _ -> false in
       helper s1sims s2sims
     (* let rec is_morespecific_adj a1 a2 = match a1, a2 with *)
     (*   | A(_, a1s), AS a2s -> is_morespecific_simple a1s a2s *)
@@ -509,7 +509,7 @@ module RealCSS = struct
           label "d1s <? d2s: " [bool smatch] std_formatter;
           print_newline ();
           smatch && (helper d1tl d2tl || helper d1tl (((SA (AS (USel, []))), Desc)::d2tl))
-        | _ -> failwith "impossible combinators2" in
+        | _ -> false in
       helper d1sibs d2sibs
 
     let is_morespecific s1 s2 =
@@ -576,49 +576,164 @@ module RealCSS = struct
         UnifSel.SetOfSel.union clause1 (UnifSel.SetOfSel.union clause2 clause3)
   end
 
-  module Pairings (LooseSel : UniformSelector) (TightSel : UniformSelector with type sel = LooseSel.part) = struct
+  module Pairings (LooseSel : UniformSelector) 
+    (TightSel : UniformSelector with type sel = LooseSel.part with type SetOfSel.t = LooseSel.SetOfPart.t) = struct
+    let loose2lists (sel : LooseSel.sel) : (TightSel.part list * combinator list) =
+      let tights = LooseSel.toParts sel in
+      let parts = List.map TightSel.toParts tights in
+      let combs = List.tl (List.flatten (List.map (fun parts ->
+        let n = List.length parts - 1 in
+        LooseSel.comb :: (List.map (fun _ -> TightSel.comb) (iota n))) parts)) in
+      (List.flatten parts, combs)
+    let split_at_each c lst =
+      let rec helper lst acc =
+        match lst, acc with
+        | _, [] -> failwith "impossible: acc starts off non-empty"
+        | [], _ -> List.rev acc
+        | hd::tl, acfst::actail ->
+          if hd = c then helper tl ([]::acfst::actail)
+          else helper tl ((hd::acfst)::actail)
+      in helper lst [[]]
+    let rec split_by_lengths lens lst = 
+      match lens, lst with
+      | len::tl, _ -> 
+        let (front,tail) = ListExt.split_at (len+1) lst
+        in front :: split_by_lengths tl tail
+      | [], [] -> []
+      | _ -> failwith "impossible: length mismatch"
+    let lists2loose (parts : TightSel.part list) (combs : combinator list) =
+      let combs = split_at_each LooseSel.comb combs in
+      let parts = split_by_lengths (List.map List.length combs) parts in
+      let tights = List.map TightSel.fromParts parts in
+      LooseSel.SetOfSel.singleton (LooseSel.fromParts tights)
+
     let pairings inter s t =
-      let rec pair_off ss ts =
-        match List.rev ss, List.rev ts with
-        | [], _ -> LooseSel.SetOfSel.singleton (LooseSel.fromParts [t])
-        | _, [] -> failwith "impossible15"
-        | ssrev, [t] -> Printf.printf "PCase1\n";
-          let clause1 = 
-            LooseSel.SetOfSel.singleton (LooseSel.fromParts (ss @ [TightSel.fromParts [t]])) in (* 4T *)
-          let clause2 = match ssrev with 
-            | [] -> LooseSel.SetOfSel.empty
-            | sN::sfrontrev -> 
-              let sfrontSet = match List.rev sfrontrev with
-                | [] -> LooseSel.SetOfSel.empty
-                | sfront -> LooseSel.SetOfSel.singleton (LooseSel.fromParts sfront) in
-              LooseSel.concat LooseSel.comb sfrontSet
-                (LooseSel.lift (inter sN (TightSel.fromParts [t]))) in
-          LooseSel.SetOfSel.union clause1 clause2
-        | sN::sfrontrev, tM::_ -> Printf.printf "PCase2\n";
-          let sfront = List.rev sfrontrev in
-          let sNLen = List.length (TightSel.toParts sN) in
-          let (tfront, ttail) = ListExt.split_at (List.length ts - sNLen) ts in
-          let clause1 = 
-            let tail = (LooseSel.SetOfSel.singleton (LooseSel.fromParts [TightSel.fromParts [tM]])) in
-            match tfront with 
-            | [] -> tail
-            | _ -> LooseSel.concat TightSel.comb (pair_off ss tfront) tail in
-          let clause2 = LooseSel.concat TightSel.comb (pair_off sfront tfront)
-            (LooseSel.lift (inter sN (TightSel.fromParts ttail))) in
-          LooseSel.SetOfSel.union clause1 clause2 in
-      let ss = LooseSel.toParts s in
-      let ts = TightSel.toParts t in
-      (match List.rev ss, ts with
-      | sN::((_::_) as sfrontrev), _::_ -> 
-        let sfront = List.rev sfrontrev in
-        let sNLen = List.length (TightSel.toParts sN) in
-        let (tfront, ttail) = ListExt.split_at (List.length ts - sNLen) ts in
-        let paired = (pair_off sfront tfront) in
-        let last = LooseSel.lift (inter sN (TightSel.fromParts ttail)) in
-        LooseSel.concat TightSel.comb paired last (* (LooseSel.concat TightSel.comb last last) (* LAST LAST *) *)
-          
-      | _, _ -> failwith "impossible16")
+      let inter s t = LooseSel.lift (TightSel.lift (inter s t)) in
+      let (s1parts, s1combs) = loose2lists s in
+      let (s2parts, s2combs) = loose2lists t in
+      let rec pair_off spartsrev scombsrev tpartsrev tcombsrev (endOfSel : LooseSel.SetOfSel.t) =
+        assert (List.length spartsrev = List.length scombsrev &&
+            List.length tpartsrev = List.length tcombsrev);
+        match spartsrev, scombsrev, tpartsrev, tcombsrev with
+        | [], [], [], [] -> endOfSel
+        | _::_, [], _, _
+        | _, _, _::_, [] -> failwith "ran out of combinators"
+        | [], _::_, _, _
+        | _, _, [], _::_ -> failwith "ran out of components"
+        | [], [], _::_, tc::tcfrontrev -> 
+          LooseSel.concat tc (lists2loose (List.rev tpartsrev) (List.rev tcfrontrev)) endOfSel
+        | _::_, sc::scfrontrev, [], [] -> 
+          LooseSel.concat sc (lists2loose (List.rev spartsrev) (List.rev scfrontrev)) endOfSel
+        | sN::sfrontrev, scomb::scfrontrev, tM::tfrontrev, tcomb::tcfrontrev ->
+          if scomb = TightSel.comb && tcomb = TightSel.comb then
+            (* s = sfront (scfront) sN ( * ) ___ *)
+            (* t = tfront (tcfront) tM ( * ) ___ *)
+            let merged = 
+              (* (pair_off sfront scfront tfront tcfront) (endComb) ((inter sN tM) ( * ) endOfSel) *)
+              let last = LooseSel.concat TightSel.comb (inter sN tM) endOfSel in
+              pair_off sfrontrev scfrontrev tfrontrev tcfrontrev last in
+            merged
+          else if scomb = TightSel.comb && tcomb = LooseSel.comb then
+            (* s = sfront (scfront) sN ( * ) ___ *)
+            (* t = tfront (tcfront) tM (+) ___ *)
+            let merged = 
+              (* (pair_off sfront scfront tfront tcfront) (endComb) ((inter sN tM) ( * ) endOfSel) *)
+              let last = LooseSel.concat TightSel.comb (inter sN tM) endOfSel in
+              pair_off sfrontrev scfrontrev tfrontrev tcfrontrev last in
+            let sfirst =
+              (* (pair_off sfront scfront tparts tcombs) ( * ) (sN (endComb) endOfSel) *)
+              let last = LooseSel.concat TightSel.comb 
+                (LooseSel.lift (TightSel.lift (TightSel.SetOfPart.singleton sN))) endOfSel in
+              pair_off sfrontrev scfrontrev tpartsrev tcombsrev last in
+            LooseSel.SetOfSel.union merged sfirst
+          else if scomb = LooseSel.comb && tcomb = TightSel.comb then
+            (* s = sfront (scfront) sN (+) ___ *)
+            (* t = tfront (tcfront) tM ( * ) ___ *)
+            let merged = 
+              (* (pair_off sfront scfront tfront tcfront) (endComb) ((inter sN tM) ( * ) endOfSel) *)
+              let last = LooseSel.concat TightSel.comb (inter sN tM) endOfSel in
+              pair_off sfrontrev scfrontrev tfrontrev tcfrontrev last in
+            let tfirst =
+              (* (pair_off sparts scombs tfront tcfront) ( * ) (tM (endComb) endOfSel) *)
+              let last = LooseSel.concat TightSel.comb 
+                (LooseSel.lift (TightSel.lift (TightSel.SetOfPart.singleton tM))) endOfSel in
+              pair_off spartsrev scombsrev tfrontrev tcfrontrev last in
+            LooseSel.SetOfSel.union merged tfirst
+          else 
+            (* s = sfront (scfront) sN (+) ___ *)
+            (* t = tfront (tcfront) tM (+) ___ *)
+            let merged = 
+              (* (pair_off sfront scfront tfront tcfront) (endComb) ((inter sN tM) (+) endOfSel) *)
+              let last = LooseSel.concat LooseSel.comb (inter sN tM) endOfSel in
+              pair_off sfrontrev scfrontrev tfrontrev tcfrontrev last in
+            let sfirst =
+              (* (pair_off sfront scfront tparts tcombs) (+) (sN (endComb) endOfSel) *)
+              let last = LooseSel.concat LooseSel.comb 
+                (LooseSel.lift (TightSel.lift (TightSel.SetOfPart.singleton sN))) endOfSel in
+              pair_off sfrontrev scfrontrev tpartsrev tcombsrev last in
+            let tfirst =
+              (* (pair_off sparts scombs tfront tcfront) (+) (tM (endComb) endOfSel) *)
+              let last = LooseSel.concat LooseSel.comb 
+                (LooseSel.lift (TightSel.lift (TightSel.SetOfPart.singleton tM))) endOfSel in
+              pair_off spartsrev scombsrev tfrontrev tcfrontrev last in
+            LooseSel.SetOfSel.union merged (LooseSel.SetOfSel.union sfirst tfirst)
+      in match List.rev s1parts, List.rev s2parts with
+      | [], _
+      | _, [] -> failwith "impossible: no parts in selectors"
+      | sN::stail, tM::ttail ->
+        pair_off stail (List.rev s1combs) ttail (List.rev s2combs) (inter sN tM)
   end
+
+
+  (* module Pairings (LooseSel : UniformSelector) (TightSel : UniformSelector with type sel = LooseSel.part) = struct *)
+  (*   let pairings inter s t = *)
+  (*     let rec pair_off ss ts = *)
+  (*       match List.rev ss, List.rev ts with *)
+  (*       | [], _ -> LooseSel.SetOfSel.singleton (LooseSel.fromParts [t]) *)
+  (*       | _, [] -> failwith "impossible15" *)
+  (*       | ssrev, [t] -> Printf.printf "PCase1\n"; *)
+  (*         let clause1 =  *)
+  (*           LooseSel.SetOfSel.singleton (LooseSel.fromParts (ss @ [TightSel.fromParts [t]])) in (\* 4T *\) *)
+  (*         let clause2 = match ssrev with  *)
+  (*           | [] -> LooseSel.SetOfSel.empty *)
+  (*           | sN::sfrontrev ->  *)
+  (*             let sfrontSet = match List.rev sfrontrev with *)
+  (*               | [] -> LooseSel.SetOfSel.empty *)
+  (*               | sfront -> LooseSel.SetOfSel.singleton (LooseSel.fromParts sfront) in *)
+  (*             LooseSel.concat LooseSel.comb sfrontSet *)
+  (*               (LooseSel.lift (inter sN (TightSel.fromParts [t]))) in *)
+  (*         LooseSel.SetOfSel.union clause1 clause2 *)
+  (*       | sN::sfrontrev, tM::_ -> Printf.printf "PCase2\n"; *)
+  (*         let sfront = List.rev sfrontrev in *)
+  (*         let sNLen = List.length (TightSel.toParts sN) in *)
+  (*         let (tfront, ttail) = ListExt.split_at (List.length ts - sNLen) ts in *)
+  (*         let clause1 = LooseSel.SetOfSel.empty in *)
+  (*           (\* let tail = (LooseSel.SetOfSel.singleton (LooseSel.fromParts [TightSel.fromParts [tM]])) in *\) *)
+  (*           (\* match tfront with *\) *)
+  (*           (\* | [] -> LooseSel.concat LooseSel.comb (LooseSel.SetOfSel.singleton (LooseSel.fromParts sfront)) tail *\) *)
+  (*           (\* | _ -> LooseSel.concat TightSel.comb (pair_off ss tfront) tail in *\) *)
+  (*         let clause2 = *)
+  (*           let tail = (LooseSel.lift (inter sN (TightSel.fromParts ttail))) in *)
+  (*           match tfront with *)
+  (*           | [] -> LooseSel.concat TightSel.comb (LooseSel.SetOfSel.singleton (LooseSel.fromParts sfront)) tail *)
+  (*           | _ -> (\* TODO: This case is wrong *\) LooseSel.concat TightSel.comb (pair_off sfront tfront) tail in *)
+  (*         LooseSel.SetOfSel.union clause1 clause2 in *)
+  (*     let ss = LooseSel.toParts s in *)
+  (*     let ts = TightSel.toParts t in *)
+  (*     (match List.rev ss, ts with *)
+  (*     | sN::((_::_) as sfrontrev), _::_ ->  *)
+  (*       let sfront = List.rev sfrontrev in *)
+  (*       let sNLen = List.length (TightSel.toParts sN) in *)
+  (*       let (tfront, ttail) = ListExt.split_at (List.length ts - sNLen) ts in *)
+  (*       let last = LooseSel.lift (inter sN (TightSel.fromParts ttail)) in *)
+  (*       begin match tfront with *)
+  (*       | [] -> LooseSel.concat LooseSel.comb (LooseSel.SetOfSel.singleton (LooseSel.fromParts sfront)) last *)
+  (*       | _ -> *)
+  (*         let paired = (pair_off sfront tfront) in *)
+  (*         LooseSel.concat TightSel.comb paired last (\* (LooseSel.concat TightSel.comb last last) (\* LAST LAST *\) *\) *)
+  (*       end *)
+  (*     | _, _ -> failwith "impossible16") *)
+  (* end *)
 
   let canonical (s1a, s1s) (s2a, s2s) = 
     if (s1a <> s2a) then SimpleSet.empty
@@ -647,8 +762,8 @@ module RealCSS = struct
       match s1, s2 with
       | S(s1s, s1a), SA (AS s2s) -> 
         Adj2Sib.map (fun a -> S(s1s, a)) (adj_inter s1a (AS s2s))
-      | S(s1s, s1a), SA (A (a2a, a2s) as a2) -> pairings_sib_adj s1 a2
-      | S(s1s, s1a), S (s2s, s2a) -> interleavings_sib s1 s2
+      | S(s1s, s1a), SA (A (a2a, a2s)) -> pairings_sib s1 s2
+      | S(s1s, s1a), S (s2s, s2a) -> pairings_sib s1 s2
       | SA a1, SA a2 -> Adj2Sib.map (fun a -> SA a) (adj_inter a1 a2)
       | _ -> sib_inter s2 s1
     and kid_inter k1 k2 = 
@@ -677,8 +792,8 @@ module RealCSS = struct
       match d1, d2 with
       | D(d1d, d1k), DK (KS s) -> Printf.printf "DCase1\n";
         Kid2Desc.map (fun k -> D(d1d, k)) (kid_inter d1k (KS s))
-      | D(d1d, d1k), DK (K (d2k, d2s) as k2) -> Printf.printf "DCase2\n"; pairings_desc_child d1 k2
-      | D(d1d, d1k), D(d2d, d2k) -> Printf.printf "DCase3\n"; interleavings_desc d1 d2
+      | D(d1d, d1k), DK (K (d2k, d2s)) -> Printf.printf "DCase2\n"; pairings_desc d1 s2
+      | D(d1d, d1k), D(d2d, d2k) -> Printf.printf "DCase3\n"; pairings_desc d1 d2
       | DK k1, DK k2 -> Printf.printf "DCase4\n"; Kid2Desc.map (fun k -> DK k) (kid_inter k1 k2)
       | _ -> Printf.printf "DCase5\n"; desc_inter d2 d1
       in
@@ -687,21 +802,21 @@ module RealCSS = struct
             label "int:" [SelSetExt.p_set Pretty.pretty_sel answer]] std_formatter; print_newline();
       answer
 
-    and interleavings_sib s t = 
-      let module InterSib = Interleavings (SibSelector) in
-      InterSib.interleavings sib_inter s t
+    (* and interleavings_sib s t =  *)
+    (*   let module InterSib = Interleavings (SibSelector) in *)
+    (*   InterSib.interleavings sib_inter s t *)
         
-    and interleavings_desc s t = 
-      let module InterDesc = Interleavings (DescSelector) in
-      InterDesc.interleavings desc_inter s t
+    (* and interleavings_desc s t =  *)
+    (*   let module InterDesc = Interleavings (DescSelector) in *)
+    (*   InterDesc.interleavings desc_inter s t *)
 
-    and pairings_sib_adj s t = 
+    and pairings_sib s1 s2 = 
       let module PairingsSibAdj = Pairings (SibSelector) (AdjSelector) in
-      PairingsSibAdj.pairings adj_inter s t
+      PairingsSibAdj.pairings simple_inter s1 s2
 
-    and pairings_desc_child d k =
+    and pairings_desc d1 d2 =
       let module PairingsDescKid = Pairings (DescSelector) (KidSelector) in
-      PairingsDescKid.pairings kid_inter d k in
+      PairingsDescKid.pairings sib_inter d1 d2 in
     
     (* actually do the intersection! *) 
     desc_inter s1 s2
@@ -816,25 +931,25 @@ module RealCSS = struct
         Format.print_newline (); false
       end else true in
     if num >= 0 then begin
-      (* f e (d > c > (b ~ a)
-       * b a *)
+      (* s1:e (d > c) b a
+         s2:d (c > b > a) *)
       let m2a x = AS (TSel x , []) in
       let m2s x = SA (m2a x) in
       let m2k x = KS (m2s x) in
       let m2d x = DK (m2k x) in
-      (* let s1 = D (D(m2d "f", m2k "e"), K(K(m2k "d", m2s "c"), S(m2s "b", m2a "a"))) in *)
-      (* let s2 = D (m2d "b", m2k "a") in *)
-      let s1 = DK (K(KS(S(S(m2s "e", m2a "d"), m2a "c")), m2s "b")) in
-      let s2 = D (m2d "f", K(m2k "c", m2s "b")) in
+      (* let s1 = DK (K(KS(S(S(m2s "e", m2a "d"), m2a "c")), m2s "b")) in *)
+      (* let s2 = D (m2d "f", K(m2k "c", m2s "b")) in *)
+      let s1 = D(D(D(m2d "e", K(m2k "d", m2s "c")), m2k "b"), m2k "a") in
+      let s2 = D(m2d "d", K(K(m2k "c", m2s "b"), m2s "a")) in
       testInter s1 s2
     end else begin
       n := -1;
       let r = random_regsel (1 + Random.int 10) in
       n := -1;
       let s = random_sel (1 + Random.int 10) in
-      (* n := -1; *)
-      (* let t = random_sel (1 + Random.int 10) in *)
-      (testRegsel r) && (testSel s) (* && (testInter s t) *) && (testSels (num-1))
+      n := -1;
+      let t = random_sel (1 + Random.int 10) in
+      (testRegsel r) && (testSel s) && (testInter s t) && (testSels (num-1))
     end
 
 
