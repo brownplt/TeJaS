@@ -555,8 +555,6 @@ module RealCSS = struct
       let (s1parts, s1combs) = loose2lists s in
       let (s2parts, s2combs) = loose2lists t in
       let rec pair_off spartsrev scombsrev tpartsrev tcombsrev (endOfSel : LooseSel.SetOfSel.t) =
-        assert (List.length spartsrev = List.length scombsrev &&
-            List.length tpartsrev = List.length tcombsrev);
         match spartsrev, scombsrev, tpartsrev, tcombsrev with
         | [], [], [], [] -> endOfSel
         | _::_, [], _, _
@@ -572,7 +570,7 @@ module RealCSS = struct
             (* s = sfront (scfront) sN ( * ) ___ *)
             (* t = tfront (tcfront) tM ( * ) ___ *)
             let merged = 
-              (* (pair_off sfront scfront tfront tcfront) (endComb) ((inter sN tM) ( * ) endOfSel) *)
+              (* (pair_off sfront scfront tfront tcfront) ((inter sN tM) ( * ) endOfSel) *)
               let last = LooseSel.concat TightSel.comb (inter sN tM) endOfSel in
               pair_off sfrontrev scfrontrev tfrontrev tcfrontrev last in
             merged
@@ -580,11 +578,11 @@ module RealCSS = struct
             (* s = sfront (scfront) sN ( * ) ___ *)
             (* t = tfront (tcfront) tM (+) ___ *)
             let merged = 
-              (* (pair_off sfront scfront tfront tcfront) (endComb) ((inter sN tM) ( * ) endOfSel) *)
+              (* (pair_off sfront scfront tfront tcfront) ((inter sN tM) ( * ) endOfSel) *)
               let last = LooseSel.concat TightSel.comb (inter sN tM) endOfSel in
               pair_off sfrontrev scfrontrev tfrontrev tcfrontrev last in
             let sfirst =
-              (* (pair_off sfront scfront tparts tcombs) ( * ) (sN (endComb) endOfSel) *)
+              (* (pair_off sfront scfront tparts tcombs) (sN ( * ) endOfSel) *)
               let last = LooseSel.concat TightSel.comb 
                 (LooseSel.lift (TightSel.lift (TightSel.SetOfPart.singleton sN))) endOfSel in
               pair_off sfrontrev scfrontrev tpartsrev tcombsrev last in
@@ -593,11 +591,11 @@ module RealCSS = struct
             (* s = sfront (scfront) sN (+) ___ *)
             (* t = tfront (tcfront) tM ( * ) ___ *)
             let merged = 
-              (* (pair_off sfront scfront tfront tcfront) (endComb) ((inter sN tM) ( * ) endOfSel) *)
+              (* (pair_off sfront scfront tfront tcfront) ((inter sN tM) ( * ) endOfSel) *)
               let last = LooseSel.concat TightSel.comb (inter sN tM) endOfSel in
               pair_off sfrontrev scfrontrev tfrontrev tcfrontrev last in
             let tfirst =
-              (* (pair_off sparts scombs tfront tcfront) ( * ) (tM (endComb) endOfSel) *)
+              (* (pair_off sparts scombs tfront tcfront) (tM ( * ) endOfSel) *)
               let last = LooseSel.concat TightSel.comb 
                 (LooseSel.lift (TightSel.lift (TightSel.SetOfPart.singleton tM))) endOfSel in
               pair_off spartsrev scombsrev tfrontrev tcfrontrev last in
@@ -606,16 +604,16 @@ module RealCSS = struct
             (* s = sfront (scfront) sN (+) ___ *)
             (* t = tfront (tcfront) tM (+) ___ *)
             let merged = 
-              (* (pair_off sfront scfront tfront tcfront) (endComb) ((inter sN tM) (+) endOfSel) *)
+              (* (pair_off sfront scfront tfront tcfront) ((inter sN tM) (+) endOfSel) *)
               let last = LooseSel.concat LooseSel.comb (inter sN tM) endOfSel in
               pair_off sfrontrev scfrontrev tfrontrev tcfrontrev last in
             let sfirst =
-              (* (pair_off sfront scfront tparts tcombs) (+) (sN (endComb) endOfSel) *)
+              (* (pair_off sfront scfront tparts tcombs) (sN (+) endOfSel) *)
               let last = LooseSel.concat LooseSel.comb 
                 (LooseSel.lift (TightSel.lift (TightSel.SetOfPart.singleton sN))) endOfSel in
               pair_off sfrontrev scfrontrev tpartsrev tcombsrev last in
             let tfirst =
-              (* (pair_off sparts scombs tfront tcfront) (+) (tM (endComb) endOfSel) *)
+              (* (pair_off sparts scombs tfront tcfront) (tM (+) endOfSel) *)
               let last = LooseSel.concat LooseSel.comb 
                 (LooseSel.lift (TightSel.lift (TightSel.SetOfPart.singleton tM))) endOfSel in
               pair_off spartsrev scombsrev tfrontrev tcfrontrev last in
