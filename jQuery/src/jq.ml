@@ -3,7 +3,7 @@ open Format
 open FormatExt
 open Prelude
 open SetExt
-module RealCSS = Css.RealCSS
+module TestRealCSS = Css.TestRealCSS
 open JQuery_syntax
 open TypImpl
 open JQuery_typechecking
@@ -174,7 +174,7 @@ let main () =
   (* test2 500 *)
   (* test3 100; *)
   test4 ();
-  Printf.printf "All CSS succeeded: %b\n" (RealCSS.testSels 1000)
+  Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels 1000)
 ;;
 
 main ()

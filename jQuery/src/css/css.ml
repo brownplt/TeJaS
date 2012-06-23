@@ -4,7 +4,7 @@ open SetExt
 
 module type CSS = sig
   include  SET
-  type combinator = Desc | Kid | Sib | Adj
+  type combinator = Css_syntax.combinator
   val concat_selectors : t -> combinator -> t -> t
   val p_css : t -> FormatExt.printer
 end
@@ -21,21 +21,21 @@ module Cross2Sets (Src1 : Set.S) (Src2 : Set.S) (Dst : Set.S) = struct
 end
 
 module RealCSS = struct
+  open Css_syntax
   module R = Sb_strPat
 
-  type atomic = TSel of string | USel
-  and spec = | SpId of string | SpClass of string
-             | SpAttrib of string * (oper * string) option | SpPseudo of string
-  and oper = AOEquals | AOStartsWith | AOEndsWith | AOPrefixedWith | AOContainsClass | AOSubstring
-  and simple = atomic * spec list
+  type atomic = Css_syntax.atomic
+  and spec = Css_syntax.spec
+  and oper = Css_syntax.oper
+  and simple = Css_syntax.simple
   and adj = A of adj * simple | AS of simple
   and sib = S of sib * adj | SA of adj
   and kid = K of kid * sib | KS of sib
   and desc = D of desc * kid | DK of kid
   and sel = desc
-  type combinator = Desc | Kid | Sib | Adj
+  type combinator = Css_syntax.combinator
 
-  type regsel = ((combinator * simple) list)
+  type regsel = Css_syntax.regsel
 
   let rec simple2regsel c s = [c, s]
   and adj2regsel c a = match a with
@@ -507,11 +507,6 @@ module RealCSS = struct
 
 
 
-
-
-
-
-
   module type PAIRINGS = functor (LooseSel : UniformSelector) -> functor
       (TightSel : UniformSelector with type sel = LooseSel.part with type SetOfSel.t = LooseSel.SetOfPart.t) -> 
   sig
@@ -681,7 +676,26 @@ module RealCSS = struct
   let unions ss = List.fold_left union SelSet.empty ss
   let negate _ = SelSet.empty
   let subtract = SelSet.diff
-  let singleton s = empty (* TODO *)
+  let singleton str =
+    let module S = Css_syntax in
+    let module P = Css_parser in
+    let module L = Css_lexer in
+    let lexbuf = Lexing.from_string str in
+    try
+      lexbuf.Lexing.lex_curr_p <- Lexing.dummy_pos;
+      let synsel = P.selector L.token lexbuf in
+      SelSet.singleton (regsel2desc synsel)
+    with
+    | Failure "lexing: empty token" ->
+      failwith (sprintf "error lexing selector %s at %s"
+                  str
+                  (Pos.rangeToString
+                     lexbuf.Lexing.lex_curr_p lexbuf.Lexing.lex_curr_p))
+    | Css_parser.Error ->
+      failwith (sprintf "error parsing selector %s at %s"
+                  str
+                  (Pos.rangeToString
+                     lexbuf.Lexing.lex_curr_p lexbuf.Lexing.lex_curr_p))
   let singleton_string _ = None
   let var _ = SelSet.empty
   let is_subset (_ : 'a IdMap.t) s1 s2 =
@@ -706,8 +720,21 @@ module RealCSS = struct
     then pretty_sel (SelSet.choose t)
     else SelSetExt.p_set pretty_sel t
 
+  let pretty s = (SelSetExt.p_set Pretty.pretty_sel s Format.str_formatter; Format.flush_str_formatter())
+  let is_empty s = SelSet.exists (fun sel -> 
+    (List.exists (fun sim -> not (SimpleSet.is_empty (canonical sim sim))) (List.map snd (desc2regsel sel)))) s
+  let is_overlapped s1 s2 = 
+    not (SelSet.is_empty (intersect s1 s2))
+  let is_equal s1 s2 = (is_subset IdMap.empty s1 s2) && (is_subset IdMap.empty s2 s1)
+  let example s = 
+    let pretty_sel s = (Pretty.pretty_sel s Format.str_formatter; Format.flush_str_formatter()) in
+    try Some (pretty_sel (SelSet.choose s)) with Not_found -> None
+end
 
 
+module TestRealCSS = struct
+  open RealCSS
+  open Css_syntax
 
   let n = ref (-1)
   let fresh_var () = (* a, b, ... z, aa, bb, ..., zz, ... *)
@@ -780,16 +807,10 @@ module RealCSS = struct
       end else true in
     let singleTest () =
       begin
-        (* s1:e (d > c) b a
-         * s2:d (c > b > a) *)
-        let m2a x n = AS (TSel x , [SpClass (string_of_int n)]) in
-        let m2s x n = SA (m2a x n) in
-        let m2k x n = KS (m2s x n) in
-        let m2d x n = DK (m2k x n) in
-        (* let s1 = DK (K(KS(S(S(m2s "e", m2a "d"), m2a "c")), m2s "b")) in *)
-        (* let s2 = D (m2d "f", K(m2k "c", m2s "b")) in *)
-        let s1 = D(D(D(m2d "e" 1, K(m2k "d" 1, m2s "c" 1)), m2k "b" 1), m2k "a" 1) in
-        let s2 = D(m2d "d" 2, K(K(m2k "c" 2, m2s "b" 2), m2s "a" 2)) in
+        (* let s1 = SelSet.choose (singleton "e.x1 ~ d.x1 ~ c.x1 > b.x1") in *)
+        (* let s2 = SelSet.choose (singleton "f.x2 c.x2 > b.x2") in *)
+        let s1 = SelSet.choose (singleton "e.x1 d.x1 > c.x1 b.x1 a.x1") in
+        let s2 = SelSet.choose (singleton "d.x2 c.x2 > b.x2 > a.x2") in
         testInter s1 s2
       end in
     if num = 0 then singleTest() else begin
@@ -801,15 +822,4 @@ module RealCSS = struct
       let t = random_sel (1 + Random.int 10) "t" in
       (testRegsel r) && (testSel s) && (testInter s t) && (testSels (num-1))
     end
-
-
-  let pretty s = (SelSetExt.p_set Pretty.pretty_sel s Format.str_formatter; Format.flush_str_formatter())
-  let is_empty s = SelSet.exists (fun sel -> 
-    (List.exists (fun sim -> not (SimpleSet.is_empty (canonical sim sim))) (List.map snd (desc2regsel sel)))) s
-  let is_overlapped s1 s2 = 
-    not (SelSet.is_empty (intersect s1 s2))
-  let is_equal s1 s2 = (is_subset IdMap.empty s1 s2) && (is_subset IdMap.empty s2 s1)
-  let example s = 
-    let pretty_sel s = (Pretty.pretty_sel s Format.str_formatter; Format.flush_str_formatter()) in
-    try Some (pretty_sel (SelSet.choose s)) with Not_found -> None
 end
