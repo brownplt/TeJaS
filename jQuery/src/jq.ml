@@ -7,6 +7,7 @@ module TestRealCSS = Css.TestRealCSS
 open JQuery_syntax
 open TypImpl
 open JQuery_typechecking
+module LS = LocalStructure
 
 type arith = 
   | Var of int
@@ -168,13 +169,28 @@ let main () =
     with Typ_error(p, e) -> (text "FAILED: "; text e; newline ()) end;
     text "Cache hits:   "; int !JQuery_subtyping.cache_hits; newline ();
     text "Cache misses: "; int !JQuery_subtyping.cache_misses; newline ();
-    JQuery_subtyping.print_cache "Cache is: " std_formatter; newline()
+    (* JQuery_subtyping.print_cache "Cache is: " std_formatter; newline() *)
+  end in
+  let test5 () = begin
+    let text = "(Tweet : \"\"\"A structure for tweets\"\"\"
+                   DivElement
+                   optional classes = [first, last]
+                   classes = [tweet]
+                   /* ignore this! */
+                   (Author : DivElement classes = [author] ...)
+                   (Time : DivElement classes = [time] )
+                   (Content : DivElement classes = [content] ... <Other> ...)
+                   ...
+               )" in
+    let decls = LS.parseLocalStructure text in
+    List.map (fun d -> LS.Pretty.p_decl d Format.std_formatter; Format.print_newline()) decls
   end in
   (* test1 500; *)
   (* test2 500 *)
   (* test3 100; *)
   test4 ();
-  Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels 1000)
+  (* Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels 1000); *)
+  test5 ()
 ;;
 
 main ()

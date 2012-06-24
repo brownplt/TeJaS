@@ -32,33 +32,34 @@ let b = 'v'|'\\' four_zeros("58"|"78")("\r\n"|w)?|'\\''v'
 
 
 rule token = parse
-| w+ { S }
-| "." { DOT }
-| "/*" { block_comment lexbuf }
-| "~="             { INCLUDES }
-| "|="             { DASHMATCH }
-| "^="             { PREFIXMATCH }
-| "$="             { SUFFIXMATCH }
-| "*="             { SUBSTRINGMATCH }
-| ident as x          { IDENT x }
-| '"' string1 as x '"' { STRING x }
-| '\'' string2 as x '\'' { STRING x}
-| "#" name as x        { HASH x }
-| "+"           { PLUS }
-| ">"           { GREATER }
-| ","           { COMMA }
-| "~"           { TILDE }
-| ":" { COLON }
-| "[" { LBRACK }
-| "]" { RBRACK }
-| "=" { EQUALS }
-| eof { EOF }
+| '\r' | '\n' | "\r\n"      { new_line lexbuf; S }
+| ' ' | '\t' | '\x0C'       { S }
+| "."                       { DOT }
+| "/*"                      { block_comment lexbuf }
+| "~="                      { INCLUDES }
+| "|="                      { DASHMATCH }
+| "^="                      { PREFIXMATCH }
+| "$="                      { SUFFIXMATCH }
+| "*="                      { SUBSTRINGMATCH }
+| ident as x                { IDENT x }
+| '"' (string1 as x) '"'    { STRING x }
+| '\'' (string2 as x) '\''  { STRING x}
+| "#" (name as x)           { HASH x }
+| "+"                       { PLUS }
+| ">"                       { GREATER }
+| ","                       { COMMA }
+| "~"                       { TILDE }
+| ":"                       { COLON }
+| "["                       { LBRACK }
+| "]"                       { RBRACK }
+| "="                       { EQUALS }
+| eof                       { EOF }
 
 and block_comment = parse
-  | "*/" { token lexbuf }
-  | '*' { block_comment lexbuf }
-  | [ '\n' '\r' ]  { block_comment lexbuf }
-  | [^ '\n' '\r' '*'] { block_comment lexbuf }
+  | "*/"                    { token lexbuf }
+  | '*'                     { block_comment lexbuf }
+  | '\n' | '\r' | "\r\n"    { new_line lexbuf; block_comment lexbuf }
+  | [^ '\n' '\r' '*']       { block_comment lexbuf }
 
 
 

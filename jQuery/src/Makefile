@@ -4,10 +4,17 @@ OBJDIR=../obj
 comma:= ,
 empty:=
 space:= $(empty) $(empty)
-INCLUDES = util,RegLang,patterns,css
+INCLUDES = util,RegLang,patterns,css,DomStructure
+
+UNAME := $(shell uname)
+ifeq ($(UNAME), Linux)
+MENHIR := /contrib/projects/ocaml3.12.1/share/menhir
+else
+MENHIR := \"C:\cygwin\usr\local\share\menhir\"
+endif
 
 OCAMLBUILD = ocamlbuild -build-dir $(OBJDIR) -libs unix,str \
-	-menhir "menhir --stdlib \"C:\cygwin\usr\local\share\menhir\"" \
+	-menhir "menhir --stdlib $(MENHIR)" \
 	-lflags -I,../lib -Is $(INCLUDES) -cflags -annot -cflags -I,../lib -Is $(INCLUDES)
 
 debug: builddir
