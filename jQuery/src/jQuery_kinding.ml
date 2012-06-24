@@ -96,6 +96,10 @@ and kind_check_typ (env : env) (recIds : id list) (typ : typ) : kind = match typ
       | SMult m -> IdMap.add x (BMultBound(m, k1)) env in
     let k2 = kind_check_typ env' recIds t in
     if k1 <> k2 then kind_mismatch_typ t k1 k2 else k1
+  | TRec (_, x, t) ->
+    let env' = IdMap.add x (BTypBound(TTop, KStar)) env in
+    let k = kind_check_typ env' recIds t in
+    if k <> KStar then kind_mismatch_typ typ k KStar else KStar
   | TLambda (_, args, t) ->
     let env' = fold_right (fun (x, k) env -> 
       match k with

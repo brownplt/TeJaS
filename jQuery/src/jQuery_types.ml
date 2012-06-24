@@ -39,6 +39,7 @@ module Make (Pat : SET) (Css : CSS) = struct
     | TArrow of string option * typ list * typ option * typ
     | TLambda of string option * (id * kind) list * typ
     | TApp of typ * sigma list
+    | TRec of string option * id * typ
     | TDom of string option * typ * sel
   and multiplicity = 
     | MPlain of typ
@@ -56,6 +57,7 @@ module Make (Pat : SET) (Css : CSS) = struct
     | TInter(None, t1, t2) -> TInter(n, t1, t2)
     | TForall(None, x, t, b) -> TForall(n, x, t, b)
     | TArrow(None, t1, t2, t3) -> TArrow(n, t1, t2, t3)
+    | TRec(None, id, t) -> TRec(n, id, t)
     | TDom(None, t, sel) -> TDom(n, t, sel)
     | _ -> typ
 
@@ -64,6 +66,7 @@ module Make (Pat : SET) (Css : CSS) = struct
     | TInter(name, _, _) -> name
     | TForall(name, _, _, _) -> name
     | TArrow(name, _, _, _) -> name
+    | TRec(name, _, _) -> name
     | TDom(name, _, _) -> name
     | _ -> None
 
@@ -72,6 +75,7 @@ module Make (Pat : SET) (Css : CSS) = struct
     | TInter(_, t1, t2) -> TInter(n, t1, t2)
     | TForall(_, x, t, b) -> TForall(n, x, t, b)
     | TArrow(_, t1, t2, t3) -> TArrow(n, t1, t2, t3)
+    | TRec(_, id, t) -> TRec(n, id, t)
     | TDom(_, t, sel) -> TDom(n, t, sel)
     | _ -> typ
 
@@ -148,7 +152,7 @@ module Make (Pat : SET) (Css : CSS) = struct
                        (if multiLine 
                         then vert (pairOff (text " " :: argTexts)) 
                         else horz (empty::argTexts))] ;
-               horz [text "->"; typ r_typ ]])
+               horz [text "=>"; typ r_typ ]])
       | TArrow (name, arg_typs, varargs, r_typ) ->
         let vararg = match varargs with
           | None -> []
@@ -158,7 +162,8 @@ module Make (Pat : SET) (Css : CSS) = struct
                               | TArrow _ -> parens [typ' true at]
                               | _ -> typ' true at 
                               end) arg_typs) @ vararg)) in
-        namedType name (hnestOrHorz 0 [ argText; horz [text "->"; typ r_typ ]])
+        namedType name (hnestOrHorz 0 [ argText; horz [text "=>"; typ r_typ ]])
+      | TRec (n, x, t) -> namedType n (horz [ text "rec"; text x; text "."; typ t ])
       | TDom (name, t, sel) ->
         namedType name (horzOrVert [horz [typ t; text "@"]; Css.p_css sel])
     and multiplicity m =
@@ -224,6 +229,7 @@ module Make (Pat : SET) (Css : CSS) = struct
       let (f1t, f1m) = (free_sigma_ids bound) in
       let (f2t, f2m) = (free_typ_ids typ) in
       (remove alpha (union f1t f2t), union f1m f2m)
+    | TRec (_, x, t) -> let (ts, ms) = free_typ_ids t in (remove x ts, ms)
     | TDom(_, t, _) -> free_typ_ids t
 
   let rec subst x (s : sigma) (sigma : sigma) : sigma =
@@ -247,45 +253,50 @@ module Make (Pat : SET) (Css : CSS) = struct
       | TApp(f, args) -> TApp(typ_help f, List.map sigma_help args)
       | TLambda (n, yks, t) ->
         let ys = IdSetExt.from_list (map fst2 yks) in
-        if IdSet.mem x ys then
-          typ
-        else begin
-          let fresh_var old = (* a, b, ... z, aa, bb, ..., zz, ... *)
-            let rec try_ascii m n =
-              let attempt = String.make m (Char.chr n) in
-              if not (List.mem attempt old) then attempt
-              else if (n < int_of_char 'z') then try_ascii m (n+1)
-              else try_ascii (m+1) (Char.code 'a') in
-            try_ascii 1 (Char.code 'a') in
-          let (free_t, free_m) = free_sigma_ids s in
-          let (rev_new_yks, typ_substs, mult_substs) =
-            List.fold_left (fun (new_yks, typ_substs, mult_substs) (y, k) ->
-              match k with
-              | KStar
-              | KArrow _ -> 
-                if not (IdSet.mem y free_t) then ((y,k)::new_yks, typ_substs, mult_substs)
-                else 
-                  let x = fresh_var ((IdMapExt.keys typ_substs) @ IdSetExt.to_list free_t) in
-                  ((x,k)::new_yks, IdMap.add y (STyp (TId x)) typ_substs, mult_substs)
-              | KMult _ ->
-                if not (IdSet.mem y free_m) then ((y,k)::new_yks, typ_substs, mult_substs)
-                else 
-                  let x = fresh_var ((IdMapExt.keys mult_substs) @ IdSetExt.to_list free_m) in
-                  ((x,k)::new_yks, typ_substs, IdMap.add y (SMult (MId x)) mult_substs))
-              ([], IdMap.empty, IdMap.empty) yks in
-          let new_yks = List.rev rev_new_yks in
-          let t' = IdMap.fold subst typ_substs (STyp t) in
-          let t'' = IdMap.fold subst mult_substs t' in
-          let t''' = match t'' with STyp t -> t | _ -> failwith "impossible" in
-          TLambda (n, new_yks, typ_help t''')
-        end
+        if IdSet.mem x ys then typ
+        else
+          let (new_yks, t') = rename_avoid_capture yks t in
+          TLambda (n, new_yks, typ_help t')
       | TId y -> if x = y then match s with STyp t -> t | SMult _ -> typ else typ
       | TInter (name, t1, t2) -> TInter (name, typ_help t1, typ_help t2)
       | TUnion (name, t1, t2) -> TUnion (name, typ_help t1, typ_help t2)
       | TArrow (name, args, var, ret) -> TArrow (name, map typ_help args, opt_map typ_help var, typ_help ret)
       | TForall (name, alpha, bound, body) -> if x = alpha then typ else
-          TForall (name, alpha, sigma_help bound, typ_help body) (* fix capture avoidance here too *)
+          let (beta, body') = rename_avoid_capture [(alpha, KStar)] body in
+          TForall (name, fst (List.hd beta), sigma_help bound, typ_help body')
+      | TRec (name, alpha, body) -> if x = alpha then typ else
+          let (beta, body') = rename_avoid_capture [(alpha, KStar)] body in
+          TRec (name, fst (List.hd beta), typ_help body')
       | TDom (name, t, sel) -> TDom(name, typ_help t, sel)
+    and rename_avoid_capture (yks : (id * kind) list) (t : typ) =
+      let fresh_var old = (* a, b, ... z, aa, bb, ..., zz, ... *)
+        let rec try_ascii m n =
+          let attempt = String.make m (Char.chr n) in
+          if not (List.mem attempt old) then attempt
+          else if (n < int_of_char 'z') then try_ascii m (n+1)
+          else try_ascii (m+1) (Char.code 'a') in
+        try_ascii 1 (Char.code 'a') in
+      let (free_t, free_m) = free_sigma_ids s in
+      let (rev_new_yks, typ_substs, mult_substs) =
+        List.fold_left (fun (new_yks, typ_substs, mult_substs) (y, k) ->
+          match k with
+          | KStar
+          | KArrow _ ->
+            if not (IdSet.mem y free_t) then ((y,k)::new_yks, typ_substs, mult_substs)
+            else
+              let x = fresh_var ((IdMapExt.keys typ_substs) @ IdSetExt.to_list free_t) in
+              ((x,k)::new_yks, IdMap.add y (STyp (TId x)) typ_substs, mult_substs)
+          | KMult _ ->
+            if not (IdSet.mem y free_m) then ((y,k)::new_yks, typ_substs, mult_substs)
+            else
+              let x = fresh_var ((IdMapExt.keys mult_substs) @ IdSetExt.to_list free_m) in
+              ((x,k)::new_yks, typ_substs, IdMap.add y (SMult (MId x)) mult_substs))
+          ([], IdMap.empty, IdMap.empty) yks in
+      let new_yks = List.rev rev_new_yks in
+      let t' = IdMap.fold subst typ_substs (STyp t) in
+      let t'' = IdMap.fold subst mult_substs t' in
+      let t''' = match t'' with STyp t -> t | _ -> failwith "impossible" in
+      (new_yks, t''')
     in sigma_help sigma
 
   let typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> t | _ -> failwith "impossible"
@@ -408,6 +419,7 @@ module Make (Pat : SET) (Css : CSS) = struct
       | t1, t2 -> if t1 = t2 then t1 else TInter(n, t1, t2)
     end
     | TForall (n, alpha, bound, typ) -> TForall(n, alpha, canonical_sigma bound, c typ)
+    | TRec (n, alpha, typ) -> TRec(n, alpha, c typ)
     | TArrow (n, args, var, ret) -> TArrow (n, map c args, opt_map c var, c ret)
     | TDom(n, t, sel) -> TDom(n, c t, sel)
 
