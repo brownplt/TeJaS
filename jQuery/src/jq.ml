@@ -8,6 +8,7 @@ open JQuery_syntax
 open TypImpl
 open JQuery_typechecking
 module LS = LocalStructure
+module TJSEnv = Typedjs_env
 
 type arith = 
   | Var of int
@@ -148,6 +149,29 @@ let main () =
     let p = Pos.dummy in 
     let open Exp in
     let open JQuery_env in
+    let txt = "type jqFirst = ['jQ<1+<'a>>] => 'jQ<1<'a>>
+               type jqOneA = 'jQ<1<'a>>
+               type jqZerooneB = 'jQ<01<'b>>" in
+    let env = TJSEnv.parse_env txt "Test env" in
+    let rec print_decl d =
+      let open Typedjs_syntax in
+      let open Format in
+      let open FormatExt in
+      let open WritTyp in
+      match d with
+      | EnvBind(_, id, t) -> label (id ^ " : ") [print_typ t]
+      | EnvType(_, id, t) -> label (id ^ " = ") [print_typ t]
+      | EnvPrim(_, id) -> horz[text "Prim"; text id]
+      | RecBind ds -> begin match ds with
+        | [] -> failwith "impossible"
+        | [d] -> label "rec " [print_decl d]
+        | d::ds -> vert ((horz[text "rec"; print_decl d])::(List.map (fun d -> horz[text "and"; print_decl d]) ds))
+      end
+      | ObjectTrio (_, (c, ct), (p, pt), (i, it)) ->
+        vert[horz[text "constructor"; text c; text "="; print_typ ct];
+             horz[text "prototype"; text p; text "="; print_typ pt];
+             horz[text "instance"; text i; text "="; print_typ it]] in
+    vert (List.map print_decl env) Format.std_formatter; Format.print_newline();
     let doLet x b e = ELet(p, x, b, e) in
     let cheatTyp t = ECheat(p, t, EConst(p, "")) in
     let tDom = TDom(None, TId "a", Css.all) in
