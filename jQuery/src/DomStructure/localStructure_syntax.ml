@@ -24,6 +24,8 @@ module LSIdMap = Map.Make (LSIdOrderedType)
 
 module LSIdMapExt = MapExt.Make (LSIdOrderedType) (LSIdMap)
 
+module LSIdSet = Set.Make(LSIdOrderedType)
+
 type preClauseMap = typ list LSIdMap.t
 
 type clauseMap = multiplicity LSIdMap.t

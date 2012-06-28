@@ -7,22 +7,66 @@ open JQuery_env
 open LocalStructure_syntax
 open LocalStructure_compiler
 open Exp
+open Css_syntax
 
 
 (**** structure functions *)
 
 
-let backform (benv : backformEnv) (sel : sel) : lsid list = []
+let backform (benv : backformEnv) (sel : sel) : LSIdSet.t =
+  let rec list2lsidset l = (match l with
+    | [] -> LSIdSet.empty
+    | h::t -> LSIdSet.add h (list2lsidset t)) in
+  (* assuming we have sel2regsel exposed *)
+  let sel2regsel sel = [] in
+  let regsel = sel2regsel sel in
+  let specs = (snd (snd (List.hd (List.rev regsel)))) in
+  let classes = List.fold_left (fun acc sp -> 
+    match sp with 
+    |SpClass s -> s::acc 
+    | _ -> acc)
+    [] specs in
+  (* let id = try (let SpId s = List.find *)
+  (* 		   (fun sp -> match sp with  *)
+  (* 		   | SpId _ -> true  *)
+  (* 		   | _ -> false) specs in Some s)  *)
+  (*   with Not_found -> None in *)
+  let (BackformEnv (classMap, optClassMap, idMap)) = benv in
+  let classMatches = match classes with 
+    | [] -> LSIdSet.empty
+    | hd::tl -> List.fold_left (fun acc c -> 
+      try LSIdSet.inter acc (list2lsidset (StringMap.find c classMap))
+      with Not_found -> LSIdSet.empty)
+      (try (list2lsidset (StringMap.find 
+			    hd
+			    classMap))
+      with Not_found -> LSIdSet.empty)
+      tl in
+  (* let idMatches = match id with *)
+  (*   | None -> LSIdSet.empty *)
+  (*   | Some s ->  *)
+  (*     (try (list2lsidset (StringMap.find s idMap)) *)
+  (*      with Not_found -> LSIdSet.empty) in *)
+  (* TODO: take idMatches into account *)
+  classMatches
+    
+let childrenOf (env : structureEnv) (sel : sel) : multiplicity =
+  let lsidSet = backform (fst env) sel in
+  let ClauseEnv (childMap, _, _, _) = (snd env) in
+  LSIdSet.fold (fun lsid acc -> 
+    (try MSum (acc, LSIdMap.find lsid childMap) 
+     with Not_found -> failwith "impossible: lsid not found in childMap"))
+    lsidSet (MZero (MPlain (TDom (None, TId "ElementAny", Css.singleton "broken"))))
 
-let childrenOf (cenv : clauseEnv) (lsids : lsid list) : multiplicity = MPlain (TBot)
-
-let rec normalize (env : env) (t : typ) : typ = t (* match t with  *)
-  (* | TDom (s, (TDom (_,t,sel2)) sel1) ->  *)
-  (*   let normT = normalize env t in *)
-  (*   TDom(s, normT, Css.intersect sel2 sel1) *)
-  (* | TDom (_, t, s) -> *)
-  (* | _ -> t *)
-
+let rec normalize (env : env) (t : typ) : typ = match t with
+  | TDom (s, (TDom (_,t,sel2)), sel1) ->
+    normalize env (TDom (s, t, Css.intersect sel2 sel1))
+  | TDom (s, (TId id), sel) -> normalize env (TDom (s, fst (lookup_typ_id id env), sel))
+  | TId id -> normalize env (fst (lookup_typ_id id env))
+  (* | TUnion (s, t1, t2) -> TUnion (s, normalize env t1, normalize env t2) *)
+  (* | TInter (s, t1, t2) -> TInter (s, normalize env t1, normalize env t2) *)
+  (* | TForall (s, id, sigma, t) -> TForall (s, id, sigma, normalize env t) *)
+  | _ -> t
 
 (**** END structure functions *)
 
