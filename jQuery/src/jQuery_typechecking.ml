@@ -4,8 +4,27 @@ open JQuery_syntax
 open TypImpl
 open JQuery_subtyping
 open JQuery_env
+open LocalStructure_syntax
+open LocalStructure_compiler
 open Exp
 
+
+(**** structure functions *)
+
+
+let backform (benv : backformEnv) (sel : sel) : lsid list = []
+
+let childrenOf (cenv : clauseEnv) (lsids : lsid list) : multiplicity = MPlain (TBot)
+
+let rec normalize (env : env) (t : typ) : typ = t (* match t with  *)
+  (* | TDom (s, (TDom (_,t,sel2)) sel1) ->  *)
+  (*   let normT = normalize env t in *)
+  (*   TDom(s, normT, Css.intersect sel2 sel1) *)
+  (* | TDom (_, t, s) -> *)
+  (* | _ -> t *)
+
+
+(**** END structure functions *)
 
 let simpl_print e = match e with
   | EConst(p, _) -> "EConst " ^ (Pos.toString p)
