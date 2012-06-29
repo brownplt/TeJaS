@@ -7,8 +7,10 @@ module TestRealCSS = Css.TestRealCSS
 open JQuery_syntax
 open TypImpl
 open JQuery_typechecking
+module LSC = LocalStructure_compiler
 module LS = LocalStructure
 module TJSEnv = Typedjs_env
+module Env = JQuery_env
 
 type arith = 
   | Var of int
@@ -195,29 +197,47 @@ let main () =
     text "Cache misses: "; int !JQuery_subtyping.cache_misses; newline ();
     (* JQuery_subtyping.print_cache "Cache is: " std_formatter; newline() *)
   end in
-  let test5 () = begin
-    let text = "(Tweet : \"\"\"A structure for tweets\"\"\"
+  let printLSTest t = begin 
+    let decls = LS.parseLocalStructure t in
+    List.iter (fun d -> LS.Pretty.p_decl d Format.std_formatter; Format.print_newline()) decls;
+    FormatExt.vert (Env.print_env (LSC.popEnvWithTDoms decls)) Format.std_formatter; Format.print_newline(); print_newline();
+    LSC.print_structureEnv (LSC.compileStructure decls) Format.std_formatter;
+    print_newline(); end in
+  let testLSComp1 = "(Tweet : \"\"\"A structure for tweets\"\"\"
                    DivElement
                    optional classes = [first, last]
                    classes = [tweet]
                    /* ignore this! */
-                   (Author : DivElement classes = [author] ...)
+                   (Author : DivElement classes = [author, fancy] 
+                      (Test : DivElement classes = [test]))
                    (Time : DivElement classes = [time] )
-                   (Content : DivElement classes = [content] ... <Other> ...)
+                   (Content : DivElement classes = [content,fancy] 
+                      ...
+                      ...
+                      <Other>
+                      ...)
+                   <Time>
+                   ...
                    ...
                )" in
-    let decls = LS.parseLocalStructure text in
-    List.map (fun d -> LS.Pretty.p_decl d Format.std_formatter; Format.print_newline()) decls
-  end in
-  (* test1 500; *)
-  (* test2 500 *)
-  (* test3 100; *)
-  test4 ();
-  (* Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels 1000); *)
-  test5 ()
+  let testLSComp2 = 
+    "(a : DivElement classes = [ca1] optional classes = [oca1, oca2])
+     (b : DivElement classes = [cb1]
+         ...
+         <a>
+         ...
+         (c : DivElement classes = [cc1, cc2]
+             <a>
+             ...
+             <b>)
+         (d : DivElement classes = [cd1] ...))" in 
+  printLSTest testLSComp1;
+  printLSTest testLSComp2
+(* test1 500; *)
+(* test2 500 *)
+(* test3 100; *)
+(* Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels 1000); *)
 ;;
 
 main ()
       
-      
-  
