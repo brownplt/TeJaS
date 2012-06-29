@@ -50,8 +50,8 @@ let cache_misses = ref 0
 let rec subtype_sigma lax (env : env) cache s1 s2 = 
   let open SigmaPair in
   match s1, s2 with
-  | STyp t1, STyp t2 -> subtype_typ lax env cache t1 t2
-  | SMult m1, SMult m2 -> subtype_mult lax env cache m1 m2
+  | STyp t1, STyp t2 -> subtype_typ lax env senv cache t1 t2
+  | SMult m1, SMult m2 -> subtype_mult lax env senv cache m1 m2
   (* SUPER-CRITICAL LAXITY RULE *)
   | SMult m1, STyp t2 -> 
     if lax then
@@ -62,14 +62,14 @@ let rec subtype_sigma lax (env : env) cache s1 s2 =
   (* ************************** *)
   | _ -> (cache, false)
 
-and subtype_typ lax env cache t1 t2 : (bool SPMap.t * bool) =
+and subtype_typ lax env senv cache t1 t2 : (bool SPMap.t * bool) =
   let subtype_sigma = subtype_sigma lax in
   let subtype_typ = subtype_typ lax in
   let open SigmaPair in
   let (|||) c thunk = if (snd c) then c else thunk (fst c) in
   let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
-  let subtype_typ_list c t1 t2 = c &&& (fun c -> subtype_typ env c t1 t2) in
-  let subtype_sigma_list c t1 t2 = c &&& (fun c -> subtype_sigma env c t1 t2) in
+  let subtype_typ_list c t1 t2 = c &&& (fun c -> subtype_typ env senv c t1 t2) in
+  let subtype_sigma_list c t1 t2 = c &&& (fun c -> subtype_sigma env senv c t1 t2) in
   let addToCache (cache, ret) = (SPMap.add (project_typs t1 t2 env, STyps (t1, t2)) ret cache, ret) in
   try incr cache_hits; (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
   with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
@@ -80,24 +80,24 @@ and subtype_typ lax env cache t1 t2 : (bool SPMap.t * bool) =
       (cache, P.is_subset (pat_env env) pat1 pat2)
     | TPrim p1, TPrim p2 -> (cache, p1 = p2)
     | TDom (_, t1, sel1), TDom (_, t2, sel2) ->
-      subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
-    | TDom _, _ -> subtype_typ env cache t1 (TDom(None, t2, Css.all))
-    | _, TDom _ -> subtype_typ env cache (TDom(None, t1, Css.all)) t2
+      subtype_typ env senv cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
+    | TDom _, _ -> subtype_typ env senv cache t1 (TDom(None, t2, Css.all))
+    | _, TDom _ -> subtype_typ env senv cache (TDom(None, t1, Css.all)) t2
     | TId n1, t2 when t2 = TId n1 -> cache, true (* SA-Refl-TVar *)
     | TId n1, _ -> (* SA-Trans-TVar *)
       (try
          (match IdMap.find n1 env with 
-         | BTypBound (t1, _) -> subtype_typ env cache t1 t2
+         | BTypBound (t1, _) -> subtype_typ env senv cache t1 t2
          | _ -> cache, false)
        with Not_found -> cache, false)
     | TUnion(_, t11, t12), t2 -> (* order matters -- left side must be split first! *)
-      subtype_typ env cache t11 t2 &&& (fun c -> subtype_typ env c t12 t2)
+      subtype_typ env senv cache t11 t2 &&& (fun c -> subtype_typ env senv c t12 t2)
     | t1, TUnion(_, t21, t22) ->
-      subtype_typ env cache t1 t21 ||| (fun c -> subtype_typ env c t1 t22)
+      subtype_typ env senv cache t1 t21 ||| (fun c -> subtype_typ env senv c t1 t22)
     | t1, TInter(_, t21, t22) -> (* order matters -- right side must be split first! *)
-      subtype_typ env cache t1 t21 &&& (fun c -> subtype_typ env c t1 t22)
+      subtype_typ env senv cache t1 t21 &&& (fun c -> subtype_typ env senv c t1 t22)
     | TInter(_, t11, t12), t2 ->
-      subtype_typ env cache t11 t2 ||| (fun c -> subtype_typ env c t12 t2)
+      subtype_typ env senv cache t11 t2 ||| (fun c -> subtype_typ env senv c t12 t2)
     | TApp(t1, args1), TApp(t2, args2) ->
       if (List.length args1 <> List.length args2) then (cache, false)
       else List.fold_left2 subtype_sigma_list (cache, true) ((STyp t1)::args1) ((STyp t2)::args2)
@@ -123,19 +123,19 @@ and subtype_typ lax env cache t1 t2 : (bool SPMap.t * bool) =
         (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
     | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
       (* Kernel rule *)
-      if not (equivalent_sigma env s1 s2) then cache, false
+      if not (equivalent_sigma env s1 s2) thepn cache, false
       else 
         let t2 = typ_typ_subst x2 (TId x1) t2 in
         let env' = match s2 with
           | STyp t -> IdMap.add x1 (BTypBound (t, KStar)) env
           | SMult m -> IdMap.add x1 (BMultBound (m, KMult KStar)) env in
-        subtype_typ env' cache t1 t2
+        subtype_typ env' senv cache t1 t2
     | _ -> (cache, false))
   end
     
-and subtype_mult lax env cache m1 m2 = 
-  let subtype_mult = subtype_mult lax env in
-  let subtype_typ = subtype_typ lax env in (* ok for now because there are no MId binding forms in Mult *)
+and subtype_mult lax env senv cache m1 m2 = 
+  let subtype_mult = subtype_mult lax env senv in
+  let subtype_typ = subtype_typ lax env senv in (* ok for now because there are no MId binding forms in Mult *)
   let open SigmaPair in
   let addToCache (cache, ret) = (SPMap.add (project_mults m1 m2 env, SMults (m1, m2)) ret cache, ret) in
   try incr cache_hits; (cache, SPMap.find (project_mults m1 m2 env, SMults (m1, m2)) cache)
@@ -203,12 +203,12 @@ let print_cache lbl =
     !cache
 
 (* SUBTYPING ONLY WORKS ON CANONICAL FORMS *)
-let subtype_sigma lax env s1 s2 =
-  (let (c, r) = (subtype_sigma lax env !cache (canonical_sigma s1) (canonical_sigma s2))
+let subtype_sigma lax env senv s1 s2 =
+  (let (c, r) = (subtype_sigma lax env senv !cache (canonical_sigma s1) (canonical_sigma s2))
    in cache := c; r)
-let subtype_typ lax env t1 t2 =
-  (let (c, r) = (subtype_typ lax env !cache (canonical_type t1) (canonical_type t2))
+let subtype_typ lax env senv t1 t2 =
+  (let (c, r) = (subtype_typ lax env senv !cache (canonical_type t1) (canonical_type t2))
    in cache := c; r)
-let subtype_mult lax env m1 m2 =
-  (let (c, r) = (subtype_mult lax env !cache (canonical_multiplicity m1) (canonical_multiplicity m2))
+let subtype_mult lax env senv m1 m2 =
+  (let (c, r) = (subtype_mult lax env senv !cache (canonical_multiplicity m1) (canonical_multiplicity m2))
    in cache := c; r)
