@@ -2,54 +2,59 @@ open Prelude
 open Typedjs_syntax
 open FormatExt
 open JQuery_syntax
-open TypImpl
+open Sig
 
 module List = ListExt
 exception Not_wf_typ of string
 
-let desugar_typ = Typedjs_desugar.desugar_typ
+module Make =
+  functor (TypImpl : TYP_ACTIONS) ->
+    functor (Desugar : Typedjs_desugar.DESUGAR with type typ = TypImpl.typ with type kind = TypImpl.kind) ->
+struct
+  open Desugar
+  let desugar_typ = Desugar.desugar_typ
 
-type env = {
-  id_typs : typ IdMap.t; (* type of term identifiers *)
-  lbl_typs : typ IdMap.t; (* types of labels *)
-  typ_ids: (typ * kind) IdMap.t; (* bounded type variables *)
-}
+  type env = {
+    id_typs : typ IdMap.t; (* type of term identifiers *)
+    lbl_typs : typ IdMap.t; (* types of labels *)
+    typ_ids: (typ * kind) IdMap.t; (* bounded type variables *)
+  }
 
-let print_env env fmt : unit =
-  let unname t = if (!TypImpl.Pretty.useNames) then replace_name None t else t in
-  vert [text "Types of term identifiers:";
-        vert (List.map (fun (id, t) -> 
-          horz [text id; text "="; (TypImpl.Pretty.typ (unname t))]) (IdMapExt.to_list env.id_typs));
-        empty; 
-        text "Types of labels:";
-        vert (List.map (fun (id, t) -> horz[text id; text "="; (TypImpl.Pretty.typ (unname t))]) 
-                (IdMapExt.to_list env.lbl_typs));
-        empty; 
-        text "Bounded type variables:";
-        vert (List.map (fun (id, (t, k)) -> 
-          horz [text id; 
-                vert [horz [text "="; (TypImpl.Pretty.typ (unname t))];
-                      horz [text "::"; TypImpl.Pretty.kind k]]]) (IdMapExt.to_list env.typ_ids));
-        empty
-       ] 
-    fmt;
-  Format.pp_print_flush fmt ()
+  let print_env env fmt : unit =
+    let unname t = if (TypImpl.Pretty.shouldUseNames ()) then TypImpl.replace_name None t else t in
+    vert [text "Types of term identifiers:";
+          vert (List.map (fun (id, t) -> 
+            horz [text id; text "="; (TypImpl.Pretty.typ (unname t))]) (IdMapExt.to_list env.id_typs));
+          empty; 
+          text "Types of labels:";
+          vert (List.map (fun (id, t) -> horz[text id; text "="; (TypImpl.Pretty.typ (unname t))]) 
+                  (IdMapExt.to_list env.lbl_typs));
+          empty; 
+          text "Bounded type variables:";
+          vert (List.map (fun (id, (t, k)) -> 
+            horz [text id; 
+                  vert [horz [text "="; (TypImpl.Pretty.typ (unname t))];
+                        horz [text "::"; TypImpl.Pretty.kind k]]]) (IdMapExt.to_list env.typ_ids));
+          empty
+         ] 
+      fmt;
+    Format.pp_print_flush fmt ()
 
 
-let empty_env = { 
-  id_typs = IdMap.empty;
-  lbl_typs = IdMap.empty;
-  typ_ids = IdMap.empty;
-}
+  let empty_env = { 
+    id_typs = IdMap.empty;
+    lbl_typs = IdMap.empty;
+    typ_ids = IdMap.empty;
+  }
 
-open Lexing
+  open Lexing
 
-let parse_env_buf lexbuf name =
-  try
-    lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with 
-      Lexing.pos_fname = name };
-    Typedjs_parser.env Typedjs_lexer.token lexbuf
-  with
+  let parse_env_buf lexbuf name =
+    try
+      lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with 
+        Lexing.pos_fname = name };
+      Typedjs_parser.env Typedjs_lexer.token lexbuf
+    with
     | Failure "lexing: empty token" ->
       failwith (sprintf "error lexing environment at %s"
                   (Pos.rangeToString
@@ -58,12 +63,12 @@ let parse_env_buf lexbuf name =
       failwith (sprintf "error parsing environment at %s"
                   (Pos.rangeToString
                      lexbuf.lex_curr_p lexbuf.lex_curr_p))
-let parse_env text name =
-  let lexbuf = Lexing.from_string text in
-  parse_env_buf lexbuf name
-let parse_env_file (cin : in_channel) (name : string) : env_decl list =
-  let lexbuf = Lexing.from_channel cin in
-  parse_env_buf lexbuf name
+  let parse_env text name =
+    let lexbuf = Lexing.from_string text in
+    parse_env_buf lexbuf name
+  let parse_env_file (cin : in_channel) (name : string) : env_decl list =
+    let lexbuf = Lexing.from_channel cin in
+    parse_env_buf lexbuf name
 
 
 (* let extend_global_env env lst = *)
@@ -90,11 +95,11 @@ let parse_env_file (cin : in_channel) (name : string) : env_decl list =
 (*     | ObjectTrio(pos, (c_id, c_typ), (p_id, p_typ), (i_id, i_typ)) -> *)
 (*       (\* add prototype field to constructor *\) *)
 (*       let c_typ = expose_twith env.typ_ids (desugar_typ pos c_typ) in *)
-(*       let c_absent_pat = match c_typ with TRef(_, TObject(f)) -> absent_pat f | _ -> P.all in *)
+(*       let c_absent_pat = match c_typ with TRef(_, TObject(f)) -> absent_pat f | _ -> Pat.all in *)
 (*       let constructor_with = TWith(c_typ, (mk_obj_typ  *)
-(*                                              [P.singleton "prototype", Present,  *)
+(*                                              [Pat.singleton "prototype", Present,  *)
 (*                                               TApp(TPrim("Mutable"), [TId(p_id)])] *)
-(*                                              (P.subtract c_absent_pat (P.singleton "prototype")))) in *)
+(*                                              (Pat.subtract c_absent_pat (Pat.singleton "prototype")))) in *)
 (*       let constructor = replace_name (Some c_id) (expose_twith env.typ_ids constructor_with) in *)
 (*       (\* add constructor field to prototype *\) *)
 (*       let p_typ = (desugar_typ pos p_typ) in *)
@@ -102,17 +107,17 @@ let parse_env_file (cin : in_channel) (name : string) : env_decl list =
 (*       let (prototype_added_fields, prototype_with) = match p_typ with  *)
 (*         | TWith(base, f) -> *)
 (*           (fields f), TWith(base, (mk_obj_typ *)
-(*                                     ((P.singleton "constructor", Maybe, TId(c_id))::(fields f)) *)
-(*                                     (P.subtract (absent_pat f) (P.singleton "constructor")))) *)
+(*                                     ((Pat.singleton "constructor", Maybe, TId(c_id))::(fields f)) *)
+(*                                     (Pat.subtract (absent_pat f) (Pat.singleton "constructor")))) *)
 (*         | TRef(_, TObject(f)) *)
 (*         | TSource(_, TObject(f)) -> *)
 (*           let temp =  *)
 (*             (expose_twith env.typ_ids  *)
 (*                (TWith(TId("AnObject"), *)
 (*                       (mk_obj_typ *)
-(*                          [P.singleton "constructor", Present, TId(c_id)] *)
-(*                          (P.subtract (absent_pat f) (P.singleton "constructor")))))) in *)
-(*           (fields f), TWith(temp, (mk_obj_typ (fields f) (P.subtract (absent_pat f) (P.singleton "constructor")))) *)
+(*                          [Pat.singleton "constructor", Present, TId(c_id)] *)
+(*                          (Pat.subtract (absent_pat f) (Pat.singleton "constructor")))))) in *)
+(*           (fields f), TWith(temp, (mk_obj_typ (fields f) (Pat.subtract (absent_pat f) (Pat.singleton "constructor")))) *)
 (*         | _ -> failwith "impossible" in *)
 (*       let prototype = match expose_twith env.typ_ids prototype_with with TRef (n, t) -> TSource(n, t) | t -> t in *)
 (*       (\* add __proto__ field to instance *\) *)
@@ -120,19 +125,19 @@ let parse_env_file (cin : in_channel) (name : string) : env_decl list =
 (*       let i_typ = match i_typ with TId _ -> simpl_typ env i_typ | _ -> i_typ in *)
 (*       let instance_with =  *)
 (*         let proto_fields = List.map (fun (n, _, t) -> (n, Inherited, t)) prototype_added_fields in *)
-(*         let proto_field_pat = P.unions (proto_pat::(List.map fst3 prototype_added_fields)) in *)
+(*         let proto_field_pat = Pat.unions (proto_pat::(List.map fst3 prototype_added_fields)) in *)
 (*         match i_typ with  *)
 (*         | TWith(base, f) -> *)
 (*           let absent_pat = absent_pat f in *)
-(*           let new_fields = List.filter (fun (p, _, _) -> not (P.is_empty p)) (List.map (fun (pat, p, t) -> *)
-(*             (P.subtract (P.subtract pat proto_field_pat) absent_pat, p, t)) *)
+(*           let new_fields = List.filter (fun (p, _, _) -> not (Pat.is_empty p)) (List.map (fun (pat, p, t) -> *)
+(*             (Pat.subtract (Pat.subtract pat proto_field_pat) absent_pat, p, t)) *)
 (*             (fields f)) in *)
 (*           TWith(base, mk_obj_typ ((proto_pat, Present, TId(p_id))::proto_fields@new_fields) absent_pat) *)
 (*         | TRef(_, TObject(f)) *)
 (*         | TSource(_, TObject(f)) -> *)
-(*           let absent_pat = P.subtract (absent_pat f) proto_field_pat in *)
-(*           let base_fields = List.filter (fun (p, _, _) -> not (P.is_empty p)) (List.map (fun (pat, p, t) -> *)
-(*             (P.subtract (P.subtract pat proto_field_pat) absent_pat, p, t)) *)
+(*           let absent_pat = Pat.subtract (absent_pat f) proto_field_pat in *)
+(*           let base_fields = List.filter (fun (p, _, _) -> not (Pat.is_empty p)) (List.map (fun (pat, p, t) -> *)
+(*             (Pat.subtract (Pat.subtract pat proto_field_pat) absent_pat, p, t)) *)
 (*             (fields f)) in *)
 (*           TWith(TId "AnObject", *)
 (*                 (mk_obj_typ ((proto_pat, Present, TId(p_id))::proto_fields@base_fields) absent_pat)) *)
@@ -249,3 +254,4 @@ let parse_env_file (cin : in_channel) (name : string) : env_decl list =
 (*   *\) *)
 
 (* let kind_check env (typ : typ) : kind  =  kind_check env [] typ *)
+end

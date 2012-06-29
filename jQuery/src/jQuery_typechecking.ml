@@ -96,7 +96,7 @@ and synth' env default_typ exp : typ =
   | EAssertTyp(p, t, e) ->
     (* Printf.eprintf "Synth: AssertTyp that %s has type %s\n" (string_of_exp e) (string_of_typ t); *)
     (* Printf.eprintf "%s\n" (string_of_bool (subtype env (synth env default_typ e) t)); *)
-    let _ = JQuery_kinding.kind_check_typ env [] t in
+    (* TEMP let _ = JQuery_kinding.kind_check_typ env [] t in *)
     let _ = check env default_typ e t in
     t
   | EId (p, x) -> begin

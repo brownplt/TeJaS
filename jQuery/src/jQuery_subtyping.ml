@@ -77,7 +77,7 @@ and subtype_typ lax env cache t1 t2 : (bool SPMap.t * bool) =
     | _, TTop
     | TBot, _ -> (cache, true)
     | TRegex pat1, TRegex pat2 ->
-      (cache, P.is_subset (pat_env env) pat1 pat2)
+      (cache, Pat.is_subset (pat_env env) pat1 pat2)
     | TPrim p1, TPrim p2 -> (cache, p1 = p2)
     | TDom (_, t1, sel1), TDom (_, t2, sel2) ->
       subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))

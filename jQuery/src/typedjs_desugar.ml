@@ -1,124 +1,147 @@
 open Prelude
-open Typedjs_syntax
-open JQuery_syntax
-open TypImpl
 
-module W = WritTyp
+module W = Typedjs_syntax.WritTyp
 module List = ListExt
+module Pat = JQuery_syntax.Pat
 
-exception Typ_stx_error of string
-let error msg = 
-  raise (Typ_stx_error msg)
+module type DESUGAR = sig
+  type typ
+  type kind
+  val desugar_typ : Pos.t -> W.t -> typ
+end
 
-let is_star f = match f with
-  | W.Star _ -> true
-  | _ -> false
+module Make =
+  functor (S : Strobe_sigs.STROBE_TYPS with type pat = Pat.t) ->
+    functor (JQ : JQuery_sigs.JQUERY_TYPS with type strobeTyp = S.typ with type strobeKind = S.kind with type typ = S.extTyp with type kind = S.extKind) -> 
+struct
+  type typ = JQ.typ
+  type kind = JQ.kind
+  exception Typ_stx_error of string
+  let error msg = 
+    raise (Typ_stx_error msg)
 
-let is_skull f = match f with
-  | W.Skull _ -> true
-  | _ -> false
+  let is_star f = match f with
+    | W.Star _ -> true
+    | _ -> false
 
-let is_absent f = match f with
-  | W.Absent p -> true
-  | _ -> false
+  let is_skull f = match f with
+    | W.Skull _ -> true
+    | _ -> false
 
-let pat_of f = match f with
-  | W.Present (p, _) -> p
-  | W.Inherited (p, _) -> p
-  | W.Maybe (p, _) -> p
-  | W.Absent p -> p
-  | W.Skull p -> p
-  | W.Star _ -> failwith "pat_of applied to Star _"
+  let is_absent f = match f with
+    | W.Absent p -> true
+    | _ -> false
 
-let assert_overlap pat1 pat2 = match P.example (P.intersect pat1 pat2) with
-  | None -> ()
-  | Some str ->
-    error (sprintf "%s and %s are overlapped. E.g.,\n%s\n is in both patterns." 
-       (P.pretty pat1) (P.pretty pat2) str)
+  let pat_of f = match f with
+    | W.Present (p, _) -> p
+    | W.Inherited (p, _) -> p
+    | W.Maybe (p, _) -> p
+    | W.Absent p -> p
+    | W.Skull p -> p
+    | W.Star _ -> failwith "pat_of applied to Star _"
 
-let rec typ (writ_typ : W.t) : typ =
-  let opt_map f v = match v with None -> None | Some v -> Some (f v) in
-  match writ_typ with
-  | W.Str -> TRegex P.all
-  | W.Prim p -> TPrim p
-  | W.Bool -> TUnion (Some "Bool", TPrim "True", TPrim "False")
-  | W.Union (t1, t2) -> TUnion (None, typ t1, typ t2)
-  | W.Inter (t1, t2) -> TInter (None, typ t1, typ t2)
-  | W.Arrow (None, args, var, r) -> TArrow (None, map typ args, opt_map typ var, typ r)
-  | W.Arrow (Some this, args, var, r) -> TArrow (None, (typ this):: (map typ args), opt_map typ var, typ r)
-  (* | W.This t -> TThis (typ t) *)
-  (* | W.Object flds -> object_typ flds *)
-  (* | W.With(t, flds) -> (match object_typ flds with  *)
-  (*   | TObject objflds -> TWith(typ t, objflds) *)
-  (*   | _ -> failwith "absurd") *)
-  | W.Pat pat -> TRegex pat
-  (* | W.Ref t -> TRef (None, typ t) *)
-  (* | W.Source t -> TSource (None, typ t) *)
-  | W.Top -> TTop
-  | W.Bot -> TBot
-  | W.Syn x -> TId x
-  | W.TId x -> TId x
-  | W.App (t1, t2s) -> TApp (typ t1, map sigma t2s)
-  | W.Forall (x, s, t) -> TForall (None, x, sigma s, typ t)
-  | W.Rec (x, t) -> TRec (None, x, typ t)
-  | W.Lambda (args, t) -> TLambda (None, args, typ t)
-  (* | W.Fix (x, k, t) -> TFix (None, x, k, typ t) *)
+  let assert_overlap pat1 pat2 = match Pat.example (Pat.intersect pat1 pat2) with
+    | None -> ()
+    | Some str ->
+      error (sprintf "%s and %s are overlapped. E.g.,\n%s\n is in both patterns." 
+               (Pat.pretty pat1) (Pat.pretty pat2) str)
 
-  | _ -> error "Not yet implemented"
+  let rec typ (writ_typ : W.t) : JQ.typ =
+    let opt_map f v = match v with None -> None | Some v -> Some (f v) in
+    let embed_typ t = S.TEmbed (typ t) in
+    match writ_typ with
+    | W.Str -> JQ.TStrobe (S.TRegex Pat.all)
+    | W.Prim p -> JQ.TStrobe (S.TPrim p)
+    | W.Bool -> JQ.TStrobe (S.TUnion (Some "Bool", S.TPrim "True", S.TPrim "False"))
+    | W.Union (t1, t2) -> JQ.TStrobe (S.TUnion (None, embed_typ t1, embed_typ t2))
+    | W.Inter (t1, t2) -> JQ.TStrobe (S.TIntersect (None, embed_typ t1, embed_typ t2))
+    | W.Arrow (None, args, var, r) -> JQ.TStrobe (S.TArrow ((* None,  *)map embed_typ args, opt_map embed_typ var, embed_typ r))
+    | W.Arrow (Some this, args, var, r) -> JQ.TStrobe (S.TArrow ((* None, *) (embed_typ this):: (map embed_typ args), opt_map embed_typ var, embed_typ r))
+    (* | W.This t -> TThis (typ t) *)
+    (* | W.Object flds -> object_typ flds *)
+    (* | W.With(t, flds) -> (match object_typ flds with  *)
+    (*   | TObject objflds -> TWith(typ t, objflds) *)
+    (*   | _ -> failwith "absurd") *)
+    | W.Pat pat -> JQ.TStrobe (S.TRegex pat)
+    (* | W.Ref t -> TRef (None, typ t) *)
+    (* | W.Source t -> TSource (None, typ t) *)
+    | W.Top -> JQ.TStrobe (S.TTop)
+    | W.Bot -> JQ.TStrobe (S.TBot)
+    | W.Syn x -> JQ.TStrobe (S.TId x)
+    | W.TId x -> JQ.TStrobe (S.TId x)
+    | W.App (t1, t2s) -> JQ.TApp (typ t1, map sigma t2s)
+    | W.Forall (x, s, t) -> JQ.TForall (None, x, sigma s, typ t)
+    | W.Rec (x, t) -> JQ.TStrobe (S.TRec (None, x, embed_typ t))
+    | W.Lambda (args, t) -> JQ.TStrobe (S.TLambda (None, map id_kind args, embed_typ t))
+    (* | W.Fix (x, k, t) -> S.TFix (None, x, k, typ t) *)
 
-and sigma (writ_sig : W.s) : sigma = match writ_sig with W.Mult m -> SMult (mult m) | W.Typ t -> STyp (typ t)
+    | _ -> error "Not yet implemented"
 
-and mult (writ_mult : W.m) : multiplicity =
-  match writ_mult with
-  | W.Plain t -> MPlain (typ t)
-  | W.MId id -> MId id
-  | W.One m -> MOne (mult m)
-  | W.Zero m -> MZero (mult m)
-  | W.ZeroOne m -> MZeroOne (mult m)
-  | W.OnePlus m -> MOnePlus (mult m)
-  | W.ZeroPlus m -> MZeroPlus (mult m)
-  | W.Sum (m1, m2) -> MSum(mult m1, mult m2)
+  and id_kind (id, k) = 
+    let rec helper k = match k with
+      | W.KStar -> S.KStar
+      | W.KArrow (args, ret) -> S.KArrow (map helper args, helper ret)
+      | W.KMult m -> match helper m with
+        | S.KEmbed m -> S.KEmbed (JQ.KMult m)
+        | m -> S.KEmbed (JQ.KMult (JQ.KStrobe m))
+    in (id, helper k)
 
-(* and fld (writ_fld : W.f) : field = match writ_fld with *)
-(*   | W.Present (pat, t) -> (pat, Present, typ t) *)
-(*   | W.Maybe (pat, t) -> (pat, Maybe, typ t) *)
-(*   | W.Inherited (pat, t) -> (pat, Inherited, typ t) *)
-(*   | W.Absent pat -> error "fld applied to Absent" *)
-(*   | W.Skull _ -> error "fld applied to Skull" *)
-(*   | W.Star _ -> error "fld applied to Star" *)
+  and sigma (writ_sig : W.s) : JQ.sigma = match writ_sig with 
+    | W.Mult m -> JQ.SMult (mult m)
+    | W.Typ t -> JQ.STyp (typ t)
 
-(* and object_typ (flds : W.f list) = *)
-(*   let (flds_no_absents, absent_pat) =  *)
-(*     let (absents, others) = List.partition is_absent flds in *)
-(*     (others,  *)
-(*      P.unions (List.map pat_of absents)) in *)
-(*   let (flds_no_stars, absent_pat) = *)
-(*     let (stars, others) = List.partition is_star flds_no_absents in *)
-(*     match stars with *)
-(*     | [] -> let skulls = List.filter is_skull others in *)
-(*             begin match skulls with *)
-(*             | [] -> (others, absent_pat) *)
-(*             | _ -> error "BAD is nonsensical without *" *)
-(*             end *)
-(*     | [W.Star opt_star_typ] -> *)
-(*       let star_pat = *)
-(*         P.negate (P.unions (absent_pat::(map pat_of others))) in *)
-(*       begin match opt_star_typ with *)
-(*       | None -> (others, P.union star_pat absent_pat) *)
-(*       | Some t -> ((W.Maybe (star_pat, t)) :: others, absent_pat) *)
-(*       end *)
-(*    | _ -> error "multiple stars (\*\) in an object type" in *)
-(*   (\* TODO(arjun): Why is this overlap check here? Can we do it at the top *)
-(*      of the function? *\) *)
-(*   List.iter_pairs assert_overlap  *)
-(*     (absent_pat :: (List.map pat_of flds_no_stars)); *)
-(*   let flds_no_skulls_stars =  *)
-(*     List.filter (fun f -> not (is_skull f)) flds_no_stars in *)
-(*   TObject (mk_obj_typ (map fld flds_no_skulls_stars) absent_pat) *)
+  and mult (writ_mult : W.m) : JQ.multiplicity =
+    match writ_mult with
+    | W.Plain t -> JQ.MPlain (typ t)
+    | W.MId id -> JQ.MId id
+    | W.One m -> JQ.MOne (mult m)
+    | W.Zero m -> JQ.MZero (mult m)
+    | W.ZeroOne m -> JQ.MZeroOne (mult m)
+    | W.OnePlus m -> JQ.MOnePlus (mult m)
+    | W.ZeroPlus m -> JQ.MZeroPlus (mult m)
+    | W.Sum (m1, m2) -> JQ.MSum(mult m1, mult m2)
+
+  (* and fld (writ_fld : W.f) : field = match writ_fld with *)
+  (*   | W.Present (pat, t) -> (pat, Present, typ t) *)
+  (*   | W.Maybe (pat, t) -> (pat, Maybe, typ t) *)
+  (*   | W.Inherited (pat, t) -> (pat, Inherited, typ t) *)
+  (*   | W.Absent pat -> error "fld applied to Absent" *)
+  (*   | W.Skull _ -> error "fld applied to Skull" *)
+  (*   | W.Star _ -> error "fld applied to Star" *)
+
+  (* and object_typ (flds : W.f list) = *)
+  (*   let (flds_no_absents, absent_pat) =  *)
+  (*     let (absents, others) = List.partition is_absent flds in *)
+  (*     (others,  *)
+  (*      Pat.unions (List.map pat_of absents)) in *)
+  (*   let (flds_no_stars, absent_pat) = *)
+  (*     let (stars, others) = List.partition is_star flds_no_absents in *)
+  (*     match stars with *)
+  (*     | [] -> let skulls = List.filter is_skull others in *)
+  (*             begin match skulls with *)
+  (*             | [] -> (others, absent_pat) *)
+  (*             | _ -> error "BAD is nonsensical without *" *)
+  (*             end *)
+  (*     | [W.Star opt_star_typ] -> *)
+  (*       let star_pat = *)
+  (*         Pat.negate (Pat.unions (absent_pat::(map pat_of others))) in *)
+  (*       begin match opt_star_typ with *)
+  (*       | None -> (others, Pat.union star_pat absent_pat) *)
+  (*       | Some t -> ((W.Maybe (star_pat, t)) :: others, absent_pat) *)
+  (*       end *)
+  (*    | _ -> error "multiple stars (\*\) in an object type" in *)
+  (*   (\* TODO(arjun): Why is this overlap check here? Can we do it at the top *)
+  (*      of the function? *\) *)
+  (*   List.iter_pairs assert_overlap  *)
+  (*     (absent_pat :: (List.map pat_of flds_no_stars)); *)
+  (*   let flds_no_skulls_stars =  *)
+  (*     List.filter (fun f -> not (is_skull f)) flds_no_stars in *)
+  (*   TObject (mk_obj_typ (map fld flds_no_skulls_stars) absent_pat) *)
 
 
 
-let desugar_typ (p : Pos.t) (wt : W.t) : typ =
-  try typ wt
-  with Typ_stx_error msg ->
-    raise (Typ_stx_error (Pos.toString p ^ msg))
+  let desugar_typ (p : Pos.t) (wt : W.t) : JQ.typ =
+    try typ wt
+    with Typ_stx_error msg ->
+      raise (Typ_stx_error (Pos.toString p ^ msg))
+end

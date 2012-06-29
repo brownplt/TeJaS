@@ -15,9 +15,9 @@ let rec remove_this op = match op with
   | _ -> failwith "remove_this : illegal argument"
 
 let wrapArrow arrTyp =
-  W.Ref( W.Object ([W.Present(P.singleton "-*- code -*-", arrTyp);
-                    W.Present(P.singleton "__proto__", W.TId "Object"); (* ADDING THIS CAUSES AN ERROR "Object is unbound" *)
-                    W.Present(P.singleton "prototype", W.TId "Ext");
+  W.Ref( W.Object ([W.Present(Pat.singleton "-*- code -*-", arrTyp);
+                    W.Present(Pat.singleton "__proto__", W.TId "Object"); (* ADDING THIS CAUSES AN ERROR "Object is unbound" *)
+                    W.Present(Pat.singleton "prototype", W.TId "Ext");
                     W.Star(Some (W.TId "Ext"))]))
 
 let matchArrow t = match t with
@@ -71,10 +71,10 @@ let rec pushIntersectFunction typ = match typ with
 %%
 
 kind :
-  | STAR { KStar }
+  | STAR { W.KStar }
   | LPAREN kind RPAREN { $2 }
-  | MULT LANGLE kind RANGLE { KMult $3 }
-  | kind THICKARROW kind { KArrow ([$1], $3) }
+  | MULT LANGLE kind RANGLE { W.KMult $3 }
+  | kind THICKARROW kind { W.KArrow ([$1], $3) }
 
 args
   :  { ([], None) }
@@ -83,9 +83,9 @@ args
   | arg_typ STAR args { let (args, var) = $3 in (($1 :: args), var) }
 
 pat :
-  | REGEX { (P.parse $startpos $1, true) }
-  | any_id { (P.singleton $1, false) }
-  | STRING { (P.singleton $1, false) }
+  | REGEX { (Pat.parse $startpos $1, true) }
+  | any_id { (Pat.singleton $1, false) }
+  | STRING { (Pat.singleton $1, false) }
 
 field :
   | pat COLON QUES typ { W.Maybe (fst2 $1, $4) }
@@ -119,7 +119,7 @@ arg_typ
   | PRIM { W.Prim $1 }
   | STR { W.Str }
   | BOOL { W.Bool }
-  | REGEX { W.Pat (P.parse $startpos $1) }
+  | REGEX { W.Pat (Pat.parse $startpos $1) }
   | arg_typ UNION arg_typ { W.Union ($1, $3) }
   | arg_typ INTERSECTION arg_typ { pushIntersectFunction (W.Inter ($1, $3)) }
   | LPAREN typ RPAREN { $2 }
@@ -219,7 +219,7 @@ env_decl :
     { ObjectTrio (Pos.real ($startpos, $endpos), (c_id, c_typ), (p_id, p_typ), (i_id, i_typ)) }
   | TYPE any_id LANGLE id_list RANGLE EQUALS typ 
       { EnvType (Pos.real ($startpos, $endpos), $2,
-     W.Lambda (List.map (fun x -> (x, KStar)) $4, $7)) }
+     W.Lambda (List.map (fun x -> (x, W.KStar)) $4, $7)) }
   | TYPE any_id EQUALS typ { EnvType (Pos.real ($startpos, $endpos), $2, $4) }
   | VAL ID COLON typ { EnvBind (Pos.real ($startpos, $endpos), $2, $4) }
   | ID COLON typ { EnvBind (Pos.real ($startpos, $endpos), $1, W.Ref $3) }
