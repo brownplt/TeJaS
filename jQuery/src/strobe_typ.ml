@@ -54,21 +54,29 @@ module Make : STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) -> struct
 
   type field = pat * presence * typ
 
+  type extBinding = EXT.binding
+  type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind
+
+  type env = binding IdMap.t
 end
 
 module MakeActions 
   (Pat : SET)
   (STROBE : STROBE_TYPS with type pat = Pat.t)
-  (EXT : TYP_ACTIONS with type typ = STROBE.extTyp with type kind = STROBE.extKind)
-  : (STROBE_ACTIONS with type typ = STROBE.typ with type kind = STROBE.kind with type extTyp = STROBE.extTyp with type extKind = STROBE.extKind with type pat = STROBE.pat with type field = STROBE.field with type obj_typ = STROBE.obj_typ) =
+  (EXT : EXT_TYP_SIG with type typ = STROBE.extTyp with type kind = STROBE.extKind with type binding = STROBE.extBinding with type baseTyp = STROBE.typ with type baseKind = STROBE.kind with type baseBinding = STROBE.binding)
+  (Ext : TYP_ACTIONS with type typ = STROBE.extTyp with type kind = STROBE.extKind with type binding = STROBE.extBinding)
+  : (STROBE_ACTIONS with type typ = STROBE.typ with type kind = STROBE.kind with type binding = STROBE.binding with type extTyp = STROBE.extTyp with type extKind = STROBE.extKind with type extBinding = STROBE.extBinding with type pat = STROBE.pat with type field = STROBE.field with type obj_typ = STROBE.obj_typ with type env = STROBE.env) =
 struct
   type typ = STROBE.typ
   type kind = STROBE.kind
+  type binding = STROBE.binding
   type extTyp = STROBE.extTyp
   type extKind = STROBE.extKind
+  type extBinding = STROBE.extBinding
   type pat = STROBE.pat
   type field = STROBE.field
   type obj_typ = STROBE.obj_typ
+  type env = STROBE.env
 
   open STROBE
   let num_typ_errors = ref 0
@@ -130,7 +138,7 @@ struct
     let open IdSet in
     let open IdSetExt in
     match typ with
-    | TEmbed t -> EXT.free_ids t
+    | TEmbed t -> Ext.free_ids t
     | TTop
     | TBot
     | TPrim _ 
@@ -272,8 +280,6 @@ struct
         eprintf "type error at %s : %s\n" (Pos.toString p) (typ_error_details_to_string s)
       end
 
-  type typenv = (typ * kind) IdMap.t
-
   (* Necessary for equi-recursive subtyping. *)
   module TypPair = struct
     type t = typ * typ
@@ -301,7 +307,7 @@ struct
       useNames, shouldUseNames
 
     let rec kind k = match k with
-      | KEmbed k -> EXT.Pretty.kind k
+      | KEmbed k -> Ext.Pretty.kind k
       | KStar -> text "*"
       | KArrow (ks, k) -> 
   horz [horz (intersperse (text ",") (map pr_kind ks)); text "=>"; kind k]
@@ -333,7 +339,7 @@ struct
         then match name with None -> fmt | Some n -> squish [text mut; text n] 
         else match name with None -> horz [text "Unnamed*"; fmt] | Some n -> horz [text "Named*"; text n; fmt] in
       match t with
-      | TEmbed t -> EXT.Pretty.typ t
+      | TEmbed t -> Ext.Pretty.typ t
       | TTop -> text "Any"
       | TBot -> text "DoesNotReturn"
       | TPrim p -> text ("@" ^ p)
@@ -553,9 +559,11 @@ struct
     | TSink(_, t) -> TSink(n, t)
     | _ -> typ
 
+  and lookup_typ env x = (match IdMap.find x env with BTypBound(t, k) -> (t, k) | _ -> raise Not_found)
+
   and expose_twith typenv typ = let expose_twith = expose_twith typenv in match typ with
     | TWith (t, flds) ->
-      let t = match t with TId x -> (fst2 (IdMap.find x typenv)) | _ -> t in
+      let t = match t with TId x -> (try fst2 (lookup_typ typenv x) with Not_found -> t) | _ -> t in
       let flds' = mk_obj_typ (map (third3 expose_twith) flds.fields) flds.absent_pat in
       replace_name None (merge t flds')
     | TUnion(n, t1, t2) -> TUnion (n, expose_twith t1, expose_twith t2)
@@ -635,75 +643,82 @@ struct
   and expose typenv typ = match typ with
     | TId x -> 
       (try 
-        expose typenv (simpl_typ typenv (fst2 (IdMap.find x typenv)))
+        expose typenv (simpl_typ typenv (fst2 (lookup_typ typenv x)))
        with Not_found -> Printf.eprintf "Could not find type %s\n" x; raise Not_found)
     | TThis t -> TThis (expose typenv t)
     | _ -> typ
 
   let expose_arrow env typ = 
-    let clear_id t = match t with TId x -> (fst2 (IdMap.find x env)) | _ -> t in
+    let clear_id t = match t with TId x -> (try fst2 (lookup_typ env x) with Not_found -> t) | _ -> t in
     let opt_clear_id t = match t with None -> None | Some t -> Some (clear_id t) in
     match typ with
     | TArrow(args, varargs, ret) -> TArrow(map clear_id args, opt_clear_id varargs, clear_id ret)
     | _ -> typ
 
   (** Decides if two types are syntactically equal. This helps subtyping. *)
-  let rec simpl_equiv (typ1 : typ) (typ2 : typ) : bool = match (typ1, typ2) with
+  let rec equivalent_typ (env : env) (typ1 : typ) (typ2 : typ) : bool = match (typ1, typ2) with
     | TTop, TTop
-    | TBot, TBot ->
-      true
-    | TPrim p1, TPrim p2 ->
-      p1 = p2
+    | TBot, TBot -> true
+    | TPrim p1, TPrim p2 -> p1 = p2
     | TIntersect (_, s1, s2), TIntersect (_, t1, t2)
     | TUnion (_, s1, s2), TUnion (_, t1, t2) -> 
-      simpl_equiv s1 t1 && simpl_equiv s2 t2
+      (equivalent_typ env s1 t1 && equivalent_typ env s2 t2) ||
+        (equivalent_typ env s1 t2 && equivalent_typ env s2 t1)
     | TSource (_, s), TSource (_, t)
     | TSink (_, s), TSink (_, t)
-    | TRef (_, s), TRef (_, t) ->
-      simpl_equiv s t
+    | TRef (_, s), TRef (_, t) -> equivalent_typ env s t
     | TThis _, TThis _ -> true (* ASSUMING THAT THIS TYPES ARE EQUIVALENT *)
     | TApp (s1, s2s), TApp (t1, t2s) ->
       (* for well-kinded types, for_all2 should not signal an error *)
-      simpl_equiv s1 t1 && List.for_all2 simpl_equiv s2s t2s
-    | TId x, TId y ->
-      x = y
+      if (List.length s2s <> List.length t2s) then false
+      else equivalent_typ env s1 t1 && List.for_all2 (equivalent_typ env) s2s t2s
+    | TId n1, TId n2 ->
+      (n1 = n2) ||
+        (try
+           (match IdMap.find n1 env, IdMap.find n2 env with
+           | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
+           | BTermTyp t1, BTermTyp t2 -> equivalent_typ env t1 t2
+           | BEmbed _, BEmbed _ ->
+             Ext.equivalent_typ (IdMap.map EXT.embed_b env) (EXT.embed_t typ1) (EXT.embed_t typ2)
+           | _ -> false)
+         with Not_found -> false)
     | TArrow (args1, v1, r1), TArrow (args2, v2, r2) ->
       List.length args1 = List.length args2
-      && List.for_all2 simpl_equiv args1 args2
-      && simpl_equiv r1 r2
+      && List.for_all2 (equivalent_typ env) args1 args2
+      && equivalent_typ env r1 r2
       && (match v1, v2 with
       | None, None -> true
-      | Some v1, Some v2 -> simpl_equiv v1 v2
+      | Some v1, Some v2 -> equivalent_typ env v1 v2
       | _ -> false)
     | TRec (_, x, s), TRec (_, y, t) ->
-      x = y && simpl_equiv s t
+      x = y && equivalent_typ env s t
     | TForall (_, x, s1, s2), TForall (_, y, t1, t2) ->
-      x = y && simpl_equiv s1 t1 && simpl_equiv s2 t2
+      x = y && equivalent_typ env s1 t1 && equivalent_typ env s2 t2
     | TRegex pat1, TRegex pat2 ->
       Pat.is_equal pat1 pat2
     | TObject o1, TObject o2 ->
       let flds1 = fields o1 in
       let flds2 = fields o2 in
       List.length flds1 = List.length flds2
-      && List.for_all2 simpl_equiv_fld flds1 flds2
+      && List.for_all2 (equivalent_typ_fld env) flds1 flds2
       && Pat.is_equal o1.absent_pat o2.absent_pat
     | TFix (_, x1, k1, t1), TFix (_, x2, k2, t2) ->
-      x1 = x2 && k1 = k2 && simpl_equiv t1 t2
+      x1 = x2 && k1 = k2 && equivalent_typ env t1 t2
     | TLambda (_, args1, t1), TLambda (_, args2, t2) ->
-      args1 = args2 && simpl_equiv t1 t2
+      args1 = args2 && equivalent_typ env t1 t2
     | TUninit t1, TUninit t2 -> begin match !t1, !t2 with
       | None, None -> true
-      | Some t1, Some t2 -> simpl_equiv t1 t2
+      | Some t1, Some t2 -> equivalent_typ env t1 t2
       | _, _ -> false
     end
     | _, _ -> false
 
-  and simpl_equiv_fld (pat1, pres1, t1) (pat2, pres2, t2) = 
-    Pat.is_equal pat1 pat2 && pres1 = pres2 && simpl_equiv t1 t2
+  and equivalent_typ_fld env (pat1, pres1, t1) (pat2, pres2, t2) = 
+    Pat.is_equal pat1 pat2 && pres1 = pres2 && equivalent_typ env t1 t2
 
-  let pat_env (env : typenv) : pat IdMap.t =
-    let select_pat_bound (x, (t, _)) = match t with
-      | TRegex p -> Some (x, p)
+  let pat_env (env : env) : pat IdMap.t =
+    let select_pat_bound (x, b) = match b with
+      | BTypBound(TRegex p, _) -> Some (x, p)
       | _ -> None in
     L.fold_right (fun (x,p) env -> IdMap.add x p env)
       (L.filter_map select_pat_bound (IdMap.bindings env))
@@ -726,7 +741,7 @@ struct
         end
       | false -> parent_typ' env flds'
 
-  let rec parent_typ (env : typenv) typ = 
+  let rec parent_typ (env : env) typ = 
     match expose env (simpl_typ env typ) with
       | TObject ot -> begin match !(ot.cached_parent_typ) with
         | Some cached ->
@@ -742,7 +757,7 @@ struct
       end
       | _ -> raise (Invalid_argument "parent_typ expects TObject")
 
-  let rec calc_inherit_guard_pat (env : typenv) (t : typ) : pat =
+  let rec calc_inherit_guard_pat (env : env) (t : typ) : pat =
     match t with
       | TObject ot ->
           begin match parent_typ env t with
@@ -796,7 +811,7 @@ struct
        (TypTyp((fun t1 t2 -> sprintf " %s is not a subtype of %s"
          (string_of_typ t1) (string_of_typ t2)), t1, t2)))
 
-  let rec simpl_lookup p (env : typenv) (t : typ) (pat : pat) : typ =
+  let rec simpl_lookup p (env : env) (t : typ) (pat : pat) : typ =
     (* TODO: it's okay to overlap with a maybe, but not a hidden field;
        inherit_guard_pat does not apply *)
     match t with
@@ -817,7 +832,7 @@ struct
     end
     | _ -> raise (Typ_error (p, FixedString "simpl_lookup: object expected"))
 
-  and inherits p (env : typenv) (orig_t : typ) (pat : pat) : typ =
+  and inherits p (env : env) (orig_t : typ) (pat : pat) : typ =
     try
       let t = expose env (simpl_typ env orig_t) in
       if Pat.is_subset (pat_env env) pat (inherit_guard_pat env t) then
@@ -832,7 +847,7 @@ struct
             | None
             | Some (TPrim "Null") -> TBot
             | Some parent_typ -> 
-              if (simpl_equiv orig_t (expose env (simpl_typ env parent_typ))) 
+              if (equivalent_typ env orig_t (expose env (simpl_typ env parent_typ))) 
               then orig_t
               else begin
                 let check_parent_pat = (Pat.intersect pat (maybe_pats ot)) in
@@ -858,7 +873,7 @@ struct
     if TPSet.mem (s, t) cache then
       cache
     (* workaround for equal: functional value, due to lazy *)
-    else if simpl_equiv s t then
+    else if equivalent_typ env s t then
       cache
     else
       let simpl_s = expose env (simpl_typ env s) in
@@ -942,11 +957,11 @@ struct
           end
         | TId x, t -> 
           (try
-             subt env cache (fst2 (IdMap.find x env)) t
+             subt env cache (fst2 (lookup_typ env x)) t
            with Not_found -> Printf.printf "Cannot find %s in environment\n" x; raise Not_found)
         | t, TId x -> 
           (try
-             subt env cache t (fst2 (IdMap.find x env))
+             subt env cache t (fst2 (lookup_typ env x))
            with Not_found -> Printf.printf "Cannot find %s in environment\n" x; raise Not_found)
         | TObject obj1, TObject obj2 ->
             subtype_object env cache obj1 obj2
@@ -960,13 +975,13 @@ struct
           (* TODO: ensure s1 = s2 *)
           let cache' = subt env (subt env cache s1 s2) s2 s1 in
           let t2 = typ_subst (Some x2) (TId x1) (fun x -> x) t2 in
-          let env' = IdMap.add x1 (s1, KStar) env in
+          let env' = IdMap.add x1 (BTypBound (s1, KStar)) env in
           subt env' cache' t1 t2
         | _, TTop -> cache
         | TBot, _ -> cache
         | TLambda (_, [(x, KStar)], s), TLambda (_, [(y, KStar)], t) ->
-          let env = IdMap.add x (TTop, KStar) env in
-          let env = IdMap.add y (TTop, KStar) env in
+          let env = IdMap.add x (BTypBound (TTop, KStar)) env in
+          let env = IdMap.add y (BTypBound (TTop, KStar)) env in
           subt env cache s t
         | _ -> mismatched_typ_exn s t
 
@@ -1104,7 +1119,7 @@ end
 
 (* module MakeStrobeTypSub *)
 (*   (Strobe : STROBE_TYPS) *)
-(*   (Ext : EXT_TYP_SIG with type strobeTyp = Strobe.typ with type typ = Strobe.extTyp with type strobeKind = Strobe.kind with type kind = Strobe.extKind) *)
+(*   (Ext : EXT_TYP_SIG with type baseTyp = Strobe.typ with type typ = Strobe.extTyp with type baseKind = Strobe.kind with type kind = Strobe.extKind) *)
 (*   (ExtSub : TYP_SUB with type typ = Strobe.extTyp with type kind = Strobe.extKind) *)
 (*   : (TYP_SUB with type typ = Strobe.typ with type kind = Strobe.kind) = *)
 (* struct *)

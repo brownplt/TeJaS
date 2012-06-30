@@ -52,19 +52,30 @@ module type STROBE_TYPS = sig
 
   type field = pat * presence * typ
 
+  type extBinding
+  type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind
+
+  type env = binding IdMap.t
 end
 
 module type STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) ->
-  (STROBE_TYPS with type extKind = EXT.kind with type extTyp = EXT.typ with type pat = Pat.t)
+  (STROBE_TYPS 
+   with type extKind = EXT.kind
+     with type extTyp = EXT.typ
+       with type extBinding = EXT.binding
+         with type pat = Pat.t)
 
 module type STROBE_ACTIONS = sig
   type typ
   type kind
+  type binding
   type extTyp
   type extKind
+  type extBinding
   type pat
   type field
   type obj_typ
+  type env
   val name_of : typ -> string option
   val free_ids : typ -> IdSet.t
   val free_typ_ids : typ -> IdSet.t
@@ -72,6 +83,7 @@ module type STROBE_ACTIONS = sig
   val map_reduce_t : (extTyp -> 'a) -> ('b -> 'a -> 'b) -> 'b -> typ -> 'b
   val subst : id option -> typ -> (extTyp -> extTyp) -> typ -> typ
   val rename_avoid_capture : IdSet.t -> id list -> typ -> (id list * typ)
+  val equivalent_typ : env -> typ -> typ -> bool
 
   type typ_error_details =
     | TypKind of (typ -> kind -> string) * typ * kind

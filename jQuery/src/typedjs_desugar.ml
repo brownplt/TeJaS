@@ -12,7 +12,7 @@ end
 
 module Make =
   functor (S : Strobe_sigs.STROBE_TYPS with type pat = Pat.t) ->
-    functor (JQ : JQuery_sigs.JQUERY_TYPS with type strobeTyp = S.typ with type strobeKind = S.kind with type typ = S.extTyp with type kind = S.extKind) -> 
+    functor (JQ : JQuery_sigs.JQUERY_TYPS with type baseTyp = S.typ with type baseKind = S.kind with type typ = S.extTyp with type kind = S.extKind) -> 
 struct
   type typ = JQ.typ
   type kind = JQ.kind

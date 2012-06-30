@@ -3,13 +3,13 @@ open Sig
 
 module Pat = Dprle.Set
 module Css = Css.RealCSS
-module rec StrobeImpl : (Strobe_sigs.STROBE_TYPS with type extKind = TypImpl.kind with type extTyp = TypImpl.typ with type pat = Pat.t) = Strobe_typ.Make (Pat) (TypImpl)
-and TypImpl : (JQuery_sigs.JQUERY_TYPS with type strobeTyp = StrobeImpl.typ with type strobeKind = StrobeImpl.kind with type sel = Css.t) = JQuery_types.Make (Css) (StrobeImpl)
+module rec StrobeImpl : (Strobe_sigs.STROBE_TYPS with type extKind = TypImpl.kind with type extTyp = TypImpl.typ with type extBinding = TypImpl.binding with type pat = Pat.t) = Strobe_typ.Make (Pat) (TypImpl)
+and TypImpl : (JQuery_sigs.JQUERY_TYPS with type baseTyp = StrobeImpl.typ with type baseKind = StrobeImpl.kind with type baseBinding = StrobeImpl.binding with type sel = Css.t) = JQuery_types.Make (Css) (StrobeImpl)
 
-module rec JQuery : (JQuery_sigs.JQUERY_ACTIONS with type typ = TypImpl.typ with type kind = TypImpl.kind with type multiplicity = TypImpl.multiplicity) =
+module rec JQuery : (JQuery_sigs.JQUERY_ACTIONS with type typ = TypImpl.typ with type kind = TypImpl.kind with type multiplicity = TypImpl.multiplicity with type binding = TypImpl.binding with type env = TypImpl.env) =
   JQuery_types.MakeActions (StrobeImpl) (TypImpl) (Css) (Strobe)
-and Strobe : (Strobe_sigs.STROBE_ACTIONS with type typ = StrobeImpl.typ with type kind = StrobeImpl.kind with type extTyp = StrobeImpl.extTyp with type extKind = StrobeImpl.extKind with type pat = StrobeImpl.pat with type field = StrobeImpl.field with type obj_typ = StrobeImpl.obj_typ) =
-  Strobe_typ.MakeActions (Pat) (StrobeImpl) (JQuery)
+and Strobe : (Strobe_sigs.STROBE_ACTIONS with type typ = StrobeImpl.typ with type kind = StrobeImpl.kind with type extTyp = StrobeImpl.extTyp with type extKind = StrobeImpl.extKind with type pat = StrobeImpl.pat with type field = StrobeImpl.field with type obj_typ = StrobeImpl.obj_typ with type binding = StrobeImpl.binding with type extBinding = StrobeImpl.extBinding with type env = StrobeImpl.env) =
+  Strobe_typ.MakeActions (Pat) (StrobeImpl) (TypImpl) (JQuery)
 
 
 type const = string

@@ -8,12 +8,12 @@ module Make : JQUERY_TYP = functor (Css : Css.CSS) -> functor (STROBE : TYPS) ->
   module Css = Css
   type sel = Css.t
 
-  type strobeKind = STROBE.kind
+  type baseKind = STROBE.kind
   type kind = 
     | KMult of kind
-    | KStrobe of strobeKind
+    | KStrobe of baseKind
 
-  type strobeTyp = STROBE.typ
+  type baseTyp = STROBE.typ
   type typ = 
     | TForall of string option * id * sigma * typ
     | TApp of typ * sigma list
@@ -31,21 +31,48 @@ module Make : JQUERY_TYP = functor (Css : Css.CSS) -> functor (STROBE : TYPS) ->
     | MSum of multiplicity * multiplicity
   and sigma = STyp of typ | SMult of multiplicity
 
+
+  type baseBinding = STROBE.binding
+  type binding = BStrobe of baseBinding | BMultBound of multiplicity * kind
+
+  type env = binding IdMap.t
+
   let embed_t t = TStrobe t
   let embed_k k = KStrobe k
+  let embed_b b = BStrobe b
 end
 
 module MakeActions
   (STROBE : STROBE_TYPS)
-  (JQ : JQUERY_TYPS with type strobeTyp = STROBE.typ with type strobeKind = STROBE.kind
-  with type typ = STROBE.extTyp with type kind = STROBE.extKind)
+  (JQ : JQUERY_TYPS 
+   with type baseTyp = STROBE.typ
+  with type baseKind = STROBE.kind
+  with type baseBinding = STROBE.binding
+  with type typ = STROBE.extTyp
+  with type kind = STROBE.extKind
+  with type binding = STROBE.extBinding)
   (Css : Css.CSS with type t = JQ.sel)
-  (Strobe : STROBE_ACTIONS with type typ = STROBE.typ with type kind = STROBE.kind with type extTyp = STROBE.extTyp with type extKind = STROBE.extKind)
-  : (JQUERY_ACTIONS with type typ = JQ.typ with type kind = JQ.kind with type multiplicity = JQ.multiplicity) =
+  (Strobe : STROBE_ACTIONS
+   with type typ = STROBE.typ
+  with type kind = STROBE.kind
+  with type extTyp = STROBE.extTyp
+  with type extKind = STROBE.extKind
+  with type binding = STROBE.binding
+  with type extBinding = STROBE.extBinding
+  with type field = STROBE.field
+  with type obj_typ = STROBE.obj_typ
+  with type env = STROBE.env)
+  : (JQUERY_ACTIONS 
+     with type typ = JQ.typ
+  with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity
+  with type binding = JQ.binding) =
 struct
   type typ = JQ.typ
   type kind = JQ.kind
   type multiplicity = JQ.multiplicity
+  type env = JQ.env
+  type binding = JQ.binding
   open JQ
   open ListExt
 
@@ -238,80 +265,59 @@ struct
   let mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> m | _ -> failwith "impossible"
 
 
-  (* type binding = BTermTyp of typ | BTypBound of typ * kind | BMultBound of multiplicity * kind *)
 
-  (* type env = binding IdMap.t *)
 
-  (* (\* simple structural equivalence -- e.g. up to permutation of parts of Union or Inter or Sum  *)
-  (*  * and can be extended to objects later... *\) *)
-  (* let rec equivalent_sigma (env : env) s1 s2 = *)
-  (*   match s1, s2 with *)
-  (*   | STyp t1, STyp t2 -> equivalent_typ env t1 t2 *)
-  (*   | SMult m1, SMult m2 -> equivalent_mult env m1 m2 *)
-  (*   | _ -> false *)
-  (* and equivalent_typ env t1 t2 = match t1, t2 with *)
-  (*   | TBot, TBot *)
-  (*   | TTop, TTop -> true *)
-  (*   | TPrim p1, TPrim p2 -> p1 = p2 *)
-  (*   | TRegex p1, TRegex p2 -> Pat.is_equal p1 p2 *)
-  (*   | TId n1, TId n2 ->  *)
-  (*     (n1 = n2) ||  *)
-  (*       (try  *)
-  (*          (match IdMap.find n1 env, IdMap.find n2 env with *)
-  (*          | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2 *)
-  (*          | BTermTyp t1, BTermTyp t2 -> equivalent_typ env t1 t2 *)
-  (*          | BMultBound(m1, k1), BMultBound(m2, k2) -> k1 = k2 && equivalent_mult env m1 m2 *)
-  (*          | _ -> false) *)
-  (*        with Not_found -> false) *)
-  (*   | TUnion(_, t11, t12), TUnion(_, t21, t22) *)
-  (*   | TInter(_, t11, t12), TInter(_, t21, t22) -> *)
-  (*     (equivalent_typ env t11 t21 && equivalent_typ env t12 t22) || *)
-  (*       (equivalent_typ env t11 t22 && equivalent_typ env t12 t21) *)
-  (*   | TForall(_, alpha, s1, t1), TForall(_, beta, s2, t2) -> *)
-  (*     equivalent_sigma env s1 s2 && (match s1 with *)
-  (*     | SMult _ -> equivalent_typ env t1 (mult_typ_subst beta (MId alpha) t2) *)
-  (*     | STyp _ -> equivalent_typ env t1 (typ_typ_subst beta (TId alpha) t2)) *)
-  (*   | TArrow(_, t1s, v1o, t1r), TArrow(_, t2s, v2o, t2r) -> *)
-  (*     if (List.length t1s <> List.length t2s) then false else *)
-  (*       (match v1o, v2o with *)
-  (*       | None, None -> List.for_all2 (equivalent_typ env) (t1r::t1s) (t2r::t2s) *)
-  (*       | Some v1, Some v2 -> List.for_all2 (equivalent_typ env) (t1r::v1::t1s) (t2r::v2::t2s) *)
-  (*       | _ -> false) *)
-  (*   | TLambda(_, args1, ret1), TLambda(_, args2, ret2) -> *)
-  (*     if (List.length args1 <> List.length args2) then false  *)
-  (*     else if not (List.for_all2 (fun (_, k1) (_, k2) -> k1 = k2) args1 args2) then false *)
-  (*     else  *)
-  (*       let ret2 = List.fold_left2 (fun r (x1,k1) (x2,k2) ->  *)
-  (*         match k1 with *)
-  (*         | KMult _ -> mult_typ_subst x2 (MId x1) r *)
-  (*         | _ -> typ_typ_subst x2 (TId x1) r) ret2 args1 args2 *)
-  (*       in equivalent_typ env ret1 ret2 *)
-  (*   | TApp(t1, args1), TApp(t2, args2) -> *)
-  (*     if (List.length args1 <> List.length args2) then false  *)
-  (*     else equivalent_typ env t1 t2 && List.for_all2 (equivalent_sigma env) args1 args2 *)
-  (*   | TDom(_, t1, sel1), TDom(_, t2, sel2) -> *)
-  (*     equivalent_typ env t1 t2 && Css.is_equal sel1 sel2 *)
-  (*   | _ -> false *)
-  (* and equivalent_mult env m1 m2 = match m1, m2 with *)
-  (*   | MPlain t1, MPlain t2 -> equivalent_typ env t1 t2 *)
-  (*   | MId n1, MId n2 ->  *)
-  (*     (n1 = n2) ||  *)
-  (*       (try  *)
-  (*          (match IdMap.find n1 env, IdMap.find n2 env with *)
-  (*          | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2 *)
-  (*          | BTermTyp t1, BTermTyp t2 -> equivalent_typ env t1 t2 *)
-  (*          | BMultBound(m1, k1), BMultBound(m2, k2) -> k1 = k2 && equivalent_mult env m1 m2 *)
-  (*          | _ -> false) *)
-  (*        with Not_found -> false) *)
-  (*   | MZero m1, MZero m2 *)
-  (*   | MOne m1, MOne m2 *)
-  (*   | MZeroOne m1, MZeroOne m2 *)
-  (*   | MOnePlus m1, MOnePlus m2 *)
-  (*   | MZeroPlus m1, MZeroPlus m2 -> equivalent_mult env m1 m2 *)
-  (*   | MSum(m11, m12), MSum(m21, m22) -> *)
-  (*     (equivalent_mult env m11 m21 && equivalent_mult env m12 m22) || *)
-  (*       (equivalent_mult env m11 m22 && equivalent_mult env m12 m21) *)
-  (*   | _ -> false *)
+  (* simple structural equivalence -- e.g. up to permutation of parts of Union or Inter or Sum
+   * and can be extended to objects later... *)
+  let rec equivalent_sigma (env : env) s1 s2 =
+    match s1, s2 with
+    | STyp t1, STyp t2 -> equivalent_typ env t1 t2
+    | SMult m1, SMult m2 -> equivalent_multiplicity env m1 m2
+    | _ -> false
+  and equivalent_typ env t1 t2 = match t1, t2 with
+    | TForall(_, alpha, s1, t1), TForall(_, beta, s2, t2) ->
+      equivalent_sigma env s1 s2 && (match s1 with
+      | SMult _ -> equivalent_typ env t1 (mult_typ_subst beta (MId alpha) t2)
+      | STyp _ -> equivalent_typ env t1 (typ_typ_subst beta (TStrobe (STROBE.TId alpha)) t2))
+    (* | TLambda(_, args1, ret1), TLambda(_, args2, ret2) -> *)
+    (*   if (List.length args1 <> List.length args2) then false *)
+    (*   else if not (List.for_all2 (fun (_, k1) (_, k2) -> k1 = k2) args1 args2) then false *)
+    (*   else *)
+    (*     let ret2 = List.fold_left2 (fun r (x1,k1) (x2,k2) -> *)
+    (*       match k1 with *)
+    (*       | KMult _ -> mult_typ_subst x2 (MId x1) r *)
+    (*       | _ -> typ_typ_subst x2 (TId x1) r) ret2 args1 args2 *)
+    (*     in equivalent_typ env ret1 ret2 *)
+    | TApp(t1, args1), TApp(t2, args2) ->
+      if (List.length args1 <> List.length args2) then false
+      else equivalent_typ env t1 t2 && List.for_all2 (equivalent_sigma env) args1 args2
+    | TDom(_, t1, sel1), TDom(_, t2, sel2) ->
+      equivalent_typ env t1 t2 && Css.is_equal sel1 sel2
+    | TStrobe (STROBE.TEmbed t1), _ -> equivalent_typ env t1 t2
+    | _, TStrobe (STROBE.TEmbed t2) -> equivalent_typ env t1 t2
+    | TStrobe t1, TStrobe t2 -> Strobe.equivalent_typ (IdMap.map (fun b -> STROBE.BEmbed b) env) t1 t2
+    | _ -> false
+  and equivalent_multiplicity env m1 m2 = match m1, m2 with
+    | MPlain t1, MPlain t2 -> equivalent_typ env t1 t2
+    | MId n1, MId n2 ->
+      (n1 = n2) ||
+        (try
+           (match IdMap.find n1 env, IdMap.find n2 env with
+           | BStrobe (STROBE.BTypBound(t1, k1)), BStrobe (STROBE.BTypBound(t2, k2)) -> 
+             k1 = k2 && equivalent_typ env (embed_t t1) (embed_t t2)
+           | BStrobe (STROBE.BTermTyp t1), BStrobe (STROBE.BTermTyp t2) -> equivalent_typ env (embed_t t1) (embed_t t2)
+           | BMultBound(m1, k1), BMultBound(m2, k2) -> k1 = k2 && equivalent_multiplicity env m1 m2
+           | _ -> false)
+         with Not_found -> false)
+    | MZero m1, MZero m2
+    | MOne m1, MOne m2
+    | MZeroOne m1, MZeroOne m2
+    | MOnePlus m1, MOnePlus m2
+    | MZeroPlus m1, MZeroPlus m2 -> equivalent_multiplicity env m1 m2
+    | MSum(m11, m12), MSum(m21, m22) ->
+      (equivalent_multiplicity env m11 m21 && equivalent_multiplicity env m12 m22) ||
+        (equivalent_multiplicity env m11 m22 && equivalent_multiplicity env m12 m21)
+    | _ -> false
 
   (* (\* canonical forms *\) *)
   (* let rec canonical_sigma s = match s with *)
@@ -435,9 +441,9 @@ end
 (* module MakeJQueryTypSub *)
 (*   (Strobe : STROBE_TYPS) *)
 (*   (JQuery : JQUERY_TYPS *)
-(*    with type strobeTyp = Strobe.typ *)
+(*    with type baseTyp = Strobe.typ *)
 (*    with type typ = Strobe.extTyp *)
-(*    with type strobeKind = Strobe.kind *)
+(*    with type baseKind = Strobe.kind *)
 (*    with type kind = Strobe.extKind) *)
 (*   (StrobeSub : TYP_SUB with type typ = Strobe.typ with type kind = Strobe.kind) *)
 (*   : (TYP_SUB with type typ = JQuery.typ with type kind = JQuery.kind) = *)

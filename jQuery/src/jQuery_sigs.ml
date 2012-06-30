@@ -7,12 +7,12 @@ open Strobe_typ
 
 module type JQUERY_TYPS = sig
   type sel
-  type strobeTyp
+  type baseTyp
   type typ = 
     | TForall of string option * id * sigma * typ (* replacement for TForall with only typ bounds *)
     | TApp of typ * sigma list (* replacement for TApp with only typ arguments *)
     | TDom of string option * typ * sel
-    | TStrobe of strobeTyp
+    | TStrobe of baseTyp
 
   and multiplicity = 
     | MPlain of typ
@@ -25,20 +25,31 @@ module type JQUERY_TYPS = sig
     | MSum of multiplicity * multiplicity
   and sigma = STyp of typ | SMult of multiplicity
 
-  type strobeKind
-  type kind = KMult of kind | KStrobe of strobeKind
+  type baseKind
+  type kind = KMult of kind | KStrobe of baseKind
 
-  val embed_t : strobeTyp -> typ
-  val embed_k : strobeKind -> kind
+  type baseBinding
+  type binding = BStrobe of baseBinding | BMultBound of multiplicity * kind
+
+  type env = binding IdMap.t
+  val embed_t : baseTyp -> typ
+  val embed_k : baseKind -> kind
+  val embed_b : baseBinding -> binding
 end
 
 module type JQUERY_TYP = functor (Css : CSS) -> functor (STROBE : TYPS) ->
-  (JQUERY_TYPS with type strobeTyp = STROBE.typ with type strobeKind = STROBE.kind with type sel = Css.t)
+  (JQUERY_TYPS 
+   with type baseTyp = STROBE.typ
+     with type baseKind = STROBE.kind
+       with type baseBinding = STROBE.binding
+         with type sel = Css.t)
 
 module type JQUERY_ACTIONS = sig
   type typ
   type kind
   type multiplicity
+  type binding
+  type env = binding IdMap.t
   module Pretty : sig
     val typ : typ -> FormatExt.printer
     val kind : kind -> FormatExt.printer
@@ -53,6 +64,8 @@ module type JQUERY_ACTIONS = sig
   val free_typ_ids : typ -> IdSet.t
   val free_mult_ids : multiplicity -> IdSet.t
   val rename_avoid_capture : IdSet.t -> id list -> typ -> (id list * typ)
+  val equivalent_typ : env -> typ -> typ -> bool
+  val equivalent_multiplicity : env -> multiplicity -> multiplicity -> bool
   val canonical_multiplicity : multiplicity -> multiplicity
   val canonical_type : typ -> typ
   val mult_mult_subst : id -> multiplicity -> multiplicity -> multiplicity

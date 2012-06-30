@@ -211,8 +211,8 @@ let main () =
     let decls = LS.parseLocalStructure text in
     List.map (fun d -> LS.Pretty.p_decl d Format.std_formatter; Format.print_newline()) decls
   end in
-  (* test1 500; *)
-  (* test2 500 *)
+  test1 500;
+  (* test2 500; *)
   (* test3 100; *)
   (* test4 (); *)
   (* Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels 1000); *)
