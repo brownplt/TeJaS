@@ -112,6 +112,7 @@ module type TYP_ACTIONS = sig
   val free_ids : typ -> IdSet.t
   val equivalent_typ : env -> typ -> typ -> bool
   val rename_avoid_capture : (* free *) IdSet.t -> (* to rename *) id list -> (* in type *) typ -> (id list * typ)
+  val canonical_type : typ -> typ
   (* val subtype : typ -> typ -> bool *)
 end
 

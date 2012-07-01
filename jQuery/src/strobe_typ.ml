@@ -23,7 +23,7 @@ module Make : STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) -> struct
   type typ = 
     | TPrim of string
     | TUnion of string option * typ * typ
-    | TIntersect of string option * typ * typ
+    | TInter of string option * typ * typ
     | TArrow of typ list * typ option * typ (* args (including <this>), optional variadic arg, return typ *)
     | TThis of typ
     | TObject of obj_typ
@@ -99,7 +99,7 @@ struct
     | TId _ -> b
     | TForall(_, _, t1, t2)
     | TUnion (_, t1, t2)
-    | TIntersect (_, t1, t2) -> 
+    | TInter (_, t1, t2) -> 
       let b' = map_reduce_t map red b t1 in
       map_reduce_t map red b' t2
     | TArrow(args, var, ret) ->
@@ -147,7 +147,7 @@ struct
     | TRef (_, t)
     | TSource (_, t)
     | TSink (_, t) -> free_typ_ids t
-    | TIntersect (_, t1, t2)
+    | TInter (_, t1, t2)
     | TUnion (_, t1, t2) -> union (free_typ_ids t1) (free_typ_ids t2)
     | TArrow (ss, v, t) ->
       unions (free_typ_ids t :: (match v with None -> empty | Some v -> free_typ_ids v) :: (map free_typ_ids ss))
@@ -171,8 +171,8 @@ struct
     | TRegex _ -> typ
     | TId y -> if x = Some y then s else typ
     | TUnion (n, t1, t2) -> TUnion (n, typ_subst x s outer t1, typ_subst x s outer t2)
-    | TIntersect (n, t1, t2) ->
-      TIntersect (n, typ_subst x s outer t1, typ_subst x s outer t2)
+    | TInter (n, t1, t2) ->
+      TInter (n, typ_subst x s outer t1, typ_subst x s outer t2)
     | TArrow (t2s, v, t3)  ->
       let opt_map f v = match v with None -> None | Some v -> Some (f v) in
       TArrow (map (typ_subst x s outer) t2s, opt_map (typ_subst x s outer) v, typ_subst x s outer t3)
@@ -240,6 +240,9 @@ struct
     (new_ys, t')
 
   let subst = typ_subst
+
+
+
 
   type typ_error_details =
     | TypKind of (typ -> kind -> string) * typ * kind
@@ -309,8 +312,7 @@ struct
     let rec kind k = match k with
       | KEmbed k -> Ext.Pretty.kind k
       | KStar -> text "*"
-      | KArrow (ks, k) -> 
-  horz [horz (intersperse (text ",") (map pr_kind ks)); text "=>"; kind k]
+      | KArrow (ks, k) -> horz [horz (intersperse (text ",") (map pr_kind ks)); text "=>"; kind k]
 
     and pr_kind k = match k with
       | KArrow _ -> parens [kind k]
@@ -374,10 +376,10 @@ struct
                       (squish (intersperse print_space 
                                  ((horz [empty; typ t]) :: List.map (fun t -> horz [text "+"; typ t]) ts)))]
         end)
-      | TIntersect (n, t1, t2) -> (* horz [typ t1; text "&"; typ t2] *)
+      | TInter (n, t1, t2) -> (* horz [typ t1; text "&"; typ t2] *)
         namedType n (
         let rec collectIntersections t = match t with
-          | TIntersect (_, t1, t2) -> 
+          | TInter (_, t1, t2) -> 
             let (t1h, t1s) = collectIntersections t1 in
             let (t2h, t2s) = collectIntersections t2 in
             (t1h, t1s @ (t2h :: t2s))
@@ -502,7 +504,7 @@ struct
 
   let rec merge typ flds = match typ with
     | TUnion(n, t1, t2) -> TUnion (n, merge t1 flds, merge t2 flds)
-    | TIntersect(n, t1, t2) -> TIntersect(n, merge t1 flds, merge t2 flds)
+    | TInter(n, t1, t2) -> TInter(n, merge t1 flds, merge t2 flds)
     | TObject o -> begin
       let unionPats = Pat.union (flds.absent_pat) (Pat.unions (map fst3 flds.fields)) in
       let restrict_field (n, p, t) =
@@ -525,7 +527,7 @@ struct
 
   and apply_name n typ = match typ with
     | TUnion(None, t1, t2) -> TUnion(n, t1, t2)
-    | TIntersect(None, t1, t2) -> TIntersect(n, t1, t2)
+    | TInter(None, t1, t2) -> TInter(n, t1, t2)
     | TForall(None, x, t, b) -> TForall(n, x, t, b)
     | TRec(None, x, t) -> TRec(n, x, t)
     | TLambda(None, ts, t) -> TLambda(n, ts, t)
@@ -537,7 +539,7 @@ struct
 
   and name_of typ =  match typ with
     | TUnion(name, _, _) -> name
-    | TIntersect(name, _, _) -> name
+    | TInter(name, _, _) -> name
     | TForall(name, _, _, _) -> name
     | TRec(name, _, _) -> name
     | TLambda(name, _, _) -> name
@@ -549,7 +551,7 @@ struct
 
   and replace_name n typ = match typ with
     | TUnion(_, t1, t2) -> TUnion(n, t1, t2)
-    | TIntersect(_, t1, t2) -> TIntersect(n, t1, t2)
+    | TInter(_, t1, t2) -> TInter(n, t1, t2)
     | TForall(_, x, t, b) -> TForall(n, x, t, b)
     | TRec(_, x, t) -> TRec(n, x, t)
     | TLambda(_, ts, t) -> TLambda(n, ts, t)
@@ -567,7 +569,7 @@ struct
       let flds' = mk_obj_typ (map (third3 expose_twith) flds.fields) flds.absent_pat in
       replace_name None (merge t flds')
     | TUnion(n, t1, t2) -> TUnion (n, expose_twith t1, expose_twith t2)
-    | TIntersect(n, t1, t2) -> TIntersect(n, expose_twith t1, expose_twith t2)
+    | TInter(n, t1, t2) -> TInter(n, expose_twith t1, expose_twith t2)
     | TRec(n, id, t) -> TRec(n, id, expose_twith t)
     | TRef (n, t) -> TRef (n, expose_twith t)
     | TSource (n, t) -> TSource (n, expose_twith t)
@@ -579,7 +581,7 @@ struct
     | TEmbed _ -> typ
     | TPrim _ 
     | TUnion _
-    | TIntersect _
+    | TInter _
     | TRegex _
     | TArrow _
     | TRef _
@@ -660,7 +662,7 @@ struct
     | TTop, TTop
     | TBot, TBot -> true
     | TPrim p1, TPrim p2 -> p1 = p2
-    | TIntersect (_, s1, s2), TIntersect (_, t1, t2)
+    | TInter (_, s1, s2), TInter (_, t1, t2)
     | TUnion (_, s1, s2), TUnion (_, t1, t2) -> 
       (equivalent_typ env s1 t1 && equivalent_typ env s2 t2) ||
         (equivalent_typ env s1 t2 && equivalent_typ env s2 t1)
@@ -715,6 +717,55 @@ struct
 
   and equivalent_typ_fld env (pat1, pres1, t1) (pat2, pres2, t2) = 
     Pat.is_equal pat1 pat2 && pres1 = pres2 && equivalent_typ env t1 t2
+
+
+
+
+  (* canonicalize types as best as possible *)
+  let rec canonical_type t =
+    let c = canonical_type in
+    match t with
+    | TEmbed t -> TEmbed (Ext.canonical_type t)
+    | TBot -> t
+    | TTop -> t
+    | TPrim _ -> t
+    | TRegex _ -> t
+    | TId _ -> t
+    | TApp(f, args) -> TApp(c f, List.map c args)
+    | TLambda(n, yks, t) -> TLambda(n, yks, c t)
+    | TUnion (n, _, _) -> begin
+      let rec collect t = match t with
+        | TUnion (_, t1, t2) -> collect (c t1) @ collect (c t2)
+        | _ -> [t] in
+      let pieces = collect t in
+      let nodups = L.remove_dups pieces in
+      match List.rev nodups with
+      | [] -> failwith "impossible"
+      | hd::tl -> apply_name n (List.fold_left (fun acc t -> if t = TBot then acc else TUnion(None, t, acc)) hd tl)
+    end
+    | TInter (n, TUnion (_, u1, u2), t) -> c (TUnion (n, c (TInter (None, u1, t)), c (TInter (None, u2, t))))
+    | TInter (n, t, TUnion (_, u1, u2)) -> c (TUnion (n, c (TInter (None, t, u1)), c (TInter (None, t, u2))))
+    | TInter (n, t1, t2) -> begin match c t1, c t2 with
+      | TTop, t
+      | t, TTop -> t
+      | TBot, _
+      | _, TBot -> TBot
+      | TEmbed t1, t2 -> TEmbed(Ext.canonical_type (EXT.embed_t (TInter(n, TEmbed t1, t2))))
+      | t1, TEmbed t2 -> TEmbed(Ext.canonical_type (EXT.embed_t (TInter(n, t1, TEmbed t2))))
+      | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) ->
+        if equivalent_typ IdMap.empty bound1 bound2
+        then TForall(n, alpha, bound1, c (TInter (None, typ1, subst (Some beta) (TId alpha) (fun x -> x) typ2)))
+        else TInter(n, t1, t2)
+      | t1, t2 -> if t1 = t2 then t1 else TInter(n, t1, t2)
+    end
+    | TForall (n, alpha, bound, typ) -> TForall(n, alpha, c bound, c typ)
+    | TRec (n, alpha, typ) -> TRec(n, alpha, c typ)
+    | TArrow (args, var, ret) -> TArrow (map c args, opt_map c var, c ret)
+    | _ -> t (* TODO: FINISH THE OTHER TYPES *)
+
+
+
+
 
   let pat_env (env : env) : pat IdMap.t =
     let select_pat_bound (x, b) = match b with
@@ -903,9 +954,9 @@ struct
               (* | Some s -> s);  *)
               mismatched_typ_exn (TRegex pat1) (TRegex pat2)
             end
-        | _, TIntersect (_, t1, t2) -> (* order matters -- right side must be split first! *)
+        | _, TInter (_, t1, t2) -> (* order matters -- right side must be split first! *)
             subt env (subt env cache s t1) s t2
-        | TIntersect (_, s1, s2), _ -> 
+        | TInter (_, s1, s2), _ -> 
           begin 
             try subt env cache s1 t
             with Not_subtype _ -> subt env cache s2 t
@@ -1071,7 +1122,7 @@ struct
     | true, true -> s
     | true, false -> s (* s <: t *)
     | false, true -> t
-    | false, false -> TIntersect (None, s, t)
+    | false, false -> TInter (None, s, t)
 
   let filter_typ (pred : typ -> bool) (typ : typ) = 
     let none_removed = ref true in
@@ -1085,13 +1136,13 @@ struct
         let (fs1, n1) = f s1 n' in
         let (fs2, n2) = f s2 n' in
         (fs1 @ fs2, combine n' (combine n1 n2))
-      | TIntersect (n, s1, s2) -> 
+      | TInter (n, s1, s2) -> 
         let n' = combine n n_outer in
         begin match f s1 n', f s2 n' with
         | ([], n1), ([], n2) -> [], combine n' (combine n1 n2)
         | ([], n1), (typs, n2)
         | (typs, n1), ([], n2) -> typs, combine n' (combine n1 n2)
-        | (typs1, n1), (typs2, n2) -> [TIntersect (n', union typs1 n1, union typs2 n2)], combine n' (combine n1 n2)
+        | (typs1, n1), (typs2, n2) -> [TInter (n', union typs1 n1, union typs2 n2)], combine n' (combine n1 n2)
         end
       | _ -> if pred t then 
           [t], None

@@ -98,7 +98,7 @@ let main () =
       | JQ.MOnePlus (JQ.MPlain t)
       | JQ.MZeroPlus (JQ.MPlain t) -> t
       | _ -> failwith "impossible" in
-    let t = JQ.TStrobe (S.TIntersect(None, S.TEmbed (extract_typ t1'), S.TEmbed (extract_typ t2'))) in
+    let t = JQ.TStrobe (S.TInter(None, S.TEmbed (extract_typ t1'), S.TEmbed (extract_typ t2'))) in
     text "Test "; int n; text ":"; newline ();
     text "Expr1:     "; print_arith a1; newline ();
     text "Expr2:     "; print_arith a2; newline ();

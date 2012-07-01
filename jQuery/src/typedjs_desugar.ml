@@ -54,7 +54,7 @@ struct
     | W.Prim p -> JQ.TStrobe (S.TPrim p)
     | W.Bool -> JQ.TStrobe (S.TUnion (Some "Bool", S.TPrim "True", S.TPrim "False"))
     | W.Union (t1, t2) -> JQ.TStrobe (S.TUnion (None, embed_typ t1, embed_typ t2))
-    | W.Inter (t1, t2) -> JQ.TStrobe (S.TIntersect (None, embed_typ t1, embed_typ t2))
+    | W.Inter (t1, t2) -> JQ.TStrobe (S.TInter (None, embed_typ t1, embed_typ t2))
     | W.Arrow (None, args, var, r) -> JQ.TStrobe (S.TArrow ((* None,  *)map embed_typ args, opt_map embed_typ var, embed_typ r))
     | W.Arrow (Some this, args, var, r) -> JQ.TStrobe (S.TArrow ((* None, *) (embed_typ this):: (map embed_typ args), opt_map embed_typ var, embed_typ r))
     (* | W.This t -> TThis (typ t) *)

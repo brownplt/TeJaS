@@ -89,9 +89,6 @@ struct
 
   let get_num_typ_errors () = !num_typ_errors
 
-  let canonical_multiplicity m = m
-  let canonical_type t = t
-
   let rec apply_name n typ = match typ with
     | TStrobe t -> TStrobe (Strobe.apply_name n t)
     | TForall(None, x, t, b) -> TForall(n, x, t, b)
@@ -319,106 +316,113 @@ struct
         (equivalent_multiplicity env m11 m22 && equivalent_multiplicity env m12 m21)
     | _ -> false
 
-  (* (\* canonical forms *\) *)
-  (* let rec canonical_sigma s = match s with *)
-  (*   | STyp t -> STyp (canonical_type t) *)
-  (*   | SMult m -> SMult (canonical_multiplicity m) *)
+  (* canonical forms *)
+  let rec canonical_sigma s = match s with
+    | STyp t -> STyp (canonical_type t)
+    | SMult m -> SMult (canonical_multiplicity m)
 
-  (* and canonical_type t = *)
-  (*   let rec c = canonical_type in *)
-  (*   match t with *)
-  (*   | TBot -> t *)
-  (*   | TTop -> t *)
-  (*   | TPrim _ -> t *)
-  (*   | TRegex _ -> t *)
-  (*   | TId _ -> t *)
-  (*   | TApp(f, args) -> TApp(c f, List.map canonical_sigma args) *)
-  (*   | TLambda(n, yks, t) -> TLambda(n, yks, c t) *)
-  (*   | TUnion (n, _, _) -> begin *)
-  (*     let rec collect t = match t with *)
-  (*       | TUnion (_, t1, t2) -> collect (c t1) @ collect (c t2) *)
-  (*       | _ -> [t] in *)
-  (*     let pieces = collect t in *)
-  (*     let nodups = remove_dups pieces in *)
-  (*     match List.rev nodups with *)
-  (*     | [] -> failwith "impossible" *)
-  (*     | hd::tl -> apply_name n (List.fold_left (fun acc t -> if t = TBot then acc else TUnion(None, t, acc)) hd tl) *)
-  (*   end *)
-  (*   | TInter (n, TUnion (_, u1, u2), t) -> c (TUnion (n, c (TInter (None, u1, t)), c (TInter (None, u2, t)))) *)
-  (*   | TInter (n, t, TUnion (_, u1, u2)) -> c (TUnion (n, c (TInter (None, t, u1)), c (TInter (None, t, u2)))) *)
-  (*   | TInter (n, t1, t2) -> begin match c t1, c t2 with *)
-  (*     | TTop, t *)
-  (*     | t, TTop -> t *)
-  (*     | TBot, _ *)
-  (*     | _, TBot -> TBot *)
-  (*     | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) ->  *)
-  (*       if equivalent_sigma IdMap.empty bound1 bound2 *)
-  (*       then TForall(n, alpha, bound1, canonical_type (TInter (None, typ1, typ_typ_subst beta (TId alpha) typ2))) *)
-  (*       else TInter(n, t1, t2) *)
-  (*     | t1, t2 -> if t1 = t2 then t1 else TInter(n, t1, t2) *)
-  (*   end *)
-  (*   | TForall (n, alpha, bound, typ) -> TForall(n, alpha, canonical_sigma bound, c typ) *)
-  (*   | TRec (n, alpha, typ) -> TRec(n, alpha, c typ) *)
-  (*   | TArrow (n, args, var, ret) -> TArrow (n, map c args, opt_map c var, c ret) *)
-  (*   | TDom(n, t, sel) -> TDom(n, c t, sel) *)
+  and canonical_type t =
+    let c = canonical_type in
+    match t with
+    | TApp(f, args) -> TApp(c f, List.map canonical_sigma args)
+    | TStrobe(STROBE.TUnion (n, _, _)) -> begin
+      let rec collect t = match t with
+        | TStrobe(STROBE.TUnion (_, t1, t2)) -> collect (c (TStrobe t1)) @ collect (c (TStrobe t2))
+        | TStrobe(STROBE.TEmbed t) -> collect t
+        | TStrobe t -> [t]
+        | _ -> [STROBE.TEmbed t] in
+      let pieces = collect t in
+      let nodups = remove_dups pieces in
+      match List.rev nodups with
+      | [] -> failwith "impossible"
+      | hd::tl -> TStrobe (Strobe.apply_name n (List.fold_left (fun acc t -> if t = STROBE.TBot then acc else STROBE.TUnion(None, t, acc)) hd tl))
+    end
+    | TStrobe(STROBE.TInter (n, t1, t2)) -> begin match Strobe.canonical_type t1, Strobe.canonical_type t2 with
+      | STROBE.TTop, t
+      | t, STROBE.TTop -> begin match t with
+        | STROBE.TEmbed t -> t
+        | t -> TStrobe t
+      end
+      | STROBE.TBot, _
+      | _, STROBE.TBot -> TStrobe STROBE.TBot
+      | STROBE.TEmbed (TForall(_, alpha, bound1, typ1) as t1), 
+        STROBE.TEmbed (TForall(_, beta, bound2, typ2) as t2) ->
+        if equivalent_sigma IdMap.empty bound1 bound2
+        then TForall(n, alpha, bound1, 
+                     canonical_type
+                       (TStrobe (STROBE.TInter (None, STROBE.TEmbed typ1, 
+                                                STROBE.TEmbed 
+                                                  (typ_typ_subst beta (TStrobe (STROBE.TId alpha)) typ2)))))
+        else TStrobe (STROBE.TInter(n, STROBE.TEmbed t1, STROBE.TEmbed t2))
+      | t1, t2 -> if t1 = t2 then TStrobe t1 else TStrobe (STROBE.TInter(n, t1, t2))
+    end
+    | TStrobe t -> begin match Strobe.canonical_type t with
+      | STROBE.TEmbed t -> t
+      | t -> TStrobe t
+    end
+    | TForall (n, alpha, bound, typ) -> TForall(n, alpha, canonical_sigma bound, c typ)
+    | TDom(n, TDom(_, t, sel1), sel2) -> c (TDom(n, t, Css.intersect sel1 sel2))
+    | TDom(n, t, sel) -> TDom(n, c t, sel)
 
-  (* and canonical_multiplicity m =  *)
-  (*   let c = canonical_multiplicity in *)
-  (*   (\* Invariant: will never return MPlain or MId, and *)
-  (*    * if there are no MIds then it will never return MSum *\) *)
-  (*   match m with *)
-  (*   | MPlain t -> MOne (MPlain (canonical_type t)) *)
-  (*   | MId _ -> MOne m *)
-  (*   | MZero _ -> MZero (MPlain TBot) *)
-  (*   | MOne m -> c m *)
-  (*   | MZeroOne (MPlain t) -> MZeroOne (MPlain (canonical_type t)) *)
-  (*   | MZeroOne (MId _) -> m *)
-  (*   | MZeroOne (MZero m) -> c (MZero m) *)
-  (*   | MZeroOne (MOne m) -> c (MZeroOne m) *)
-  (*   | MZeroOne (MZeroOne m) -> c (MZeroOne m) *)
-  (*   | MZeroOne (MOnePlus m) -> c (MZeroPlus m) *)
-  (*   | MZeroOne (MZeroPlus m) -> c (MZeroPlus m) *)
-  (*   | MZeroOne (MSum (m1, m2)) -> let m' = MZeroOne (c (MSum (m1, m2))) in if m' = m then m else c m' *)
-  (*   | MOnePlus (MPlain t) -> MOnePlus (MPlain (canonical_type t)) *)
-  (*   | MOnePlus (MId _) -> m *)
-  (*   | MOnePlus (MZero m) -> c (MZero m) *)
-  (*   | MOnePlus (MOne m) -> c (MOnePlus m) *)
-  (*   | MOnePlus (MZeroOne m) -> c (MZeroPlus m) *)
-  (*   | MOnePlus (MOnePlus m) -> c (MOnePlus m) *)
-  (*   | MOnePlus (MZeroPlus m) -> c (MZeroPlus m) *)
-  (*   | MOnePlus (MSum (m1, m2)) -> let m' = MOnePlus (c (MSum (m1, m2))) in if m' = m then m else c m' *)
-  (*   | MZeroPlus (MPlain t) -> MZeroPlus (MPlain (canonical_type t)) *)
-  (*   | MZeroPlus (MId _) -> m *)
-  (*   | MZeroPlus (MZero m) -> c (MZero m) *)
-  (*   | MZeroPlus (MOne m) -> c (MZeroPlus m) *)
-  (*   | MZeroPlus (MZeroOne m) -> c (MZeroPlus m) *)
-  (*   | MZeroPlus (MOnePlus m) -> c (MZeroPlus m) *)
-  (*   | MZeroPlus (MZeroPlus m) -> c (MZeroPlus m) *)
-  (*   | MZeroPlus (MSum (m1, m2)) -> let m' = MZeroPlus (c (MSum (m1, m2))) in if m' = m then m else c m' *)
-  (*   | MSum(m1, m2) -> match c m1, c m2 with *)
-  (*     | MZero _, t2 -> t2 *)
-  (*     | t1, MZero _ -> t1 *)
-  (*     | MOne (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MOne (MPlain t1), MZeroOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MOne (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MOne (MPlain t1), MZeroPlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MZeroOne (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MZeroOne (MPlain t1), MZeroOne (MPlain t2) -> MZeroPlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MZeroOne (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MZeroOne (MPlain t1), MZeroPlus (MPlain t2) -> MZeroPlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MOnePlus (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MOnePlus (MPlain t1), MZeroOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MOnePlus (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MOnePlus (MPlain t1), MZeroPlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MZeroPlus (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MZeroPlus (MPlain t1), MZeroOne (MPlain t2) -> MZeroPlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MZeroPlus (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MZeroPlus (MPlain t1), MZeroPlus (MPlain t2) -> MZeroPlus (MPlain (canonical_type (TUnion(None, t1, t2)))) *)
-  (*     | MPlain _, _ *)
-  (*     | MId _, _ *)
-  (*     | _, MPlain _ *)
-  (*     | _, MId _ -> failwith "impossible" *)
-  (*     | t1, t2 -> MSum (t1, t2) *)
+  and canonical_multiplicity m =
+    let c = canonical_multiplicity in
+    (* Invariant: will never return MPlain or MId, and
+     * if there are no MIds then it will never return MSum *)
+    match m with
+    | MPlain t -> MOne (MPlain (canonical_type t))
+    | MId _ -> MOne m
+    | MZero _ -> MZero (MPlain (TStrobe STROBE.TBot))
+    | MOne m -> c m
+    | MZeroOne (MPlain t) -> MZeroOne (MPlain (canonical_type t))
+    | MZeroOne (MId _) -> m
+    | MZeroOne (MZero m) -> c (MZero m)
+    | MZeroOne (MOne m) -> c (MZeroOne m)
+    | MZeroOne (MZeroOne m) -> c (MZeroOne m)
+    | MZeroOne (MOnePlus m) -> c (MZeroPlus m)
+    | MZeroOne (MZeroPlus m) -> c (MZeroPlus m)
+    | MZeroOne (MSum (m1, m2)) -> let m' = MZeroOne (c (MSum (m1, m2))) in if m' = m then m else c m'
+    | MOnePlus (MPlain t) -> MOnePlus (MPlain (canonical_type t))
+    | MOnePlus (MId _) -> m
+    | MOnePlus (MZero m) -> c (MZero m)
+    | MOnePlus (MOne m) -> c (MOnePlus m)
+    | MOnePlus (MZeroOne m) -> c (MZeroPlus m)
+    | MOnePlus (MOnePlus m) -> c (MOnePlus m)
+    | MOnePlus (MZeroPlus m) -> c (MZeroPlus m)
+    | MOnePlus (MSum (m1, m2)) -> let m' = MOnePlus (c (MSum (m1, m2))) in if m' = m then m else c m'
+    | MZeroPlus (MPlain t) -> MZeroPlus (MPlain (canonical_type t))
+    | MZeroPlus (MId _) -> m
+    | MZeroPlus (MZero m) -> c (MZero m)
+    | MZeroPlus (MOne m) -> c (MZeroPlus m)
+    | MZeroPlus (MZeroOne m) -> c (MZeroPlus m)
+    | MZeroPlus (MOnePlus m) -> c (MZeroPlus m)
+    | MZeroPlus (MZeroPlus m) -> c (MZeroPlus m)
+    | MZeroPlus (MSum (m1, m2)) -> let m' = MZeroPlus (c (MSum (m1, m2))) in if m' = m then m else c m'
+    | MSum(m1, m2) -> 
+      let c_u t1 t2 = canonical_type (TStrobe (STROBE.TUnion(None, STROBE.TEmbed t1, STROBE.TEmbed t2))) in
+      match c m1, c m2 with
+      | MZero _, t2 -> t2
+      | t1, MZero _ -> t1
+      | MOne (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne (MPlain t1), MZeroOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne (MPlain t1), MZeroPlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MZeroOne (MPlain t2) -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MZeroPlus (MPlain t2) -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MZeroOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MZeroPlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MZeroOne (MPlain t2) -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MZeroPlus (MPlain t2) -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MPlain _, _
+      | MId _, _
+      | _, MPlain _
+      | _, MId _ -> failwith "impossible"
+      | t1, t2 -> MSum (t1, t2)
 
 
   (* exception Typ_error of Pos.t * string *)
@@ -430,9 +434,9 @@ struct
   (*     eprintf "type error at %s : %s\n" (Pos.toString p) s *)
   (*   end *)
 
-  (* let string_of_typ = FormatExt.to_string Pretty.typ *)
-  (* let string_of_mult = FormatExt.to_string Pretty.multiplicity *)
-  (* let string_of_kind = FormatExt.to_string Pretty.kind *)
+  let string_of_typ = FormatExt.to_string Pretty.typ
+  let string_of_mult = FormatExt.to_string Pretty.multiplicity
+  let string_of_kind = FormatExt.to_string Pretty.kind
 end
 
 

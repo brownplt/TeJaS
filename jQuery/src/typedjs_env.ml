@@ -184,7 +184,7 @@ struct
 (*   match (typ1, typ2) with *)
 (*     | TId x, _ -> IdMap.singleton x typ2 *)
 (*     | TApp (s1, [s2]), TApp (t1, [t2]) *)
-(*     | TIntersect (_, s1, s2), TIntersect (_, t1, t2) *)
+(*     | TInter (_, s1, s2), TInter (_, t1, t2) *)
 (*     | TUnion (_, s1, s2), TUnion (_, t1, t2) ->  *)
 (*       assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2) *)
 

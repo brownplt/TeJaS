@@ -72,5 +72,8 @@ module type JQUERY_ACTIONS = sig
   val mult_typ_subst : id -> multiplicity -> typ -> typ
   val typ_mult_subst : id -> typ -> multiplicity -> multiplicity
   val typ_typ_subst : id -> typ -> typ -> typ
+  val string_of_typ : typ -> string
+  val string_of_mult : multiplicity -> string
+  val string_of_kind : kind -> string
 end
 

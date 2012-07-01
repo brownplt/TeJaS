@@ -21,7 +21,7 @@ module type STROBE_TYPS = sig
   type typ = 
     | TPrim of string
     | TUnion of string option * typ * typ
-    | TIntersect of string option * typ * typ
+    | TInter of string option * typ * typ
     | TArrow of typ list * typ option * typ (* args (including <this>), optional variadic arg, return typ *)
     | TThis of typ
     | TObject of obj_typ
@@ -84,6 +84,7 @@ module type STROBE_ACTIONS = sig
   val subst : id option -> typ -> (extTyp -> extTyp) -> typ -> typ
   val rename_avoid_capture : IdSet.t -> id list -> typ -> (id list * typ)
   val equivalent_typ : env -> typ -> typ -> bool
+  val canonical_type : typ -> typ
 
   type typ_error_details =
     | TypKind of (typ -> kind -> string) * typ * kind
