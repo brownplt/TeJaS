@@ -720,14 +720,14 @@ module RealCSS = struct
     then pretty_sel (SelSet.choose t)
     else SelSetExt.p_set pretty_sel t
 
-  let pretty s = (SelSetExt.p_set Pretty.pretty_sel s Format.str_formatter; Format.flush_str_formatter())
+  let pretty s = FormatExt.to_string (SelSetExt.p_set Pretty.pretty_sel) s
   let is_empty s = SelSet.exists (fun sel -> 
     (List.exists (fun sim -> not (SimpleSet.is_empty (canonical sim sim))) (List.map snd (desc2regsel sel)))) s
   let is_overlapped s1 s2 = 
     not (SelSet.is_empty (intersect s1 s2))
   let is_equal s1 s2 = (is_subset IdMap.empty s1 s2) && (is_subset IdMap.empty s2 s1)
   let example s = 
-    let pretty_sel s = (Pretty.pretty_sel s Format.str_formatter; Format.flush_str_formatter()) in
+    let pretty_sel s = FormatExt.to_string Pretty.pretty_sel s in
     try Some (pretty_sel (SelSet.choose s)) with Not_found -> None
 end
 

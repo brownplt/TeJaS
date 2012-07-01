@@ -108,9 +108,9 @@ module WritTyp = struct
 
     in 
     (helper_t, helper_m, helper_s)
-    let string_of_typ typ = print_typ typ Format.str_formatter; Format.flush_str_formatter ()
-    let mult_of_typ mult = print_mult mult Format.str_formatter; Format.flush_str_formatter ()
-    let sigma_of_typ sigma = print_sigma sigma Format.str_formatter; Format.flush_str_formatter ()
+    let string_of_typ typ = FormatExt.to_string print_typ typ
+    let mult_of_typ mult = FormatExt.to_string print_mult mult
+    let sigma_of_typ sigma = FormatExt.to_string print_sigma sigma
                           
 
 
