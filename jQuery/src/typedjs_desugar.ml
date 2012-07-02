@@ -54,8 +54,6 @@ struct
                (Pat.pretty pat1) (Pat.pretty pat2) str)
 
   let rec typ (writ_typ : W.t) : JQ.typ =
-    let opt_map f v = match v with None -> None | Some v -> Some (f v) in
-    let embed_typ t = S.TEmbed (typ t) in
     match writ_typ with
     | W.Str -> JQ.TStrobe (S.TRegex Pat.all)
     | W.Prim p -> JQ.TStrobe (S.TPrim p)
@@ -64,14 +62,14 @@ struct
     | W.Inter (t1, t2) -> JQ.TStrobe (S.TInter (None, embed_typ t1, embed_typ t2))
     | W.Arrow (None, args, var, r) -> JQ.TStrobe (S.TArrow ((* None,  *)map embed_typ args, opt_map embed_typ var, embed_typ r))
     | W.Arrow (Some this, args, var, r) -> JQ.TStrobe (S.TArrow ((* None, *) (embed_typ this):: (map embed_typ args), opt_map embed_typ var, embed_typ r))
-    (* | W.This t -> TThis (typ t) *)
-    (* | W.Object flds -> object_typ flds *)
-    (* | W.With(t, flds) -> (match object_typ flds with  *)
-    (*   | TObject objflds -> TWith(typ t, objflds) *)
-    (*   | _ -> failwith "absurd") *)
+    | W.This t -> JQ.TStrobe (S.TThis (embed_typ t))
+    | W.Object flds -> JQ.TStrobe (object_typ flds)
+    | W.With(t, flds) -> (match object_typ flds with
+      | S.TObject objflds -> JQ.TStrobe (S.TWith(embed_typ t, objflds))
+      | _ -> failwith "absurd")
     | W.Pat pat -> JQ.TStrobe (S.TRegex pat)
-    (* | W.Ref t -> TRef (None, typ t) *)
-    (* | W.Source t -> TSource (None, typ t) *)
+    | W.Ref t -> JQ.TStrobe (S.TRef (None, embed_typ t))
+    | W.Source t -> JQ.TStrobe (S.TSource (None, embed_typ t))
     | W.Top -> JQ.TStrobe (S.TTop)
     | W.Bot -> JQ.TStrobe (S.TBot)
     | W.Syn x -> JQ.TStrobe (S.TId x)
@@ -80,9 +78,12 @@ struct
     | W.Forall (x, s, t) -> JQ.TForall (None, x, sigma s, typ t)
     | W.Rec (x, t) -> JQ.TStrobe (S.TRec (None, x, embed_typ t))
     | W.Lambda (args, t) -> JQ.TStrobe (S.TLambda (None, map id_kind args, embed_typ t))
-    (* | W.Fix (x, k, t) -> S.TFix (None, x, k, typ t) *)
+    | W.Fix (x, k, t) -> let (x, k) = id_kind (x, k) in JQ.TStrobe (S.TFix (None, x, k, embed_typ t))
 
-    | _ -> error "Not yet implemented"
+    (* | _ -> error "Not yet implemented" *)
+
+  and opt_map f v = match v with None -> None | Some v -> Some (f v)
+  and embed_typ t = S.TEmbed (typ t)
 
   and id_kind (id, k) = 
     let rec helper k = match k with
@@ -108,42 +109,42 @@ struct
     | W.ZeroPlus m -> JQ.MZeroPlus (mult m)
     | W.Sum (m1, m2) -> JQ.MSum(mult m1, mult m2)
 
-  (* and fld (writ_fld : W.f) : field = match writ_fld with *)
-  (*   | W.Present (pat, t) -> (pat, Present, typ t) *)
-  (*   | W.Maybe (pat, t) -> (pat, Maybe, typ t) *)
-  (*   | W.Inherited (pat, t) -> (pat, Inherited, typ t) *)
-  (*   | W.Absent pat -> error "fld applied to Absent" *)
-  (*   | W.Skull _ -> error "fld applied to Skull" *)
-  (*   | W.Star _ -> error "fld applied to Star" *)
+  and fld (writ_fld : W.f) : S.field = match writ_fld with
+    | W.Present (pat, t) -> (pat, S.Present, embed_typ t)
+    | W.Maybe (pat, t) -> (pat, S.Maybe, embed_typ t)
+    | W.Inherited (pat, t) -> (pat, S.Inherited, embed_typ t)
+    | W.Absent pat -> error "fld applied to Absent"
+    | W.Skull _ -> error "fld applied to Skull"
+    | W.Star _ -> error "fld applied to Star"
 
-  (* and object_typ (flds : W.f list) = *)
-  (*   let (flds_no_absents, absent_pat) =  *)
-  (*     let (absents, others) = List.partition is_absent flds in *)
-  (*     (others,  *)
-  (*      Pat.unions (List.map pat_of absents)) in *)
-  (*   let (flds_no_stars, absent_pat) = *)
-  (*     let (stars, others) = List.partition is_star flds_no_absents in *)
-  (*     match stars with *)
-  (*     | [] -> let skulls = List.filter is_skull others in *)
-  (*             begin match skulls with *)
-  (*             | [] -> (others, absent_pat) *)
-  (*             | _ -> error "BAD is nonsensical without *" *)
-  (*             end *)
-  (*     | [W.Star opt_star_typ] -> *)
-  (*       let star_pat = *)
-  (*         Pat.negate (Pat.unions (absent_pat::(map pat_of others))) in *)
-  (*       begin match opt_star_typ with *)
-  (*       | None -> (others, Pat.union star_pat absent_pat) *)
-  (*       | Some t -> ((W.Maybe (star_pat, t)) :: others, absent_pat) *)
-  (*       end *)
-  (*    | _ -> error "multiple stars (\*\) in an object type" in *)
-  (*   (\* TODO(arjun): Why is this overlap check here? Can we do it at the top *)
-  (*      of the function? *\) *)
-  (*   List.iter_pairs assert_overlap  *)
-  (*     (absent_pat :: (List.map pat_of flds_no_stars)); *)
-  (*   let flds_no_skulls_stars =  *)
-  (*     List.filter (fun f -> not (is_skull f)) flds_no_stars in *)
-  (*   TObject (mk_obj_typ (map fld flds_no_skulls_stars) absent_pat) *)
+  and object_typ (flds : W.f list) : S.typ =
+    let (flds_no_absents, absent_pat) =
+      let (absents, others) = List.partition is_absent flds in
+      (others,
+       Pat.unions (List.map pat_of absents)) in
+    let (flds_no_stars, absent_pat) =
+      let (stars, others) = List.partition is_star flds_no_absents in
+      match stars with
+      | [] -> let skulls = List.filter is_skull others in
+              begin match skulls with
+              | [] -> (others, absent_pat)
+              | _ -> error "BAD is nonsensical without *"
+              end
+      | [W.Star opt_star_typ] ->
+        let star_pat =
+          Pat.negate (Pat.unions (absent_pat::(map pat_of others))) in
+        begin match opt_star_typ with
+        | None -> (others, Pat.union star_pat absent_pat)
+        | Some t -> ((W.Maybe (star_pat, t)) :: others, absent_pat)
+        end
+     | _ -> error "multiple stars (*) in an object type" in
+    (* TODO(arjun): Why is this overlap check here? Can we do it at the top
+       of the function? *)
+    List.iter_pairs assert_overlap
+      (absent_pat :: (List.map pat_of flds_no_stars));
+    let flds_no_skulls_stars =
+      List.filter (fun f -> not (is_skull f)) flds_no_stars in
+    S.TObject (S.mk_obj_typ (map fld flds_no_skulls_stars) absent_pat)
 
 
 

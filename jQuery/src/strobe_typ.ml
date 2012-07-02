@@ -62,6 +62,15 @@ module Make : STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) -> struct
     
   let proto_pat = Pat.singleton proto_str
 
+  let mk_obj_typ (fs: field list) (absent_pat : pat): obj_typ = 
+    { fields = fs;
+      absent_pat = absent_pat;
+      cached_parent_typ = ref None;
+      cached_guard_pat = ref None;
+      cached_possible_cover_pat = ref None; (* lazy (Pat.unions (L.map fst3 fs)); *)
+      cached_cover_pat = ref None
+    }
+
   let fields o = o.fields
 
   let absent_pat ot = ot.absent_pat
@@ -363,17 +372,6 @@ struct
       List.fold_left (map_reduce_t map red) (map_reduce_t map red b t) ts
     | TEmbed t -> red b (map t)
     | _ -> b
-
-
-
-  let mk_obj_typ (fs: STROBE.field list) (absent_pat : pat): obj_typ = 
-    { fields = fs;
-      absent_pat = absent_pat;
-      cached_parent_typ = ref None;
-      cached_guard_pat = ref None;
-      cached_possible_cover_pat = ref None; (* lazy (Pat.unions (L.map fst3 fs)); *)
-      cached_cover_pat = ref None
-    }
   
 
 

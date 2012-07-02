@@ -61,6 +61,7 @@ module type STROBE_TYPS = sig
   val proto_pat : pat
   val fields : obj_typ -> field list
 
+  val mk_obj_typ : field list -> pat -> obj_typ
   (** Pattern for absent field *)
   val absent_pat : obj_typ -> pat
   (** includes absent *)
@@ -103,7 +104,6 @@ module type STROBE_ACTIONS = sig
   val rename_avoid_capture : IdSet.t -> id list -> typ -> (id list * typ)
   val equivalent_typ : env -> typ -> typ -> bool
   val canonical_type : typ -> typ
-  val mk_obj_typ : field list -> pat -> obj_typ
 
   val expose_twith : env -> typ -> typ
   val expose : env -> typ -> typ
