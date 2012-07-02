@@ -139,8 +139,7 @@ let compileStructure (ds : declSyntax) : structureEnv =
   (* transform preClauseMap -> clauseMap *)
   let transformPCM (pcm : preClauseMap) (f : int -> typ -> multiplicity) = LSIdMap.fold 
     (fun id typs (cm : clauseMap) -> match ListExt.remove_dups typs with
-    | [] -> 
-      LSIdMap.add id (MZero (MPlain TTop)) cm
+    | [] -> LSIdMap.add id (f 0 TTop) cm
     | hd::tl ->
       let size = List.length tl + 1 in
       let typ = List.fold_left (fun tu t -> TUnion (None,tu, t)) hd tl in
@@ -148,19 +147,25 @@ let compileStructure (ds : declSyntax) : structureEnv =
     pcm LSIdMap.empty in
   
   let childFun s t = match s with
-    (* Should never get s=0 *)
+    | 0 -> MZeroPlus (MPlain (TId "ElementAny"))
     | 1 -> MOne (MPlain t)
     | _ -> MOnePlus (MPlain t) in
+
+  let parFun s t = match s with 
+    | 0 -> MZeroOne (MPlain (TId "ElementAny"))
+    | 1 -> MOne (MPlain t)
+    | _ -> MOne (MPlain t) in
   
-  let parPrevNextFun s t = MOne (MPlain t) in
+  let prevNextFun s t = match s with 
+    | 0 -> MZero (MPlain t)
+    | 1 -> MOne (MPlain t) 
+    | _ -> MOne (MPlain t) in
 
   (* (transformPreClauseEnv pcenv_complete) *)
   (benv_complete, (ClauseEnv ((transformPCM childPCM childFun),
-                     (transformPCM parPCM parPrevNextFun),
-                     (transformPCM prevPCM parPrevNextFun),
-                     (transformPCM nextPCM parPrevNextFun))))
-
-
+                              (transformPCM parPCM parFun),
+                              (transformPCM prevPCM prevNextFun),
+                              (transformPCM nextPCM prevNextFun))))
 
 let print_structureEnv senv = 
   let (BackformEnv (classes, optClasses, ids), 

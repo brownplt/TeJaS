@@ -9,7 +9,7 @@ module Make (Pat : SET) (Css : CSS) = struct
 
   let error_on_mismatch = ref false
 
-  let with_typ_exns thunk = 
+  let with_typ_exns thunk =
     let prev = !error_on_mismatch in
     error_on_mismatch := true;
     let r = thunk () in
@@ -22,12 +22,12 @@ module Make (Pat : SET) (Css : CSS) = struct
   type sel = Css.t
 
 
-  type kind = 
+  type kind =
     | KStar
     | KMult of kind
     | KArrow of kind list * kind
 
-  type typ = 
+  type typ =
     | TBot
     | TTop
     | TPrim of string
@@ -41,7 +41,7 @@ module Make (Pat : SET) (Css : CSS) = struct
     | TApp of typ * sigma list
     | TRec of string option * id * typ
     | TDom of string option * typ * sel
-  and multiplicity = 
+  and multiplicity =
     | MPlain of typ
     | MId of id
     | MZero of multiplicity
@@ -89,7 +89,7 @@ module Make (Pat : SET) (Css : CSS) = struct
     let rec kind k = match k with
       | KStar -> text "*"
       | KMult k -> squish [text "M"; angles [kind k]]
-      | KArrow (ks, k) -> 
+      | KArrow (ks, k) ->
         horz [horz (intersperse (text ",") (map pr_kind ks)); text "=>"; kind k]
     and pr_kind k = match k with
       | KArrow _ -> parens [kind k]
@@ -100,11 +100,11 @@ module Make (Pat : SET) (Css : CSS) = struct
     and typ' horzOnly t =
       let typ = typ' horzOnly in
       let hnestOrHorz n = if horzOnly then horz else (fun ps -> hnest n (squish ps)) in
-      let namedType name fmt = 
-        if !useNames 
-        then match name with None -> fmt | Some n -> text n 
+      let namedType name fmt =
+        if !useNames
+        then match name with None -> fmt | Some n -> text n
         else match name with None -> horz [text "Unnamed"; fmt] | Some n -> horz [text "Named"; text n; fmt] in
-      let p = typ in 
+      let p = typ in
       match t with
       | TBot -> text "Bot"
       | TTop -> text "Top"
@@ -122,7 +122,7 @@ module Make (Pat : SET) (Css : CSS) = struct
         namedType name (horzOrVert [horz [text "Forall"; binding; text "."];
                                     typ body])
       end
-      | TLambda (n, args, t) -> 
+      | TLambda (n, args, t) ->
         let p (x, k) = horz [ text x; text "::"; kind k ] in
         namedType n (hvert [horz [text "Lambda"; horz (map p args); text "."]; typ t ])
       | TApp (t, ts) ->
@@ -131,7 +131,7 @@ module Make (Pat : SET) (Css : CSS) = struct
         | _ -> parens [squish [typ t; angles (intersperse (text ",") (map sigma ts))]])
       | TArrow (name, tt::arg_typs, varargs, r_typ) ->
         let multiLine = horzOnly ||
-          List.exists (fun at -> match at with 
+          List.exists (fun at -> match at with
             TArrow _ -> true | _ -> false) arg_typs in
         let rec pairOff ls = match ls with
           | [] -> []
@@ -140,27 +140,27 @@ module Make (Pat : SET) (Css : CSS) = struct
         let vararg = match varargs with
           | None -> []
           | Some t -> [horz[squish [parens [typ' true t]; text "..."]]] in
-        let argTexts = 
-          (intersperse (text "*") 
+        let argTexts =
+          (intersperse (text "*")
              ((map (fun at -> begin match at with
              | TArrow _ -> parens [typ' true at]
-             | _ -> typ' true at 
+             | _ -> typ' true at
              end) arg_typs) @ vararg)) in
-        namedType name 
+        namedType name
           (hnestOrHorz 0
-             [ squish [brackets [typ tt]; 
-                       (if multiLine 
-                        then vert (pairOff (text " " :: argTexts)) 
+             [ squish [brackets [typ tt];
+                       (if multiLine
+                        then vert (pairOff (text " " :: argTexts))
                         else horz (empty::argTexts))] ;
                horz [text "=>"; typ r_typ ]])
       | TArrow (name, arg_typs, varargs, r_typ) ->
         let vararg = match varargs with
           | None -> []
           | Some t -> [horz[squish [parens [typ' true t]; text "..."]]] in
-        let argText = horz (intersperse (text "*") 
+        let argText = horz (intersperse (text "*")
                               ((map (fun at -> begin match at with
                               | TArrow _ -> parens [typ' true at]
-                              | _ -> typ' true at 
+                              | _ -> typ' true at
                               end) arg_typs) @ vararg)) in
         namedType name (hnestOrHorz 0 [ argText; horz [text "=>"; typ r_typ ]])
       | TRec (n, x, t) -> namedType n (horz [ text "rec"; text x; text "."; typ t ])
@@ -186,7 +186,7 @@ module Make (Pat : SET) (Css : CSS) = struct
   let rec free_sigma_ids s = match s with
     | STyp t -> free_typ_ids t
     | SMult m -> free_mult_ids m
-  and free_mult_ids m : IdSet.t * IdSet.t = 
+  and free_mult_ids m : IdSet.t * IdSet.t =
     let open IdSet in
     let open IdSetExt in
     match m with
@@ -210,7 +210,7 @@ module Make (Pat : SET) (Css : CSS) = struct
     | TPrim _
     | TRegex _ -> (empty, empty)
     | TId x -> (singleton x, empty)
-    | TLambda (_, xks, t) -> 
+    | TLambda (_, xks, t) ->
       let (ts, ms) = (free_typ_ids t) in
       let (xts, yms) = List.partition (fun (_, k) -> match k with KMult _ -> true | _ -> false) xks in
       let (xs, ys) = (from_list (map fst2 xts), from_list (map fst2 yms)) in
@@ -248,7 +248,7 @@ module Make (Pat : SET) (Css : CSS) = struct
     and typ_help typ : typ = match typ with
       | TBot
       | TTop
-      | TPrim _ 
+      | TPrim _
       | TRegex _ -> typ
       | TApp(f, args) -> TApp(typ_help f, List.map sigma_help args)
       | TLambda (n, yks, t) ->
@@ -309,7 +309,8 @@ module Make (Pat : SET) (Css : CSS) = struct
 
   type env = binding IdMap.t
 
-  (* simple structural equivalence -- e.g. up to permutation of parts of Union or Inter or Sum 
+
+  (* simple structural equivalence -- e.g. up to permutation of parts of Union or Inter or Sum
    * and can be extended to objects later... *)
   let rec equivalent_sigma (env : env) s1 s2 =
     match s1, s2 with
@@ -321,9 +322,9 @@ module Make (Pat : SET) (Css : CSS) = struct
     | TTop, TTop -> true
     | TPrim p1, TPrim p2 -> p1 = p2
     | TRegex p1, TRegex p2 -> Pat.is_equal p1 p2
-    | TId n1, TId n2 -> 
-      (n1 = n2) || 
-        (try 
+    | TId n1, TId n2 ->
+      (n1 = n2) ||
+        (try
            (match IdMap.find n1 env, IdMap.find n2 env with
            | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
            | BTermTyp t1, BTermTyp t2 -> equivalent_typ env t1 t2
@@ -345,25 +346,25 @@ module Make (Pat : SET) (Css : CSS) = struct
         | Some v1, Some v2 -> List.for_all2 (equivalent_typ env) (t1r::v1::t1s) (t2r::v2::t2s)
         | _ -> false)
     | TLambda(_, args1, ret1), TLambda(_, args2, ret2) ->
-      if (List.length args1 <> List.length args2) then false 
+      if (List.length args1 <> List.length args2) then false
       else if not (List.for_all2 (fun (_, k1) (_, k2) -> k1 = k2) args1 args2) then false
-      else 
-        let ret2 = List.fold_left2 (fun r (x1,k1) (x2,k2) -> 
+      else
+        let ret2 = List.fold_left2 (fun r (x1,k1) (x2,k2) ->
           match k1 with
           | KMult _ -> mult_typ_subst x2 (MId x1) r
           | _ -> typ_typ_subst x2 (TId x1) r) ret2 args1 args2
         in equivalent_typ env ret1 ret2
     | TApp(t1, args1), TApp(t2, args2) ->
-      if (List.length args1 <> List.length args2) then false 
+      if (List.length args1 <> List.length args2) then false
       else equivalent_typ env t1 t2 && List.for_all2 (equivalent_sigma env) args1 args2
     | TDom(_, t1, sel1), TDom(_, t2, sel2) ->
       equivalent_typ env t1 t2 && Css.is_equal sel1 sel2
     | _ -> false
   and equivalent_mult env m1 m2 = match m1, m2 with
     | MPlain t1, MPlain t2 -> equivalent_typ env t1 t2
-    | MId n1, MId n2 -> 
-      (n1 = n2) || 
-        (try 
+    | MId n1, MId n2 ->
+      (n1 = n2) ||
+        (try
            (match IdMap.find n1 env, IdMap.find n2 env with
            | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
            | BTermTyp t1, BTermTyp t2 -> equivalent_typ env t1 t2
@@ -412,7 +413,7 @@ module Make (Pat : SET) (Css : CSS) = struct
       | t, TTop -> t
       | TBot, _
       | _, TBot -> TBot
-      | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) -> 
+      | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) ->
         if equivalent_sigma IdMap.empty bound1 bound2
         then TForall(n, alpha, bound1, canonical_type (TInter (None, typ1, typ_typ_subst beta (TId alpha) typ2)))
         else TInter(n, t1, t2)
@@ -423,7 +424,7 @@ module Make (Pat : SET) (Css : CSS) = struct
     | TArrow (n, args, var, ret) -> TArrow (n, map c args, opt_map c var, c ret)
     | TDom(n, t, sel) -> TDom(n, c t, sel)
 
-  and canonical_multiplicity m = 
+  and canonical_multiplicity m =
     let c = canonical_multiplicity in
     (* Invariant: will never return MPlain or MId, and
      * if there are no MIds then it will never return MSum *)
@@ -482,8 +483,9 @@ module Make (Pat : SET) (Css : CSS) = struct
       | t1, t2 -> MSum (t1, t2)
 
 
+
   exception Typ_error of Pos.t * string
-  let typ_mismatch p s = 
+  let typ_mismatch p s =
     if !error_on_mismatch then
       raise (Typ_error (p, s))
     else begin
@@ -495,4 +497,3 @@ module Make (Pat : SET) (Css : CSS) = struct
   let string_of_mult = FormatExt.to_string Pretty.multiplicity
   let string_of_kind = FormatExt.to_string Pretty.kind
 end
-

@@ -178,24 +178,43 @@ let main () =
     let cheatTyp t = ECheat(p, t, EConst(p, "")) in
     let tDom = TDom(None, TId "a", Css.all) in
     let exp = 
-      doLet "f" (cheatTyp (TArrow(None,
-                                  [TApp(TId("jQ"), [SMult (MOnePlus (MPlain (tDom)))])], None,
-                                  TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))]))))
-        (doLet "g" (cheatTyp (TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))])))
-           (EApp(p, EId(p, "f"), [EId (p, "g")]))) in
-    let retTyp = (TApp(TId("jQ"), [SMult (MZeroOne (MPlain (TId "b")))])) in
+      doLet "jQTweet"
+        (cheatTyp (TApp (TPrim "jQ", [SMult (MOnePlus (MPlain (TId "Tweet")))])))
+        (doLet "children" 
+           (cheatTyp 
+              (TArrow 
+                 (None, 
+                  [(TApp (TPrim "jQ", [SMult (MOnePlus (MPlain (TId "Tweet")))]))],
+                  None,
+                  (TApp (TPrim "jQ", [SMult (MOnePlus (MPlain (TApp (TPrim "childrenOf", [STyp (TId "Tweet")]))))])))))
+           (EApp (p, EId(p,"children"), [EId (p,"jQTweet")]))) in
+    (* doLet "f" (cheatTyp (TArrow(None, *)
+    (*                             [TApp(TId("jQ"), [SMult (MOnePlus (MPlain (tDom)))])], None, *)
+      (*                             TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))])))) *)
+      (*   (doLet "g" (cheatTyp (TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))]))) *)
+      (*      (EApp(p, EId(p, "f"), [EId (p, "g")]))) in *)
+    (* let retTyp = (TApp(TId("jQ"), [SMult (MZeroOne (MPlain (TId "b")))])) in *)
+    let retTyp = (TApp (TPrim "jQ", [SMult (MOnePlus (MPlain (TUnion (None, TUnion (None, TId "Author", TId "Content"), TId "Time"))))])) in
     let env = (unchecked_bind_typ_ids [("a", TId "b")] empty_env) in
-    begin try
-      text "Typechecking: Is"; newline ();
-      JQuery_syntax.Pretty.exp exp std_formatter; text " : "; print_typ retTyp; newline ();
-      text "in environment"; newline ();
-      braces (print_env env) std_formatter; text "?"; newline ();
-      with_typ_exns (fun () -> check env None exp retTyp);
-      text "Succeeded"; newline ();
-    with Typ_error(p, e) -> (text "FAILED: "; text e; newline ()) end;
+    let localStructure = "(Tweet: DivElement classes = [tweet]
+                             (Author: DivElement classes = [author])
+                             (Content: DivElement classes = [content])
+                             (Time: DivElement classes = [time])
+                          )" in
+    let senv = LSC.compileStructure (LS.parseLocalStructure localStructure) in
+    begin 
+      try
+        LSC.print_structureEnv senv Format.std_formatter;
+        text "Typechecking: Is"; newline ();
+        JQuery_syntax.Pretty.exp exp std_formatter; text " : "; print_typ retTyp; newline ();
+        text "in environment"; newline ();
+        braces (print_env env) std_formatter; text "?"; newline ();
+        with_typ_exns (fun () -> check env senv None exp retTyp);
+        text "Succeeded"; newline ();
+      with Typ_error(p, e) -> (text "FAILED: "; text e; newline ()) end;
     text "Cache hits:   "; int !JQuery_subtyping.cache_hits; newline ();
     text "Cache misses: "; int !JQuery_subtyping.cache_misses; newline ();
-    (* JQuery_subtyping.print_cache "Cache is: " std_formatter; newline() *)
+  (* JQuery_subtyping.print_cache "Cache is: " std_formatter; newline() *)
   end in
   let printLSTest t = begin 
     let decls = LS.parseLocalStructure t in
@@ -231,8 +250,9 @@ let main () =
              ...
              <b>)
          (d : DivElement classes = [cd1] ...))" in 
-  printLSTest testLSComp1;
-  printLSTest testLSComp2
+  test4()
+  (* printLSTest testLSComp1; *)
+  (* printLSTest testLSComp2; *)
 (* test1 500; *)
 (* test2 500 *)
 (* test3 100; *)

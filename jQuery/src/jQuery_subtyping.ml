@@ -2,8 +2,8 @@ open Prelude
 open JQuery_syntax
 open TypImpl
 open ListExt
-
-
+open LocalStructure_syntax
+open LocalStructure_subtyping
 
 module SigmaPair = struct
   type s = STyps of typ * typ | SMults of multiplicity * multiplicity | SMultTyp of multiplicity * typ
@@ -14,7 +14,7 @@ module SPMap = Map.Make (SigmaPair)
 module SPMapExt = MapExt.Make (SigmaPair) (SPMap)
 
 let rec expose_typ env t = match t with
-  | TId x -> 
+  | TId x ->
     (try (match IdMap.find x env with BTypBound (t, _) -> expose_typ env t | _ -> None)
      with Not_found -> None)
   | t -> Some t
@@ -25,7 +25,7 @@ let rec project s env =
   let (free_t, free_m) = free_sigma_ids s in
   IdMap.fold (fun id bind acc ->
     if not (IdSet.mem id free_t || IdSet.mem id free_m) then acc
-    else 
+    else
       let trans = match bind with
         | BTermTyp t -> project (STyp t) env
         | BTypBound(t, _) -> project (STyp t) env
@@ -47,15 +47,15 @@ let pat_env (env : env) : pat IdMap.t =
 let cache_hits = ref 0
 let cache_misses = ref 0
 
-let rec subtype_sigma lax (env : env) cache s1 s2 = 
+let rec subtype_sigma lax (env : env) (senv : structureEnv) cache s1 s2 =
   let open SigmaPair in
   match s1, s2 with
   | STyp t1, STyp t2 -> subtype_typ lax env senv cache t1 t2
   | SMult m1, SMult m2 -> subtype_mult lax env senv cache m1 m2
   (* SUPER-CRITICAL LAXITY RULE *)
-  | SMult m1, STyp t2 -> 
+  | SMult m1, STyp t2 ->
     if lax then
-      let (cache, ret) = subtype_mult lax env cache m1 (MZeroPlus (MPlain t2)) in
+      let (cache, ret) = subtype_mult lax env senv cache m1 (MZeroPlus (MPlain t2)) in
       (SPMap.add (project_mult_typ m1 t2 env, SMultTyp (m1, t2)) ret cache, ret)
     else
       (cache, false)
@@ -86,7 +86,7 @@ and subtype_typ lax env senv cache t1 t2 : (bool SPMap.t * bool) =
     | TId n1, t2 when t2 = TId n1 -> cache, true (* SA-Refl-TVar *)
     | TId n1, _ -> (* SA-Trans-TVar *)
       (try
-         (match IdMap.find n1 env with 
+         (match IdMap.find n1 env with
          | BTypBound (t1, _) -> subtype_typ env senv cache t1 t2
          | _ -> cache, false)
        with Not_found -> cache, false)
@@ -106,25 +106,25 @@ and subtype_typ lax env senv cache t1 t2 : (bool SPMap.t * bool) =
       else (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1))
     | TArrow (_, args1, None, ret1), TArrow (_, args2, Some var2, ret2) ->
       if (List.length args1 < List.length args2) then (cache, false)
-      else 
+      else
         let args2' = fill (List.length args1 - List.length args2) var2 args2 in
         (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2') (ret2::args1))
     | TArrow (_, args1, Some var1, ret1), TArrow (_, args2, None, ret2) ->
       if (List.length args1 > List.length args2) then (cache, false)
-      else 
+      else
         let args1' = fill (List.length args2 - List.length args1) var1 args1 in
         (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
     | TArrow (_, args1, Some var1, ret1), TArrow (_, args2, Some var2, ret2) ->
       if (List.length args1 > List.length args2) then
         let args2' = fill (List.length args1 - List.length args2) var2 args2 in
         (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2') (ret2::args1))
-      else 
+      else
         let args1' = fill (List.length args2 - List.length args1) var1 args1 in
         (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
-    | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
+    | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) ->
       (* Kernel rule *)
-      if not (equivalent_sigma env s1 s2) thepn cache, false
-      else 
+      if not (equivalent_sigma env s1 s2) then cache, false
+      else
         let t2 = typ_typ_subst x2 (TId x1) t2 in
         let env' = match s2 with
           | STyp t -> IdMap.add x1 (BTypBound (t, KStar)) env
@@ -132,8 +132,8 @@ and subtype_typ lax env senv cache t1 t2 : (bool SPMap.t * bool) =
         subtype_typ env' senv cache t1 t2
     | _ -> (cache, false))
   end
-    
-and subtype_mult lax env senv cache m1 m2 = 
+
+and subtype_mult lax env senv cache m1 m2 =
   let subtype_mult = subtype_mult lax env senv in
   let subtype_typ = subtype_typ lax env senv in (* ok for now because there are no MId binding forms in Mult *)
   let open SigmaPair in
@@ -143,7 +143,7 @@ and subtype_mult lax env senv cache m1 m2 =
   | MId n1, t2 when t2 = MId n1 -> cache, true (* SA-Refl-TVar *)
   | MId n1, _ -> (* SA-Trans-TVar *)
     (try
-       (match IdMap.find n1 env with 
+       (match IdMap.find n1 env with
        | BMultBound (m1, _) -> subtype_mult cache m1 m2
        | _ -> cache, false)
      with Not_found -> cache, false)
@@ -187,15 +187,15 @@ let print_cache lbl =
   let cut fmt = Format.pp_print_cut fmt () in
   SPMapExt.p_map lbl cut
     (fun (env, sp) -> match sp with
-    | STyps (t1, t2) -> 
+    | STyps (t1, t2) ->
       pair
         (label_braces "Env: " cut (print_env env))
         (label_pair "STyps" (TypImpl.Pretty.typ t1) (TypImpl.Pretty.typ t2))
-    | SMults (m1, m2) -> 
+    | SMults (m1, m2) ->
       pair
         (label_braces "Env: " cut (print_env env))
         (label_pair "SMults" (TypImpl.Pretty.multiplicity m1) (TypImpl.Pretty.multiplicity m2))
-    | SMultTyp (m1, t2) -> 
+    | SMultTyp (m1, t2) ->
       pair
         (label_braces "Env: " cut (print_env env))
         (label_pair "SMultTyp" (TypImpl.Pretty.multiplicity m1) (TypImpl.Pretty.typ t2)))
@@ -207,7 +207,19 @@ let subtype_sigma lax env senv s1 s2 =
   (let (c, r) = (subtype_sigma lax env senv !cache (canonical_sigma s1) (canonical_sigma s2))
    in cache := c; r)
 let subtype_typ lax env senv t1 t2 =
-  (let (c, r) = (subtype_typ lax env senv !cache (canonical_type t1) (canonical_type t2))
+  let resolved_t1 = (resolve_special_functions env senv (expose_TDom env (canonical_type t1))) in
+  let resolved_t2 = (resolve_special_functions env senv (expose_TDom env (canonical_type t2))) in let open Format in let open FormatExt in
+  pp_print_newline Format.std_formatter ();
+  label "t1: " [TypImpl.Pretty.typ t1] Format.std_formatter;
+  pp_print_newline Format.std_formatter ();
+  label "t2: " [TypImpl.Pretty.typ t2] Format.std_formatter;
+  pp_print_newline Format.std_formatter ();
+  pp_print_newline Format.std_formatter ();
+  label "resolved t1: " [TypImpl.Pretty.typ resolved_t1] Format.std_formatter;
+  pp_print_newline Format.std_formatter ();
+  label "resolved t2: " [TypImpl.Pretty.typ resolved_t1] Format.std_formatter;
+  pp_print_newline Format.std_formatter ();
+  (let (c, r) = (subtype_typ lax env senv !cache resolved_t1 resolved_t2)
    in cache := c; r)
 let subtype_mult lax env senv m1 m2 =
   (let (c, r) = (subtype_mult lax env senv !cache (canonical_multiplicity m1) (canonical_multiplicity m2))
