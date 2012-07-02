@@ -80,8 +80,6 @@ struct
     | W.Lambda (args, t) -> JQ.TStrobe (S.TLambda (None, map id_kind args, embed_typ t))
     | W.Fix (x, k, t) -> let (x, k) = id_kind (x, k) in JQ.TStrobe (S.TFix (None, x, k, embed_typ t))
 
-    (* | _ -> error "Not yet implemented" *)
-
   and opt_map f v = match v with None -> None | Some v -> Some (f v)
   and embed_typ t = S.TEmbed (typ t)
 

@@ -588,7 +588,17 @@ struct
     | TForall (n, alpha, bound, typ) -> TForall(n, alpha, c bound, c typ)
     | TRec (n, alpha, typ) -> TRec(n, alpha, c typ)
     | TArrow (args, var, ret) -> TArrow (map c args, opt_map c var, c ret)
-    | _ -> t (* TODO: FINISH THE OTHER TYPES *)
+    | TUninit tref -> begin match !tref with
+      | None -> t
+      | Some t' -> tref := Some (c t'); t
+    end
+    | TFix(n, x, k, t) -> TFix(n, x, k, c t)
+    | TSink(n, t) -> TSink(n, c t)
+    | TSource(n, t) -> TSource(n, c t)
+    | TRef(n, t) -> TRef(n, c t)
+    | TWith(t, o) -> TWith(c t, {o with fields = List.map (fun (n, p, t) -> (n, p, c t)) o.fields})
+    | TObject o -> TObject {o with fields = List.map (fun (n, p, t) -> (n, p, c t)) o.fields}
+    | TThis t -> TThis (c t)
 
 
 
