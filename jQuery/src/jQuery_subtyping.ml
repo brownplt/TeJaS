@@ -1,8 +1,35 @@
 open Prelude
-open JQuery_syntax
-open TypImpl
-open ListExt
+open Sig
+open Strobe_sigs
+open JQuery_sigs
 
+
+module MakeActions
+  (Strobe : STROBE_SUBTYPING)
+  (JQ : JQUERY_ACTIONS
+   with type baseTyp = Strobe.typ
+  with type baseKind = Strobe.kind
+  with type baseBinding = Strobe.binding
+  with type typ = Strobe.extTyp
+  with type kind = Strobe.extKind
+  with type binding = Strobe.extBinding
+  with type env = Strobe.env)
+  (Css : Css.CSS with type t = JQ.sel)
+  : (JQUERY_SUBTYPING
+     with type typ = JQ.typ
+  with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity
+  with type sigma = JQ.sigma
+  with type binding = JQ.binding
+  with type baseTyp = JQ.baseTyp
+  with type baseKind = JQ.baseKind
+  with type baseBinding = JQ.baseBinding
+  with type sel = JQ.sel
+  with type env = JQ.env) =
+struct
+  include JQ
+  open JQ
+  open ListExt
 
 
 module SigmaPair = struct
@@ -212,3 +239,4 @@ let subtype_typ lax env t1 t2 =
 let subtype_mult lax env m1 m2 =
   (let (c, r) = (subtype_mult lax env !cache (canonical_multiplicity m1) (canonical_multiplicity m2))
    in cache := c; r)
+end

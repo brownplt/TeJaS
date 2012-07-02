@@ -7,28 +7,48 @@ open Strobe_sigs
 
 module Make : JQUERY_TYP
 module MakeActions :
-  functor (STROBE : STROBE_TYPS) ->
+  functor (Strobe : STROBE_ACTIONS) ->
     functor (JQ : JQUERY_TYPS
-             with type baseTyp = STROBE.typ
-  with type baseKind = STROBE.kind
-  with type baseBinding = STROBE.binding
-  with type typ = STROBE.extTyp
-  with type kind = STROBE.extKind
-  with type binding = STROBE.extBinding) ->
+             with type baseTyp = Strobe.typ
+  with type baseKind = Strobe.kind
+  with type baseBinding = Strobe.binding
+  with type typ = Strobe.extTyp
+  with type kind = Strobe.extKind
+  with type binding = Strobe.extBinding
+  with type env = Strobe.env) ->
       functor (Css : Css.CSS with type t = JQ.sel) ->
-        functor (Strobe : STROBE_ACTIONS
-                 with type typ = STROBE.typ
-  with type kind = STROBE.kind
-  with type binding = STROBE.binding
-  with type extTyp = STROBE.extTyp
-  with type extKind = STROBE.extKind
-  with type extBinding = STROBE.extBinding
-  with type field = STROBE.field
-  with type obj_typ = STROBE.obj_typ
-  with type env = STROBE.env) -> 
           (JQUERY_ACTIONS
            with type typ = JQ.typ
   with type kind = JQ.kind
   with type multiplicity = JQ.multiplicity
-  with type binding = JQ.binding)
+  with type sigma = JQ.sigma
+  with type binding = JQ.binding
+  with type baseTyp = JQ.baseTyp
+  with type baseKind = JQ.baseKind
+  with type baseBinding = JQ.baseBinding
+  with type env = JQ.env
+  with type sel = JQ.sel)
 
+module MakeModule :
+  functor (Strobe : STROBE_ACTIONS) ->
+    functor (Css : Css.CSS) ->
+    functor (JQ : JQUERY_ACTIONS
+             with type baseTyp = Strobe.typ
+  with type baseKind = Strobe.kind
+  with type baseBinding = Strobe.binding
+  with type typ = Strobe.extTyp
+  with type kind = Strobe.extKind
+  with type binding = Strobe.extBinding
+  with type env = Strobe.env
+  with type sel = Css.t) ->
+        (JQUERY_MODULE
+       with type typ = JQ.typ
+  with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity
+  with type sigma = JQ.sigma
+  with type binding = JQ.binding
+  with type baseTyp = JQ.baseTyp
+  with type baseKind = JQ.baseKind
+  with type baseBinding = JQ.baseBinding
+  with type env = JQ.env
+  with type sel = JQ.sel)

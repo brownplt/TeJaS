@@ -45,11 +45,7 @@ module type JQUERY_TYP = functor (Css : CSS) -> functor (STROBE : TYPS) ->
          with type sel = Css.t)
 
 module type JQUERY_ACTIONS = sig
-  type typ
-  type kind
-  type multiplicity
-  type binding
-  type env = binding IdMap.t
+  include JQUERY_TYPS
   module Pretty : sig
     val typ : typ -> FormatExt.printer
     val kind : kind -> FormatExt.printer
@@ -57,6 +53,9 @@ module type JQUERY_ACTIONS = sig
     val useNames : bool -> unit
     val shouldUseNames : unit -> bool
   end
+  val extract_t : typ -> baseTyp
+  val extract_k : kind -> baseKind
+  val extract_b : binding -> baseBinding
   val apply_name : string option -> typ -> typ
   val replace_name : string option -> typ -> typ
   val name_of : typ -> string option
@@ -77,3 +76,33 @@ module type JQUERY_ACTIONS = sig
   val string_of_kind : kind -> string
 end
 
+module type JQUERY_MODULE = sig
+  include JQUERY_ACTIONS
+  module Strobe : (Strobe_sigs.STROBE_ACTIONS
+                   with type typ = baseTyp
+    with type kind = baseKind
+    with type binding = baseBinding
+    with type extTyp = typ
+    with type extKind = kind
+    with type extBinding = binding
+    with type env = env)
+  module Css : (CSS with type t = sel)
+end
+
+module type JQUERY_SUBTYPING = sig
+  include JQUERY_ACTIONS
+  val subtype_sigma : bool -> env -> sigma -> sigma -> bool
+  val subtype_typ : bool -> env -> typ -> typ -> bool
+  val subtype_mult : bool -> env -> multiplicity -> multiplicity -> bool
+  val subtype : env -> typ -> typ -> bool
+end
+
+module type JQUERY_KINDING = sig
+  include JQUERY_ACTIONS
+  val list_prims : unit -> id list
+  val new_prim_typ : string -> unit
+  val kind_check_typ : env -> id list -> typ -> kind
+  val kind_check_mult : env -> id list -> multiplicity -> kind
+  val kind_check_sigma : env -> id list -> sigma -> kind
+  val kind_check : env -> id list -> typ -> kind
+end

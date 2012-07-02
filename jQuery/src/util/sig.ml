@@ -85,17 +85,7 @@ module type TYPS = sig
   type typ
   type kind
   type binding
-  type env = binding IdMap.t
-end
-
-module type EXT_TYP_SIG = sig
-  include TYPS
-  type baseTyp
-  type baseKind
-  type baseBinding
-  val embed_t : baseTyp -> typ
-  val embed_k : baseKind -> kind
-  val embed_b : baseBinding -> binding
+  type env
 end
 
 module type TYP_ACTIONS = sig
@@ -113,6 +103,31 @@ module type TYP_ACTIONS = sig
   val equivalent_typ : env -> typ -> typ -> bool
   val rename_avoid_capture : (* free *) IdSet.t -> (* to rename *) id list -> (* in type *) typ -> (id list * typ)
   val canonical_type : typ -> typ
-  (* val subtype : typ -> typ -> bool *)
+  val string_of_typ : typ -> string
+  val string_of_kind : kind -> string
 end
 
+module type EXT_TYP_ACTIONS = sig
+  include TYP_ACTIONS
+  type baseTyp
+  type baseKind
+  type baseBinding
+  val embed_t : baseTyp -> typ
+  val embed_k : baseKind -> kind
+  val embed_b : baseBinding -> binding
+  val extract_t : typ -> baseTyp
+  val extract_k : kind -> baseKind
+  val extract_b : binding -> baseBinding
+end
+
+module type EXT_TYP_SUBTYPING = sig
+  include EXT_TYP_ACTIONS
+  val subtype : env -> typ -> typ -> bool
+end
+
+module type EXT_KINDING = sig
+  include EXT_TYP_ACTIONS
+  val list_prims : unit -> id list
+  val new_prim_typ : string -> unit
+  val kind_check : env -> id list -> typ -> kind
+end

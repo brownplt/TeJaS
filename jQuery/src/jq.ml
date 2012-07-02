@@ -5,7 +5,7 @@ open Prelude
 open SetExt
 module TestRealCSS = Css.TestRealCSS
 open JQuery_syntax
-module JQ = TypImpl
+module JQ = JQueryImpl
 module S = StrobeImpl
 
 (* open JQuery_typechecking *)

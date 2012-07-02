@@ -43,38 +43,45 @@ module Make : JQUERY_TYP = functor (Css : Css.CSS) -> functor (STROBE : TYPS) ->
 end
 
 module MakeActions
-  (STROBE : STROBE_TYPS)
+  (Strobe : STROBE_ACTIONS)
   (JQ : JQUERY_TYPS 
-   with type baseTyp = STROBE.typ
-  with type baseKind = STROBE.kind
-  with type baseBinding = STROBE.binding
-  with type typ = STROBE.extTyp
-  with type kind = STROBE.extKind
-  with type binding = STROBE.extBinding)
+   with type baseTyp = Strobe.typ
+  with type baseKind = Strobe.kind
+  with type baseBinding = Strobe.binding
+  with type typ = Strobe.extTyp
+  with type kind = Strobe.extKind
+  with type binding = Strobe.extBinding
+  with type env = Strobe.env)
   (Css : Css.CSS with type t = JQ.sel)
-  (Strobe : STROBE_ACTIONS
-   with type typ = STROBE.typ
-  with type kind = STROBE.kind
-  with type extTyp = STROBE.extTyp
-  with type extKind = STROBE.extKind
-  with type binding = STROBE.binding
-  with type extBinding = STROBE.extBinding
-  with type field = STROBE.field
-  with type obj_typ = STROBE.obj_typ
-  with type env = STROBE.env)
   : (JQUERY_ACTIONS 
      with type typ = JQ.typ
   with type kind = JQ.kind
   with type multiplicity = JQ.multiplicity
-  with type binding = JQ.binding) =
+  with type sigma = JQ.sigma
+  with type binding = JQ.binding
+  with type baseTyp = JQ.baseTyp
+  with type baseKind = JQ.baseKind
+  with type baseBinding = JQ.baseBinding
+  with type sel = JQ.sel
+  with type env = JQ.env) =
 struct
-  type typ = JQ.typ
-  type kind = JQ.kind
-  type multiplicity = JQ.multiplicity
-  type env = JQ.env
-  type binding = JQ.binding
+  include JQ
   open JQ
   open ListExt
+
+
+  let rec embed_t t =
+    match t with Strobe.TEmbed (TStrobe t) -> embed_t t | Strobe.TEmbed t -> t | t -> TStrobe t
+  let rec embed_k k =
+    match k with Strobe.KEmbed (KStrobe k) -> embed_k k | Strobe.KEmbed k -> k | k -> KStrobe k
+  let rec embed_b b =
+    match b with Strobe.BEmbed (BStrobe b) -> embed_b b | Strobe.BEmbed b -> b | b -> BStrobe b
+  let rec extract_t t =
+    match t with TStrobe (Strobe.TEmbed t) -> extract_t t | TStrobe t -> t | t -> Strobe.TEmbed t
+  let rec extract_k k =
+    match k with KStrobe (Strobe.KEmbed k) -> extract_k k | KStrobe k -> k | k -> Strobe.KEmbed k
+  let rec extract_b b =
+    match b with BStrobe (Strobe.BEmbed b) -> extract_b b | BStrobe b -> b | b -> Strobe.BEmbed b
 
   let num_typ_errors = ref 0
 
@@ -135,7 +142,7 @@ struct
       | TStrobe t -> Strobe.Pretty.typ t
       | TForall (name, alpha, bound, body) -> begin
         let binding = match bound with
-          | STyp (TStrobe STROBE.TTop) -> text alpha
+          | STyp (TStrobe Strobe.TTop) -> text alpha
           | STyp t -> horz [text alpha; text "<:"; typ t]
           | SMult m -> horz [text alpha; text "<:"; multiplicity m]
         in
@@ -219,7 +226,7 @@ struct
         if not (IdSet.mem y free) then (y::new_ys, substs)
         else
           let x = fresh_var ((IdMapExt.keys substs) @ IdSetExt.to_list free) in
-          (x::new_ys, IdMap.add y (STyp (TStrobe (STROBE.TId x))) substs))
+          (x::new_ys, IdMap.add y (STyp (TStrobe (Strobe.TId x))) substs))
         ([], IdMap.empty) ys in
     let new_ys = List.rev rev_new_ys in
     let t' = IdMap.fold subst substs (STyp t) in
@@ -242,10 +249,10 @@ struct
     and typ_help typ : typ = match typ with
       | TStrobe tstrobe -> begin
         let subst_t = match s with
-          | STyp t -> TStrobe (Strobe.subst (Some x) (STROBE.TEmbed t) typ_help tstrobe)
-          | SMult m -> TStrobe (Strobe.subst None STROBE.TTop typ_help tstrobe)
+          | STyp t -> TStrobe (Strobe.subst (Some x) (Strobe.TEmbed t) typ_help tstrobe)
+          | SMult m -> TStrobe (Strobe.subst None Strobe.TTop typ_help tstrobe)
         in match subst_t with
-        | TStrobe (STROBE.TEmbed t) -> t
+        | TStrobe (Strobe.TEmbed t) -> t
         | t -> t
       end
       | TApp(f, args) -> TApp(typ_help f, List.map sigma_help args)
@@ -275,7 +282,7 @@ struct
     | TForall(_, alpha, s1, t1), TForall(_, beta, s2, t2) ->
       equivalent_sigma env s1 s2 && (match s1 with
       | SMult _ -> equivalent_typ env t1 (mult_typ_subst beta (MId alpha) t2)
-      | STyp _ -> equivalent_typ env t1 (typ_typ_subst beta (TStrobe (STROBE.TId alpha)) t2))
+      | STyp _ -> equivalent_typ env t1 (typ_typ_subst beta (TStrobe (Strobe.TId alpha)) t2))
     (* | TLambda(_, args1, ret1), TLambda(_, args2, ret2) -> *)
     (*   if (List.length args1 <> List.length args2) then false *)
     (*   else if not (List.for_all2 (fun (_, k1) (_, k2) -> k1 = k2) args1 args2) then false *)
@@ -290,9 +297,9 @@ struct
       else equivalent_typ env t1 t2 && List.for_all2 (equivalent_sigma env) args1 args2
     | TDom(_, t1, sel1), TDom(_, t2, sel2) ->
       equivalent_typ env t1 t2 && Css.is_equal sel1 sel2
-    | TStrobe (STROBE.TEmbed t1), _ -> equivalent_typ env t1 t2
-    | _, TStrobe (STROBE.TEmbed t2) -> equivalent_typ env t1 t2
-    | TStrobe t1, TStrobe t2 -> Strobe.equivalent_typ (IdMap.map (fun b -> STROBE.BEmbed b) env) t1 t2
+    | TStrobe (Strobe.TEmbed t1), _ -> equivalent_typ env t1 t2
+    | _, TStrobe (Strobe.TEmbed t2) -> equivalent_typ env t1 t2
+    | TStrobe t1, TStrobe t2 -> Strobe.equivalent_typ env t1 t2
     | _ -> false
   and equivalent_multiplicity env m1 m2 = match m1, m2 with
     | MPlain t1, MPlain t2 -> equivalent_typ env t1 t2
@@ -300,9 +307,9 @@ struct
       (n1 = n2) ||
         (try
            (match IdMap.find n1 env, IdMap.find n2 env with
-           | BStrobe (STROBE.BTypBound(t1, k1)), BStrobe (STROBE.BTypBound(t2, k2)) -> 
+           | BStrobe (Strobe.BTypBound(t1, k1)), BStrobe (Strobe.BTypBound(t2, k2)) -> 
              k1 = k2 && equivalent_typ env (embed_t t1) (embed_t t2)
-           | BStrobe (STROBE.BTermTyp t1), BStrobe (STROBE.BTermTyp t2) -> equivalent_typ env (embed_t t1) (embed_t t2)
+           | BStrobe (Strobe.BTermTyp t1), BStrobe (Strobe.BTermTyp t2) -> equivalent_typ env (embed_t t1) (embed_t t2)
            | BMultBound(m1, k1), BMultBound(m2, k2) -> k1 = k2 && equivalent_multiplicity env m1 m2
            | _ -> false)
          with Not_found -> false)
@@ -325,39 +332,39 @@ struct
     let c = canonical_type in
     match t with
     | TApp(f, args) -> TApp(c f, List.map canonical_sigma args)
-    | TStrobe(STROBE.TUnion (n, _, _)) -> begin
+    | TStrobe(Strobe.TUnion (n, _, _)) -> begin
       let rec collect t = match t with
-        | TStrobe(STROBE.TUnion (_, t1, t2)) -> collect (c (TStrobe t1)) @ collect (c (TStrobe t2))
-        | TStrobe(STROBE.TEmbed t) -> collect t
+        | TStrobe(Strobe.TUnion (_, t1, t2)) -> collect (c (TStrobe t1)) @ collect (c (TStrobe t2))
+        | TStrobe(Strobe.TEmbed t) -> collect t
         | TStrobe t -> [t]
-        | _ -> [STROBE.TEmbed t] in
+        | _ -> [Strobe.TEmbed t] in
       let pieces = collect t in
       let nodups = remove_dups pieces in
       match List.rev nodups with
       | [] -> failwith "impossible"
-      | hd::tl -> TStrobe (Strobe.apply_name n (List.fold_left (fun acc t -> if t = STROBE.TBot then acc else STROBE.TUnion(None, t, acc)) hd tl))
+      | hd::tl -> TStrobe (Strobe.apply_name n (List.fold_left (fun acc t -> if t = Strobe.TBot then acc else Strobe.TUnion(None, t, acc)) hd tl))
     end
-    | TStrobe(STROBE.TInter (n, t1, t2)) -> begin match Strobe.canonical_type t1, Strobe.canonical_type t2 with
-      | STROBE.TTop, t
-      | t, STROBE.TTop -> begin match t with
-        | STROBE.TEmbed t -> t
+    | TStrobe(Strobe.TInter (n, t1, t2)) -> begin match Strobe.canonical_type t1, Strobe.canonical_type t2 with
+      | Strobe.TTop, t
+      | t, Strobe.TTop -> begin match t with
+        | Strobe.TEmbed t -> t
         | t -> TStrobe t
       end
-      | STROBE.TBot, _
-      | _, STROBE.TBot -> TStrobe STROBE.TBot
-      | STROBE.TEmbed (TForall(_, alpha, bound1, typ1) as t1), 
-        STROBE.TEmbed (TForall(_, beta, bound2, typ2) as t2) ->
+      | Strobe.TBot, _
+      | _, Strobe.TBot -> TStrobe Strobe.TBot
+      | Strobe.TEmbed (TForall(_, alpha, bound1, typ1) as t1), 
+        Strobe.TEmbed (TForall(_, beta, bound2, typ2) as t2) ->
         if equivalent_sigma IdMap.empty bound1 bound2
         then TForall(n, alpha, bound1, 
                      canonical_type
-                       (TStrobe (STROBE.TInter (None, STROBE.TEmbed typ1, 
-                                                STROBE.TEmbed 
-                                                  (typ_typ_subst beta (TStrobe (STROBE.TId alpha)) typ2)))))
-        else TStrobe (STROBE.TInter(n, STROBE.TEmbed t1, STROBE.TEmbed t2))
-      | t1, t2 -> if t1 = t2 then TStrobe t1 else TStrobe (STROBE.TInter(n, t1, t2))
+                       (TStrobe (Strobe.TInter (None, Strobe.TEmbed typ1, 
+                                                Strobe.TEmbed 
+                                                  (typ_typ_subst beta (TStrobe (Strobe.TId alpha)) typ2)))))
+        else TStrobe (Strobe.TInter(n, Strobe.TEmbed t1, Strobe.TEmbed t2))
+      | t1, t2 -> if t1 = t2 then TStrobe t1 else TStrobe (Strobe.TInter(n, t1, t2))
     end
     | TStrobe t -> begin match Strobe.canonical_type t with
-      | STROBE.TEmbed t -> t
+      | Strobe.TEmbed t -> t
       | t -> TStrobe t
     end
     | TForall (n, alpha, bound, typ) -> TForall(n, alpha, canonical_sigma bound, c typ)
@@ -371,7 +378,7 @@ struct
     match m with
     | MPlain t -> MOne (MPlain (canonical_type t))
     | MId _ -> MOne m
-    | MZero _ -> MZero (MPlain (TStrobe STROBE.TBot))
+    | MZero _ -> MZero (MPlain (TStrobe Strobe.TBot))
     | MOne m -> c m
     | MZeroOne (MPlain t) -> MZeroOne (MPlain (canonical_type t))
     | MZeroOne (MId _) -> m
@@ -398,7 +405,7 @@ struct
     | MZeroPlus (MZeroPlus m) -> c (MZeroPlus m)
     | MZeroPlus (MSum (m1, m2)) -> let m' = MZeroPlus (c (MSum (m1, m2))) in if m' = m then m else c m'
     | MSum(m1, m2) -> 
-      let c_u t1 t2 = canonical_type (TStrobe (STROBE.TUnion(None, STROBE.TEmbed t1, STROBE.TEmbed t2))) in
+      let c_u t1 t2 = canonical_type (TStrobe (Strobe.TUnion(None, Strobe.TEmbed t1, Strobe.TEmbed t2))) in
       match c m1, c m2 with
       | MZero _, t2 -> t2
       | t1, MZero _ -> t1
@@ -439,8 +446,34 @@ struct
   let string_of_kind = FormatExt.to_string Pretty.kind
 end
 
-
-
+module MakeModule
+  (Strobe : STROBE_ACTIONS)
+  (Css : Css.CSS)
+  (JQ : JQUERY_ACTIONS
+   with type baseTyp = Strobe.typ
+  with type baseKind = Strobe.kind
+  with type baseBinding = Strobe.binding
+  with type typ = Strobe.extTyp
+  with type kind = Strobe.extKind
+  with type binding = Strobe.extBinding
+  with type env = Strobe.env
+  with type sel = Css.t)
+    : (JQUERY_MODULE
+   with type baseTyp = Strobe.typ
+  with type baseKind = Strobe.kind
+  with type baseBinding = Strobe.binding
+  with type multiplicity = JQ.multiplicity
+  with type sigma = JQ.sigma
+  with type typ = Strobe.extTyp
+  with type kind = Strobe.extKind
+  with type binding = Strobe.extBinding
+  with type env = Strobe.env
+  with type sel = JQ.sel) =
+struct
+  include JQ
+  module Strobe = Strobe
+  module Css = Css
+end
 
 (* module MakeJQueryTypSub *)
 (*   (Strobe : STROBE_TYPS) *)

@@ -55,7 +55,11 @@ module type STROBE_TYPS = sig
   type extBinding
   type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind
 
-  type env = binding IdMap.t
+  type env = extBinding IdMap.t
+  val proto_str : string
+
+  val proto_pat : pat
+  val fields : obj_typ -> field list
 end
 
 module type STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) ->
@@ -66,16 +70,21 @@ module type STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) ->
          with type pat = Pat.t)
 
 module type STROBE_ACTIONS = sig
-  type typ
-  type kind
-  type binding
-  type extTyp
-  type extKind
-  type extBinding
-  type pat
-  type field
-  type obj_typ
-  type env
+  include STROBE_TYPS
+
+  module Pretty : sig
+    val typ : typ -> FormatExt.printer
+    val kind : kind -> FormatExt.printer
+    val useNames : bool -> unit
+    val shouldUseNames : unit -> bool
+  end
+  val apply_name : string option -> typ -> typ
+  val replace_name : string option -> typ -> typ
+
+
+  val string_of_typ : typ -> string
+  val string_of_kind : kind -> string
+
   val name_of : typ -> string option
   val free_ids : typ -> IdSet.t
   val free_typ_ids : typ -> IdSet.t
@@ -85,7 +94,11 @@ module type STROBE_ACTIONS = sig
   val rename_avoid_capture : IdSet.t -> id list -> typ -> (id list * typ)
   val equivalent_typ : env -> typ -> typ -> bool
   val canonical_type : typ -> typ
+  val mk_obj_typ : field list -> pat -> obj_typ
+end
 
+module type STROBE_SUBTYPING = sig
+  include STROBE_ACTIONS
   type typ_error_details =
     | TypKind of (typ -> kind -> string) * typ * kind
     | StringTyp of (string -> typ -> string) * string * typ
@@ -107,28 +120,10 @@ module type STROBE_ACTIONS = sig
   val typ_error_details_to_string : typ_error_details -> string
 
       
-
-  (* type typenv = (typ * kind) IdMap.t *)
-
-  module Pretty : sig
-    val typ : typ -> FormatExt.printer
-    val kind : kind -> FormatExt.printer
-    val useNames : bool -> unit
-    val shouldUseNames : unit -> bool
-  end
-
-  val string_of_typ : typ -> string
-  val string_of_kind : kind -> string
   
   (* val expose_twith : typenv -> typ -> typ *)
 
-  (* val proto_str : string *)
 
-  (* val proto_pat : pat *)
-
-  val mk_obj_typ : field list -> pat -> obj_typ
-
-  (* val fields : obj_typ -> field list *)
 
   (* (\** Pattern for absent field *\) *)
   (* val absent_pat : obj_typ -> pat *)
@@ -146,10 +141,6 @@ module type STROBE_ACTIONS = sig
   (* val parent_typ : typenv -> typ -> typ option *)
 
   (* val simpl_typ : typenv -> typ -> typ *)
-
-  val apply_name : string option -> typ -> typ
-
-  val replace_name : string option -> typ -> typ
 
   (* val expose : typenv -> typ -> typ *)
 
@@ -177,4 +168,25 @@ module type STROBE_ACTIONS = sig
   (*     which is set if there were no other types in [t]. *\) *)
   (* val object_typs : typ -> typ list * bool *)
 
+end
+
+module type STROBE_MODULE = sig
+  include STROBE_ACTIONS
+  module Ext : (EXT_TYP_ACTIONS
+                with type baseTyp = typ
+    with type baseKind = kind
+    with type baseBinding = binding
+    with type env = env
+    with type typ = extTyp
+    with type kind = extKind
+    with type binding = extBinding)
+  module Pat : (SET with type t = pat)
+end
+
+module type STROBE_KINDING = sig
+  include STROBE_TYPS
+  exception Kind_error of string
+  val list_prims : unit -> id list
+  val new_prim_typ : string -> unit
+  val kind_check : env -> id list -> typ -> kind
 end

@@ -3,7 +3,6 @@
 open Prelude
 open Typedjs_syntax
 open JQuery_syntax
-open TypImpl
 module W = Typedjs_syntax.WritTyp
 
 let rec remove_this op = match op with
