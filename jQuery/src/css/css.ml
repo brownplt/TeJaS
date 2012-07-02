@@ -7,6 +7,7 @@ module type CSS = sig
   type combinator = Css_syntax.combinator
   val concat_selectors : t -> combinator -> t -> t
   val p_css : t -> FormatExt.printer
+  val targets : t -> Css_syntax.SimpleSelSet.t
 end
 
 module Map2Sets (Src : Set.S) (Dst : Set.S) = struct
@@ -729,6 +730,26 @@ module RealCSS = struct
   let example s = 
     let pretty_sel s = (Pretty.pretty_sel s Format.str_formatter; Format.flush_str_formatter()) in
     try Some (pretty_sel (SelSet.choose s)) with Not_found -> None
+
+
+
+  let targets (sels : SelSet.t) : SimpleSelSet.t = 
+    let adj_help a =  match a with
+      | AS s
+      | A(_,s) -> s in
+    let sib_help s = match s with
+      | SA a
+      | S(_,a) -> adj_help a in
+    let kid_help k = match k with
+      | KS s
+      | K(_,s) -> sib_help s in
+    let desc_help s = match s with
+      | DK k
+      | D(_, k) -> kid_help k in
+    SelSet.fold (fun sel acc -> SimpleSelSet.add (desc_help sel) acc)
+       sels SimpleSelSet.empty
+
+
 end
 
 
@@ -822,4 +843,5 @@ module TestRealCSS = struct
       let t = random_sel (1 + Random.int 10) "t" in
       (testRegsel r) && (testSel s) && (testInter s t) && (testSels (num-1))
     end
+
 end
