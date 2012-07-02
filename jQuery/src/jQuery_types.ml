@@ -169,6 +169,20 @@ struct
     and sigma s = match s with
       | STyp t -> typ t
       | SMult m -> multiplicity m
+
+
+    let env env =
+      let partition_env e = IdMap.fold (fun i b (other, mults) -> match b with
+        | BStrobe b' -> (IdMap.add i b other, mults)
+        | BMultBound(m, k) -> (other, IdMap.add i (m, k) mults)) e (IdMap.empty, IdMap.empty) in
+      let (other, mult_ids) = partition_env env in
+      let other_print = Strobe.Pretty.env other in
+      let mults = IdMapExt.p_map "Bounded mult variables: " empty
+        text
+        (fun (m, k) -> 
+          horzOrVert [multiplicity m;
+                      horz [text "::"; kind k]]) mult_ids in
+      add_sep_between (text ",") (other_print @ [mults])
   end
 
   (* free type variables *)

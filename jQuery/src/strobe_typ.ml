@@ -63,6 +63,22 @@ module Make : STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) -> struct
   let proto_pat = Pat.singleton proto_str
 
   let fields o = o.fields
+
+  let absent_pat ot = ot.absent_pat
+
+  let possible_field_cover_pat ot = match !(ot.cached_possible_cover_pat) with
+    | Some p -> p
+    | None -> let ret = Pat.unions (L.map fst3 ot.fields) in
+              ot.cached_possible_cover_pat := Some ret;
+              ret
+  (* Lazy.force ot.cached_possible_cover_pat *)
+
+  let cover_pat ot =  match !(ot.cached_cover_pat) with
+    | None -> 
+      let p = Pat.union (absent_pat ot) (possible_field_cover_pat ot) in
+      ot.cached_cover_pat := Some p;
+      p
+    | Some p -> p
 end
 
 module MakeActions 
@@ -75,6 +91,43 @@ struct
   include STROBE
   open STROBE
 
+
+
+  let apply_name n typ = match typ with
+    | TUnion(None, t1, t2) -> TUnion(n, t1, t2)
+    | TInter(None, t1, t2) -> TInter(n, t1, t2)
+    | TForall(None, x, t, b) -> TForall(n, x, t, b)
+    | TRec(None, x, t) -> TRec(n, x, t)
+    | TLambda(None, ts, t) -> TLambda(n, ts, t)
+    | TFix(None, x, k, t) -> TFix(n, x, k, t)
+    | TRef(None, t) -> TRef(n, t)
+    | TSource(None, t) -> TSource(n, t)
+    | TSink(None, t) -> TSink(n, t)
+    | _ -> typ
+
+  let name_of typ =  match typ with
+    | TUnion(name, _, _) -> name
+    | TInter(name, _, _) -> name
+    | TForall(name, _, _, _) -> name
+    | TRec(name, _, _) -> name
+    | TLambda(name, _, _) -> name
+    | TFix(name, _, _, _) -> name
+    | TRef(name, _) -> name
+    | TSource(name, _) -> name
+    | TSink(name, _) -> name
+    | _ -> None
+
+  let replace_name n typ = match typ with
+    | TUnion(_, t1, t2) -> TUnion(n, t1, t2)
+    | TInter(_, t1, t2) -> TInter(n, t1, t2)
+    | TForall(_, x, t, b) -> TForall(n, x, t, b)
+    | TRec(_, x, t) -> TRec(n, x, t)
+    | TLambda(_, ts, t) -> TLambda(n, ts, t)
+    | TFix(_, x, k, t) -> TFix(n, x, k, t)
+    | TRef(_, t) -> TRef(n, t)
+    | TSource(_, t) -> TSource(n, t)
+    | TSink(_, t) -> TSink(n, t)
+    | _ -> typ
 
 
   module Pretty = struct
@@ -259,6 +312,24 @@ struct
             | Maybe -> text "?"
             | Inherited -> text "^" in
           horz [ text (Pat.pretty k); squish [text ":"; pretty_pres]; typ p; text "," ]
+
+    let env env =
+      let partition_env e = IdMap.fold (fun i b (ids, typs, others) -> match Ext.extract_b b with
+        | BTermTyp t -> (IdMap.add i t ids, typs, others)
+        | BTypBound(t, k) -> (ids, IdMap.add i (t, k) typs, others)
+        | BEmbed b' -> (ids, typs, IdMap.add i b others)) e (IdMap.empty, IdMap.empty, IdMap.empty) in
+      let (id_typs, typ_ids, other) = partition_env env in
+      let unname t = if shouldUseNames() then t else replace_name None t in
+      let other_print = Ext.Pretty.env other in
+      let ids = IdMapExt.p_map "Types of term identifiers: " empty
+        text (fun t -> typ (unname t)) 
+        id_typs in
+      let typs = IdMapExt.p_map "Bounded type variables: " empty
+        text 
+        (fun (t, k) -> 
+          horzOrVert [typ (unname t);
+                      horz [text "::"; kind k]]) typ_ids in
+      add_sep_between (text ",") ([ids; typs] @ other_print)
   end
 
   let string_of_typ = FormatExt.to_string Pretty.typ
@@ -414,41 +485,7 @@ struct
 
   let subst = typ_subst
 
-  let apply_name n typ = match typ with
-    | TUnion(None, t1, t2) -> TUnion(n, t1, t2)
-    | TInter(None, t1, t2) -> TInter(n, t1, t2)
-    | TForall(None, x, t, b) -> TForall(n, x, t, b)
-    | TRec(None, x, t) -> TRec(n, x, t)
-    | TLambda(None, ts, t) -> TLambda(n, ts, t)
-    | TFix(None, x, k, t) -> TFix(n, x, k, t)
-    | TRef(None, t) -> TRef(n, t)
-    | TSource(None, t) -> TSource(n, t)
-    | TSink(None, t) -> TSink(n, t)
-    | _ -> typ
-
-  let name_of typ =  match typ with
-    | TUnion(name, _, _) -> name
-    | TInter(name, _, _) -> name
-    | TForall(name, _, _, _) -> name
-    | TRec(name, _, _) -> name
-    | TLambda(name, _, _) -> name
-    | TFix(name, _, _, _) -> name
-    | TRef(name, _) -> name
-    | TSource(name, _) -> name
-    | TSink(name, _) -> name
-    | _ -> None
-
-  let replace_name n typ = match typ with
-    | TUnion(_, t1, t2) -> TUnion(n, t1, t2)
-    | TInter(_, t1, t2) -> TInter(n, t1, t2)
-    | TForall(_, x, t, b) -> TForall(n, x, t, b)
-    | TRec(_, x, t) -> TRec(n, x, t)
-    | TLambda(_, ts, t) -> TLambda(n, ts, t)
-    | TFix(_, x, k, t) -> TFix(n, x, k, t)
-    | TRef(_, t) -> TRef(n, t)
-    | TSource(_, t) -> TSource(n, t)
-    | TSink(_, t) -> TSink(n, t)
-    | _ -> typ
+  let typ_subst x s t = typ_subst (Some x) s (fun x -> x) t
 
 
   (** Decides if two types are syntactically equal. This helps subtyping. *)
@@ -554,6 +591,123 @@ struct
     | TRec (n, alpha, typ) -> TRec(n, alpha, c typ)
     | TArrow (args, var, ret) -> TArrow (map c args, opt_map c var, c ret)
     | _ -> t (* TODO: FINISH THE OTHER TYPES *)
+
+
+
+  let rec merge typ flds = match typ with
+    | TUnion(n, t1, t2) -> TUnion (n, merge t1 flds, merge t2 flds)
+    | TInter(n, t1, t2) -> TInter(n, merge t1 flds, merge t2 flds)
+    | TObject o -> begin
+      let unionPats = Pat.union (flds.absent_pat) (Pat.unions (map fst3 flds.fields)) in
+      let restrict_field (n, p, t) =
+        let n' = Pat.subtract n unionPats in
+        if (Pat.is_empty n') then None
+        else Some (n', p, t) in
+      let oldFields = L.filter_map restrict_field o.fields in
+      let newFields = oldFields @ flds.fields in
+      let newAbsent = Pat.union (Pat.subtract o.absent_pat unionPats) (flds.absent_pat) in
+      let newAbsent = if Pat.is_empty newAbsent then Pat.empty else newAbsent in
+      let ret = TObject (mk_obj_typ newFields newAbsent) in
+      ret
+    end
+    | TRec(n, id, t) -> TRec(n, id, merge t flds)
+    | TRef (n, t) -> TRef (n, merge t flds)
+    | TSource (n, t) -> TSource (n, merge t flds)
+    | TSink (n, t) -> TSink (n, merge t flds)
+    | TThis t -> TThis (merge t flds)
+    | _ -> typ
+
+  and lookup_typ env x = match Ext.extract_b (IdMap.find x env) with
+    | BTypBound(t, k) -> (t, k)
+    | _ -> raise Not_found
+
+  and expose_twith typenv typ = let expose_twith = expose_twith typenv in match typ with
+    | TWith (t, flds) ->
+      let t = match t with TId x -> (try fst2 (lookup_typ typenv x) with Not_found -> t) | _ -> t in
+      let flds' = mk_obj_typ (map (third3 expose_twith) flds.fields) flds.absent_pat in
+      replace_name None (merge t flds')
+    | TUnion(n, t1, t2) -> TUnion (n, expose_twith t1, expose_twith t2)
+    | TInter(n, t1, t2) -> TInter(n, expose_twith t1, expose_twith t2)
+    | TRec(n, id, t) -> TRec(n, id, expose_twith t)
+    | TRef (n, t) -> TRef (n, expose_twith t)
+    | TSource (n, t) -> TSource (n, expose_twith t)
+    | TSink (n, t) -> TSink (n, expose_twith t)
+    | TThis t -> TThis (expose_twith t)
+    | _ -> typ
+
+  and simpl_typ typenv typ = match typ with
+    | TEmbed _ -> typ
+    | TPrim _ 
+    | TUnion _
+    | TInter _
+    | TRegex _
+    | TArrow _
+    | TRef _
+    | TSource _
+    | TSink _
+    | TTop _
+    | TBot _
+    | TLambda _
+    | TObject _
+    | TId _
+    | TThis _
+    | TForall _ -> typ
+    | TWith(t, flds) -> expose_twith typenv typ
+    | TFix (n, x, k, t) -> apply_name n (simpl_typ typenv (subst (Some x) typ (fun x -> x) t))
+    | TRec (n, x, t) -> apply_name n (simpl_typ typenv (subst (Some x) typ (fun x -> x) t))
+    | TApp (t1, ts) -> 
+      begin match expose typenv (simpl_typ typenv t1) with
+      | TPrim "Constructing" -> List.hd ts
+      | TPrim "Mutable" -> begin
+        match ts with
+        | [t] -> begin match expose typenv (simpl_typ typenv t) with
+          | TRef (n, t) -> TRef (n, t)
+          | TSource (n, t) -> TRef (n, t)
+          | TSink (n, t) -> TRef (n, t)
+          | _ -> raise (Invalid_argument "Expected a TRef, TSoruce or TSink argument to Mutable<T>")
+        end
+        | _ ->  raise (Invalid_argument "Expected one argument to Mutable<T>")
+      end
+      | TPrim "Immutable" -> begin
+        match ts with
+        | [t] -> begin match expose typenv (simpl_typ typenv t) with
+          | TRef (n, t) -> TSource (n, t)
+          | TSource (n, t) -> TSource (n, t)
+          | TSink (n, t) -> TSource (n, t)
+          | _ -> raise (Invalid_argument "Expected a TRef, TSoruce or TSink argument to Immutable<T>")
+        end
+        | _ ->  raise (Invalid_argument "Expected one argument to Mutable<T>")
+      end
+      | TLambda (n, args, u) -> 
+        let name = match n with
+          | None -> None
+          | Some n ->
+            let names = intersperse ", "
+              (List.map (fun t -> match name_of t with Some n -> n | None -> string_of_typ t) ts) in
+            Some (n ^ "<" ^ (List.fold_right (^) names ">")) in
+        apply_name name
+          (simpl_typ typenv
+             (List.fold_right2 (* well-kinded, no need to check *)
+                (fun (x, k) t2 u -> subst (Some x) t2 (fun x -> x) u)
+                args ts u))
+      | func_t ->
+        let msg = sprintf "ill-kinded type application in simpl_typ. Type is \
+                           \n%s\ntype in function position is\n%s\n"
+          (string_of_typ typ) (string_of_typ func_t) in
+        raise (Invalid_argument msg)
+    end
+    | TUninit t -> match !t with
+      | None -> typ
+      | Some t -> simpl_typ typenv t
+
+  and expose typenv typ = match typ with
+    | TId x -> 
+      (try 
+        expose typenv (simpl_typ typenv (fst2 (lookup_typ typenv x)))
+       with Not_found -> Printf.eprintf "Could not find type %s\n" x; raise Not_found)
+    | TThis t -> TThis (expose typenv t)
+    | _ -> typ
+
 
 end
 

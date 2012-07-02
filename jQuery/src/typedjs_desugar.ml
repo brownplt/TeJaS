@@ -10,9 +10,16 @@ module type DESUGAR = sig
   val desugar_typ : Pos.t -> W.t -> typ
 end
 
-module Make =
-  functor (S : Strobe_sigs.STROBE_TYPS with type pat = Pat.t) ->
-    functor (JQ : JQuery_sigs.JQUERY_TYPS with type baseTyp = S.typ with type baseKind = S.kind with type typ = S.extTyp with type kind = S.extKind) -> 
+module Make
+  (S : Strobe_sigs.STROBE_TYPS with type pat = Pat.t)
+  (JQ : JQuery_sigs.JQUERY_TYPS
+   with type baseTyp = S.typ
+  with type baseKind = S.kind
+  with type typ = S.extTyp
+  with type kind = S.extKind)
+  : (DESUGAR 
+     with type typ = JQ.typ
+  with type kind = JQ.kind) =
 struct
   type typ = JQ.typ
   type kind = JQ.kind

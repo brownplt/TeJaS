@@ -50,6 +50,7 @@ module type JQUERY_ACTIONS = sig
     val typ : typ -> FormatExt.printer
     val kind : kind -> FormatExt.printer
     val multiplicity : multiplicity -> FormatExt.printer
+    val env : env -> FormatExt.printer list
     val useNames : bool -> unit
     val shouldUseNames : unit -> bool
   end
@@ -106,3 +107,4 @@ module type JQUERY_KINDING = sig
   val kind_check_sigma : env -> id list -> sigma -> kind
   val kind_check : env -> id list -> typ -> kind
 end
+

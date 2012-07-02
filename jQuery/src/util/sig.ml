@@ -95,6 +95,7 @@ module type TYP_ACTIONS = sig
     val kind : kind -> FormatExt.printer
     val useNames : bool -> unit
     val shouldUseNames : unit -> bool
+    val env : env -> FormatExt.printer list
   end
   val apply_name : string option -> typ -> typ
   val replace_name : string option -> typ -> typ
@@ -130,4 +131,18 @@ module type EXT_KINDING = sig
   val list_prims : unit -> id list
   val new_prim_typ : string -> unit
   val kind_check : env -> id list -> typ -> kind
+end
+
+
+module type TYP_ENV = sig
+  type typ
+  type kind
+  type binding
+  type env
+  type env_decl
+  val print_env : env -> FormatExt.printer
+  val bind : id -> binding -> env -> env
+  val parse_env_buf : Lexing.lexbuf -> string -> env_decl list
+  val parse_env : string -> string -> env_decl list
+  val parse_env_file : in_channel -> string -> env_decl list
 end

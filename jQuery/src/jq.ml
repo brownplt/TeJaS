@@ -10,7 +10,9 @@ module S = StrobeImpl
 
 (* open JQuery_typechecking *)
 module LS = LocalStructure
-module TJSEnv = Typedjs_env
+module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
+module TJSEnv = Typedjs_env.Make (StrobeMod) (Strobe_kind) (Desugar)
+module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (TJSEnv)
 
 type arith = 
   | Var of int
