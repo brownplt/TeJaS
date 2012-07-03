@@ -131,28 +131,3 @@ module WritTyp = struct
       | ACheat of t
 
 end
-
-
-(* module Typ = struct *)
-
-
-(*   let rec forall_arrow (typ : TypImpl.typ) : (id list * TypImpl.typ) option = match typ with *)
-(*     | TypImpl.TArrow _ -> Some ([], typ) *)
-(*     | TypImpl.TForall (_, x, _, typ') -> begin match forall_arrow typ' with *)
-(*       | None -> None *)
-(*       | Some (xs, t) -> Some (x :: xs, t) *)
-(*     end *)
-(*     | TypImpl.TRec (_, x, t) -> forall_arrow (TypImpl.typ_typ_subst x typ t) *)
-(*     | _ -> None *)
-
-(*   let rec match_func_typ (typ : TypImpl.typ) : (TypImpl.typ list * TypImpl.typ option * TypImpl.typ) option = match typ with *)
-(*     | TypImpl.TForall (_, _, _, t) -> match_func_typ t *)
-(*     | TypImpl.TArrow (_, args, varargs, ret) -> Some (args, varargs, ret) *)
-(*     | _ -> None *)
-
-(*   (\* let is_present (fld : TypImpl.field) = match fld with *\) *)
-(*   (\*   | (_, TypImpl.Present, _) -> true *\) *)
-(*   (\*   | _ -> false *\) *)
-
-(* end *)
-

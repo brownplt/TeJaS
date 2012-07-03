@@ -8,6 +8,7 @@ open JQuery_syntax
 module JQ = JQueryImpl
 module S = StrobeImpl
 
+open Typedjs_syntax
 (* open JQuery_typechecking *)
 module LS = LocalStructure
 module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)

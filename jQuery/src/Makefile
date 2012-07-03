@@ -4,7 +4,7 @@ OBJDIR=../obj
 comma:= ,
 empty:=
 space:= $(empty) $(empty)
-INCLUDES = util,RegLang,patterns,css,DomStructure
+INCLUDES = util,RegLang,patterns,css,DomStructure,LambdaJS/src
 
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
