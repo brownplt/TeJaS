@@ -93,9 +93,25 @@ end
 module MakeActions 
   (Pat : SET)
   (STROBE : STROBE_TYPS with type pat = Pat.t)
-  (Ext : EXT_TYP_ACTIONS with type typ = STROBE.extTyp with type kind = STROBE.extKind with type binding = STROBE.extBinding with type baseTyp = STROBE.typ with type baseKind = STROBE.kind with type baseBinding = STROBE.binding with type env = STROBE.env)
+  (Ext : EXT_TYP_ACTIONS
+   with type typ = STROBE.extTyp
+  with type kind = STROBE.extKind
+  with type binding = STROBE.extBinding
+  with type baseTyp = STROBE.typ
+  with type baseKind = STROBE.kind
+  with type baseBinding = STROBE.binding
+  with type env = STROBE.env)
   : (STROBE_ACTIONS
-     with type typ = STROBE.typ with type kind = STROBE.kind with type binding = STROBE.binding with type extTyp = STROBE.extTyp with type extKind = STROBE.extKind with type extBinding = STROBE.extBinding with type pat = STROBE.pat with type obj_typ = STROBE.obj_typ with type env = STROBE.env) =
+     with type typ = STROBE.typ
+  with type kind = STROBE.kind
+  with type binding = STROBE.binding
+  with type extTyp = STROBE.extTyp
+  with type extKind = STROBE.extKind
+  with type extBinding = STROBE.extBinding
+  with type pat = STROBE.pat
+  with type obj_typ = STROBE.obj_typ
+  with type presence = STROBE.presence
+  with type env = STROBE.env) =
 struct
   include STROBE
   open STROBE
@@ -741,6 +757,8 @@ module MakeModule
   with type extKind = STROBE.extKind
   with type extBinding = STROBE.extBinding
   with type pat = Pat.t
+  with type obj_typ = STROBE.obj_typ
+  with type presence = STROBE.presence
   with type env = STROBE.env) =
 struct
   include STROBE

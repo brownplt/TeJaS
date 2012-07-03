@@ -35,6 +35,7 @@ and Strobe : (Strobe_sigs.STROBE_ACTIONS
   with type extBinding = StrobeImpl.extBinding
   with type pat = StrobeImpl.pat
   with type obj_typ = StrobeImpl.obj_typ
+  with type presence = StrobeImpl.presence
   with type env = StrobeImpl.env) =
   Strobe_typ.MakeActions (Pat) (StrobeImpl) (JQuery)
 
@@ -60,31 +61,34 @@ and Strobe_kind : (Strobe_sigs.STROBE_KINDING
   with type extTyp = Strobe.extTyp
   with type extKind = Strobe.extKind
   with type extBinding = Strobe.extBinding
+  with type obj_typ = Strobe.obj_typ
+  with type presence = Strobe.presence
   with type pat = Pat.t
   with type env = Strobe.env)
   = Strobe_kinding.Make (StrobeMod) (JQuery_kind)
 
-(* module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING *)
-(*                      with type typ = JQueryImpl.typ *)
-(*   with type kind = JQueryImpl.kind *)
-(*   with type multiplicity = JQueryImpl.multiplicity *)
-(*   with type binding = JQueryImpl.binding *)
-(*   with type env = JQueryImpl.env *)
-(*   with type baseTyp = JQueryImpl.baseTyp *)
-(*   with type baseKind = JQueryImpl.baseKind *)
-(*   with type baseBinding = JQueryImpl.baseBinding) = *)
-(*   JQuery_subtyping.MakeActions (StrobeSub) (JQuery) (Css) *)
-(* and StrobeSub : (Strobe_sigs.STROBE_SUBTYPING *)
-(*               with type typ = StrobeImpl.typ *)
-(*   with type kind = StrobeImpl.kind *)
-(*   with type binding = StrobeImpl.binding *)
-(*   with type extTyp = StrobeImpl.extTyp *)
-(*   with type extKind = StrobeImpl.extKind *)
-(*   with type extBinding = StrobeImpl.extBinding *)
-(*   with type pat = StrobeImpl.pat *)
-(*   with type obj_typ = StrobeImpl.obj_typ *)
-(*   with type env = StrobeImpl.env) = *)
-(*   Strobe_subtyping.MakeActions (Pat) (Strobe) (JQuerySub) *)
+module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
+                     with type typ = JQueryImpl.typ
+  with type kind = JQueryImpl.kind
+  with type multiplicity = JQueryImpl.multiplicity
+  with type binding = JQueryImpl.binding
+  with type env = JQueryImpl.env
+  with type baseTyp = JQueryImpl.baseTyp
+  with type baseKind = JQueryImpl.baseKind
+  with type baseBinding = JQueryImpl.baseBinding) =
+  JQuery_subtyping.MakeActions (StrobeSub) (JQueryMod)
+and StrobeSub : (Strobe_sigs.STROBE_SUBTYPING
+              with type typ = StrobeImpl.typ
+  with type kind = StrobeImpl.kind
+  with type binding = StrobeImpl.binding
+  with type extTyp = StrobeImpl.extTyp
+  with type extKind = StrobeImpl.extKind
+  with type extBinding = StrobeImpl.extBinding
+  with type pat = StrobeImpl.pat
+  with type obj_typ = StrobeImpl.obj_typ
+  with type presence = StrobeImpl.presence
+  with type env = StrobeImpl.env) =
+  Strobe_subtyping.MakeActions (StrobeMod) (JQuerySub)
 
 
 type const = string

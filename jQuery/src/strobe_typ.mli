@@ -24,6 +24,7 @@ module MakeActions :
   with type extBinding = STROBE.extBinding
   with type pat = STROBE.pat
   with type obj_typ = STROBE.obj_typ
+  with type presence = STROBE.presence
   with type env = STROBE.env)
 
 
@@ -45,5 +46,7 @@ module MakeModule :
   with type extTyp = STROBE.extTyp
   with type extKind = STROBE.extKind
   with type extBinding = STROBE.extBinding
+  with type obj_typ = STROBE.obj_typ
+  with type presence = STROBE.presence
   with type pat = Pat.t
   with type env = STROBE.env)

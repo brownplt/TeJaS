@@ -19,5 +19,7 @@ module Make :
   with type extTyp = Strobe.extTyp
   with type extKind = Strobe.extKind
   with type extBinding = Strobe.extBinding
+  with type obj_typ = Strobe.obj_typ
+  with type presence = Strobe.presence
   with type pat = Strobe.pat
   with type env = Strobe.env)

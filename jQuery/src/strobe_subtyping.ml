@@ -6,10 +6,26 @@ module L = ListExt
 
 
 module MakeActions 
-  (Pat : SET)
-  (STROBE : STROBE_ACTIONS with type pat = Pat.t)
-  (Ext : EXT_TYP_SUBTYPING with type typ = STROBE.extTyp with type kind = STROBE.extKind with type binding = STROBE.extBinding with type baseTyp = STROBE.typ with type baseKind = STROBE.kind with type baseBinding = STROBE.binding with type env = STROBE.env)
-  : (STROBE_SUBTYPING with type typ = STROBE.typ with type kind = STROBE.kind with type binding = STROBE.binding with type extTyp = STROBE.extTyp with type extKind = STROBE.extKind with type extBinding = STROBE.extBinding with type pat = STROBE.pat with type obj_typ = STROBE.obj_typ with type env = STROBE.env) =
+  (STROBE : STROBE_MODULE)
+  (ExtSub : EXT_TYP_SUBTYPING
+   with type typ = STROBE.extTyp
+  with type kind = STROBE.extKind
+  with type binding = STROBE.extBinding
+  with type baseTyp = STROBE.typ
+  with type baseKind = STROBE.kind
+  with type baseBinding = STROBE.binding
+  with type env = STROBE.env)
+  : (STROBE_SUBTYPING
+     with type typ = STROBE.typ
+  with type kind = STROBE.kind
+  with type binding = STROBE.binding
+  with type extTyp = STROBE.extTyp
+  with type extKind = STROBE.extKind
+  with type extBinding = STROBE.extBinding
+  with type pat = STROBE.pat
+  with type obj_typ = STROBE.obj_typ
+  with type presence = STROBE.presence
+  with type env = STROBE.env) =
 struct
   include STROBE
   open STROBE
@@ -69,28 +85,27 @@ struct
 
   (* Necessary for equi-recursive subtyping. *)
   module TypPair = struct
-    (* type s = typ * typ *)
-    type t = typ * typ
+    type s = typ * typ
+    type t = env * s
     let compare = Pervasives.compare
   end
-  module TPMap = Set.Make (TypPair) (* to fix *)
-  module TPMapExt = SetExt.Make (TPMap)
+  module TPMap = Map.Make (TypPair) (* to fix *)
+  module TPMapExt = MapExt.Make (TypPair) (TPMap)
 
 
-  
+  let rec expose_typ env t = match t with
+  | TId x -> 
+    (try (match IdMap.find x env with BTypBound (t, _) -> expose_typ env t | _ -> None)
+     with Not_found -> None)
+  | t -> Some t
+
+
   let expose_arrow env typ = 
     let clear_id t = match t with TId x -> (try fst2 (lookup_typ env x) with Not_found -> t) | _ -> t in
     let opt_clear_id t = match t with None -> None | Some t -> Some (clear_id t) in
     match typ with
     | TArrow(args, varargs, ret) -> TArrow(map clear_id args, opt_clear_id varargs, clear_id ret)
     | _ -> typ
-
-
-
-
-
-
-
 
 
 
@@ -181,15 +196,11 @@ struct
       | _ -> acc in
     L.fold_right f ot.fields ot.absent_pat
 
-  exception Not_subtype of typ_error_details
 
-  let mismatched_typ_exn t1 t2 =
-    (* Printf.printf "*** Not subtypes: %s </: %s\n" (string_of_typ t1) (string_of_typ t2); *)
-    raise (Not_subtype 
-       (TypTyp((fun t1 t2 -> sprintf " %s is not a subtype of %s"
-         (string_of_typ t1) (string_of_typ t2)), t1, t2)))
+  let cache_hits = ref 0
+  let cache_misses = ref 0
 
-  and inherits p (env : env) (orig_t : typ) (pat : pat) : typ =
+  let rec inherits p (env : env) (orig_t : typ) (pat : pat) : typ =
     try
       let t = expose env (simpl_typ env orig_t) in
       if Pat.is_subset (pat_env env) pat (inherit_guard_pat env t) then
@@ -226,121 +237,121 @@ struct
       end
     with Invalid_parent msg -> raise (Typ_error (p, FixedString msg))
 
-  and subt env (cache : TPMap.t) s t : TPMap.t = 
-    if TPMap.mem (s, t) cache then
-      cache
-    (* workaround for equal: functional value, due to lazy *)
-    else if equivalent_typ env s t then
-      cache
-    else
-      let simpl_s = expose env (simpl_typ env s) in
-      let simpl_t = expose env (simpl_typ env t) in
-      if TPMap.mem (simpl_s, simpl_t) cache then cache else
-      (* Printf.printf "Checking %s against %s\n" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
-      match simpl_s, simpl_t with
-      | TUninit t', t2 -> begin match !t' with
-        | None -> subt env cache (TPrim "Undef") t2
-        | Some t1 -> subt env cache t1 t2
-      end
-      | t1, TUninit t' -> begin match !t' with
-        | None -> subt env cache t1 (TPrim "Undef")
-        | Some t2 -> subt env cache t1 t2
-      end
-      | _ -> let cache = TPMap.add (s, t) cache in match simpl_s, simpl_t with
-        | TUninit _, _
-        | _, TUninit _ -> failwith "Should not be possible!"
-        | TRegex pat1, TRegex pat2 ->
-          (* Printf.eprintf "Is %s <?: %s == " (Pat.pretty pat1) (Pat.pretty pat2); *)
-          if Pat.is_subset (pat_env env) pat1 pat2 then begin
-            (* Printf.eprintf "yes\n"; *)
-            cache
-          end else begin
-              (* Printf.eprintf "no: \"%s\"\n" (match (Pat.example (Pat.subtract pat1 pat2)) with *)
-              (* | None -> "CONTRADICTION!" *)
-              (* | Some s -> s);  *)
-              mismatched_typ_exn (TRegex pat1) (TRegex pat2)
-            end
-        | _, TInter (_, t1, t2) -> (* order matters -- right side must be split first! *)
-            subt env (subt env cache s t1) s t2
-        | TInter (_, s1, s2), _ -> 
-          begin 
-            try subt env cache s1 t
-            with Not_subtype _ -> subt env cache s2 t
+  and subt (env : env) (cache : bool TPMap.t) s t : bool TPMap.t * bool = 
+    let open TypPair in
+    let (|||) c thunk = if (snd c) then c else thunk (fst c) in
+    let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
+    let subtype_typ_list c t1 t2 = c &&& (fun c -> subt env c t1 t2) in
+    let addToCache (cache, ret) = (TPMap.add ((* project_typs t1 t2 *) env, (s, t)) ret cache, ret) in
+    try incr cache_hits; (cache, TPMap.find ((* project_typs s t  *)env, (s, t)) cache)
+    with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if s = t then (cache, true)
+      else if equivalent_typ env s t then cache, true
+      else
+        let simpl_s = expose env (simpl_typ env s) in
+        let simpl_t = expose env (simpl_typ env t) in
+        try (cache, TPMap.find ((* project_type simpl_s simpl_t *) env, (simpl_s, simpl_t)) cache)
+        with Not_found ->
+          (* Printf.printf "Checking %s against %s\n" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
+          match simpl_s, simpl_t with
+          | TUninit t', t2 -> begin match !t' with
+            | None -> subt env cache (TPrim "Undef") t2
+            | Some t1 -> subt env cache t1 t2
           end
-        | TUnion (_, s1, s2), _ -> (* order matters -- left side must be split first! *)
-          subt env (subt env cache s1 t) s2 t
-        | _, TUnion (_, t1, t2) ->
-          begin 
-            try subt env cache s t1
-            with Not_subtype _ -> subt env cache s t2
+          | t1, TUninit t' -> begin match !t' with
+            | None -> subt env cache t1 (TPrim "Undef")
+            | Some t2 -> subt env cache t1 t2
           end
-        | _, TThis(TPrim "Unsafe") -> cache (* Can always mask the this parameter as Unsafe *)
-        | TPrim "Null", TRef (_, TObject _)
-        | TPrim "Null", TSource (_, TObject _)
-        | TPrim "Null", TSink (_, TObject _) -> cache (* null should be a subtype of all object types *)
-        | TThis (TId _ as id), t -> subt env cache (TThis (expose env id)) t
-        | t, TThis(TRec _ as r) -> subt env cache t (TThis (expose env r))
-        | TThis (TRef (_, s)), TThis (TRef (_, t))
-        | TThis (TRef (_, s)), TThis (TSource (_, t))
-        | TThis (TRef (_, s)), TThis (TSink (_, t))
-        | TThis (TSource (_, s)), TThis (TRef (_, t))
-        | TThis (TSource (_, s)), TThis (TSource (_, t))
-        | TThis (TSource (_, s)), TThis (TSink (_, t))
-        | TThis (TSink (_, s)), TThis (TRef (_, t))
-        | TThis (TSink (_, s)), TThis (TSource (_, t))
-        | TThis (TSink (_, s)), TThis (TSink (_, t))
-        | TRef (_, s), TThis (TRef (_, t))
-        | TRef (_, s), TThis (TSource (_, t))
-        | TRef (_, s), TThis (TSink (_, t))
-        | TSource (_, s), TThis (TRef (_, t))
-        | TSource (_, s), TThis (TSource (_, t))
-        | TSource (_, s), TThis (TSink (_, t))
-        | TSink (_, s), TThis (TRef (_, t))
-        | TSink (_, s), TThis (TSource (_, t))
-        | TSink (_, s), TThis (TSink (_, t)) -> subt env cache s t (* ONLY HAVE TO GO ONE WAY ON THIS TYPES *)
-        | TThis _, TThis _ -> mismatched_typ_exn s t
-        | _, TThis t2 -> subt env cache s t2
-        | TThis t1, _ -> subt env cache t1 t
-        | TArrow (args1, v1, r1), TArrow (args2, v2, r2) ->
-          begin
-            match v1, v2 with
-            | None, None ->
-              (try List.fold_left2 (subt env) cache (r1 :: args2) (r2 :: args1)
-               with Invalid_argument _ -> mismatched_typ_exn s t)
-            | Some v1, Some v2 ->
-              (try List.fold_left2 (subt env) cache (r1 :: args2 @ [v2]) (r2 :: args1 @ [v1])
-               with Invalid_argument _ -> mismatched_typ_exn s t)
-            | _ -> mismatched_typ_exn s t
-          end
-        | TId x, t -> 
-          (try
-             subt env cache (fst2 (lookup_typ env x)) t
-           with Not_found -> Printf.printf "Cannot find %s in environment\n" x; raise Not_found)
-        | t, TId x -> 
-          (try
-             subt env cache t (fst2 (lookup_typ env x))
-           with Not_found -> Printf.printf "Cannot find %s in environment\n" x; raise Not_found)
-        | TObject obj1, TObject obj2 ->
+          | TEmbed t1, t2 -> cache, ExtSub.subtype env t1 (Ext.embed_t t2)
+          | t1, TEmbed t2 -> cache, ExtSub.subtype env (Ext.embed_t t1) t2
+          | TRegex pat1, TRegex pat2 ->
+            (cache, Pat.is_subset (pat_env env) pat1 pat2)
+          | TUnion(_, t11, t12), t2 -> (* order matters -- left side must be split first! *)
+            subt env cache t11 t2 &&& (fun c -> subt env c t12 t2)
+          | t1, TUnion(_, t21, t22) ->
+            subt env cache t1 t21 ||| (fun c -> subt env c t1 t22)
+          | t1, TInter(_, t21, t22) -> (* order matters -- right side must be split first! *)
+            subt env cache t1 t21 &&& (fun c -> subt env c t1 t22)
+          | TInter(_, t11, t12), t2 ->
+            subt env cache t11 t2 ||| (fun c -> subt env c t12 t2)
+          | _, TThis(TPrim "Unsafe") -> cache, true (* Can always mask the this parameter as Unsafe *)
+          | TPrim "Null", TRef (_, TObject _)
+          | TPrim "Null", TSource (_, TObject _)
+          | TPrim "Null", TSink (_, TObject _) -> cache, true (* null should be a subtype of all object types *)
+          | TThis (TId _ as id), t -> subt env cache (TThis (expose env id)) t
+          | t, TThis(TRec _ as r) -> subt env cache t (TThis (expose env r))
+          | TThis (TRef (_, s)), TThis (TRef (_, t))
+          | TThis (TRef (_, s)), TThis (TSource (_, t))
+          | TThis (TRef (_, s)), TThis (TSink (_, t))
+          | TThis (TSource (_, s)), TThis (TRef (_, t))
+          | TThis (TSource (_, s)), TThis (TSource (_, t))
+          | TThis (TSource (_, s)), TThis (TSink (_, t))
+          | TThis (TSink (_, s)), TThis (TRef (_, t))
+          | TThis (TSink (_, s)), TThis (TSource (_, t))
+          | TThis (TSink (_, s)), TThis (TSink (_, t))
+          | TRef (_, s), TThis (TRef (_, t))
+          | TRef (_, s), TThis (TSource (_, t))
+          | TRef (_, s), TThis (TSink (_, t))
+          | TSource (_, s), TThis (TRef (_, t))
+          | TSource (_, s), TThis (TSource (_, t))
+          | TSource (_, s), TThis (TSink (_, t))
+          | TSink (_, s), TThis (TRef (_, t))
+          | TSink (_, s), TThis (TSource (_, t))
+          | TSink (_, s), TThis (TSink (_, t)) -> subt env cache s t (* ONLY HAVE TO GO ONE WAY ON THIS TYPES *)
+          | TThis _, TThis _ -> cache, false
+          | _, TThis t2 -> subt env cache s t2
+          | TThis t1, _ -> subt env cache t1 t
+          | TArrow (args1, None, ret1), TArrow (args2, Some var2, ret2) ->
+            if (List.length args1 < List.length args2) then (cache, false)
+            else 
+              let args2' = L.fill (List.length args1 - List.length args2) var2 args2 in
+              (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2') (ret2::args1))
+          | TArrow (args1, Some var1, ret1), TArrow (args2, None, ret2) ->
+            if (List.length args1 > List.length args2) then (cache, false)
+            else 
+              let args1' = L.fill (List.length args2 - List.length args1) var1 args1 in
+              (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
+          | TArrow (args1, Some var1, ret1), TArrow (args2, Some var2, ret2) ->
+            if (List.length args1 > List.length args2) then
+              let args2' = L.fill (List.length args1 - List.length args2) var2 args2 in
+              (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2') (ret2::args1))
+            else 
+              let args1' = L.fill (List.length args2 - List.length args1) var1 args1 in
+              (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
+          | TId n1, t2 when t2 = TId n1 -> cache, true (* SA-Refl-TVar *)
+          | TId n1, _ -> (* SA-Trans-TVar *)
+            (try
+               (match Ext.extract_b (IdMap.find n1 env) with 
+               | BTypBound (s, _) -> subt env cache s t
+               | _ -> cache, false)
+             with Not_found -> cache, false)
+          (* NOT SOUND? *)
+          (* | t, TId x ->  *)
+          (*   (try *)
+          (*      subt env cache t (fst2 (lookup_typ env x)) *)
+          (*    with Not_found -> Printf.printf "Cannot find %s in environment\n" x; raise Not_found) *)
+          | TObject obj1, TObject obj2 ->
             subtype_object env cache obj1 obj2
-        | TRef (_, s'), TRef (_, t') -> subt env (subt env cache s' t') t' s'
-        | TSource (_, s), TSource (_, t) -> subt env cache s t
-        | TSink (_, s), TSink (_, t) -> subt env cache t s
-        | TRef (_, s), TSource (_, t) -> subt env cache s t
-        | TRef (_, s), TSink (_, t) -> subt env cache t s
-        | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
-          (* Kernel rule *)
-          (* TODO: ensure s1 = s2 *)
-          let cache' = subt env (subt env cache s1 s2) s2 s1 in
-          let t2 = subst (Some x2) (TId x1) (fun x -> x) t2 in
-          let env' = IdMap.add x1 (Ext.embed_b (BTypBound (s1, KStar))) env in
-          subt env' cache' t1 t2
-        | _, TTop -> cache
-        | TBot, _ -> cache
-        | TLambda (_, [(x, KStar)], s), TLambda (_, [(y, KStar)], t) ->
-          let env = IdMap.add x (Ext.embed_b (BTypBound (TTop, KStar))) env in
-          let env = IdMap.add y (Ext.embed_b (BTypBound (TTop, KStar))) env in
-          subt env cache s t
-        | _ -> mismatched_typ_exn s t
+          | TRef (_, s'), TRef (_, t') -> subt env cache s' t' &&& (fun c -> subt env c t' s')
+          | TSource (_, s), TSource (_, t) -> subt env cache s t
+          | TSink (_, s), TSink (_, t) -> subt env cache t s
+          | TRef (_, s), TSource (_, t) -> subt env cache s t
+          | TRef (_, s), TSink (_, t) -> subt env cache t s
+          | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
+            (* Kernel rule *)
+            (* TODO: ensure s1 = s2 *)
+            subt env cache s1 s2 &&& (fun c -> subt env c s2 s1) &&&
+              (fun c ->
+                let t2 = subst (Some x2) (TId x1) (fun x -> x) t2 in
+                let env' = IdMap.add x1 (Ext.embed_b (BTypBound (s1, KStar))) env in
+                subt env' c t1 t2)
+          | _, TTop -> cache, true
+          | TBot, _ -> cache, true
+          | TLambda (_, [(x, KStar)], s), TLambda (_, [(y, KStar)], t) ->
+            let env = IdMap.add x (Ext.embed_b (BTypBound (TTop, KStar))) env in
+            let env = IdMap.add y (Ext.embed_b (BTypBound (TTop, KStar))) env in
+            subt env cache s t
+          | _ -> cache, false)
+    end
 
   (* Check that an "extra" field is inherited *)
   and check_inherited env cache lang other_proto typ =
@@ -351,72 +362,60 @@ struct
     | Maybe, Maybe
     | Inherited, Inherited
     | Present , Maybe
-    | Present, Inherited -> ()
-    | _, _ -> raise (Not_subtype (FixedString"incompatible presence annotations"))
+    | Present, Inherited -> true
+    | _, _ -> false
 
-  and subtype_object env cache obj1 obj2 : TPMap.t =
+  and subtype_object env cache obj1 obj2 : bool TPMap.t * bool =
+    let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
+    let subtype_typ_list f c x = c &&& (fun c -> f c x) in
     let lhs_absent = absent_pat obj1 in
     let rhs_absent = absent_pat obj2 in
-    let check_simple_overlap ((pat1, pres1, t1), (pat2, pres2, t2)) cache = 
+    let check_simple_overlap cache ((pat1, pres1, t1), (pat2, pres2, t2)) = 
       if Pat.is_overlapped pat1 pat2 then
         begin
-          subtype_presence pres1 pres2;
-          (* Printf.printf "%s overlaps %s; checking subtypes of %s <: %s\n" *)
-          (*   (Pat.pretty pat1) (Pat.pretty pat2) (string_of_typ t1) (string_of_typ t2); *)
-          subt env cache t1 t2
+          (cache, subtype_presence pres1 pres2) &&&
+            (* Printf.printf "%s overlaps %s; checking subtypes of %s <: %s\n" *)
+            (*   (Pat.pretty pat1) (Pat.pretty pat2) (string_of_typ t1) (string_of_typ t2); *)
+            (fun c -> subt env c t1 t2)
         end
       else
-        cache in
+        cache, true in
     let check_pat_containment () =
-      (if not (Pat.is_subset (pat_env env) (possible_field_cover_pat obj2) 
-                           (cover_pat obj1)) then
-         match Pat.example (Pat.subtract (possible_field_cover_pat obj2)
-                                     (cover_pat obj1)) with
-         | Some ex -> raise (Not_subtype
-                               (FixedString("fields on the RHS that are not on the LHS, e.g. " ^ ex ^ 
-                                   "; cover_pat obj1 = " ^ (Pat.pretty (cover_pat obj1)) ^
-                                   "; possible_pat obj1 = " ^ (Pat.pretty (possible_field_cover_pat obj1)))))
-         | None -> failwith "error building counterexample for (2)");
-      (if not (Pat.is_subset (pat_env env) rhs_absent lhs_absent); 
-          then raise (Not_subtype (FixedString "subtype_object: violated 2-2"))) in
-    let check_lhs_absent_overlap (rhs_pat, rhs_pres, rhs_prop) = 
-      if Pat.is_overlapped rhs_pat lhs_absent then
+      (not (Pat.is_subset (pat_env env) (possible_field_cover_pat obj2) 
+                           (cover_pat obj1))) &&
+        (Pat.is_subset (pat_env env) rhs_absent lhs_absent) in
+    let check_lhs_absent_overlap cache (rhs_pat, rhs_pres, rhs_prop) = 
+      cache, if Pat.is_overlapped rhs_pat lhs_absent then
         match rhs_pres with
-          | Maybe | Inherited -> ()
-          | _ -> raise (Not_subtype (FixedString "check_lhs_absent_overlap: LHS absent, RHS present")) in
-    let check_rhs_inherited (rhs_pat, rhs_pres, rhs_typ) cache = 
+          | Maybe | Inherited -> true
+          | _ -> false
+      else true in
+    let check_rhs_inherited cache (rhs_pat, rhs_pres, rhs_typ) = 
       match rhs_pres with
       | Inherited -> 
           let lhs_typ = inherits Pos.dummy env (TObject obj1) rhs_pat in
           subt env cache lhs_typ rhs_typ
-      | _ -> cache in
-    (* try  *)
-      let cache = 
-        L.fold_right check_simple_overlap (L.pairs obj1.fields obj2.fields)
-          cache in
-      check_pat_containment ();
-      L.iter check_lhs_absent_overlap obj2.fields;
-      fold_right check_rhs_inherited obj2.fields cache
-    (* with Not_subtype m -> *)
-    (*   Printf.eprintf "Subtype failed for %s </: %s because\n%s\n" *)
-    (*     (string_of_typ (TObject obj1)) (string_of_typ (TObject obj2)) (typ_error_details_to_string m); *)
-    (*   raise (Not_subtype m) *)
+      | _ -> cache, true in
+    let (cache, rest) = 
+      L.fold_left (subtype_typ_list check_simple_overlap) (cache, true) (L.pairs obj1.fields obj2.fields) in
+    (cache, rest && check_pat_containment ()) &&& 
+      (fun c -> L.fold_left (subtype_typ_list check_lhs_absent_overlap) (c, true) obj2.fields) &&&
+      (fun c -> L.fold_left (subtype_typ_list check_rhs_inherited) (c, true) obj2.fields)
 
   and subtypes env ss ts = 
+    let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
     try 
-      let _ = List.fold_left2 (subt env) TPMap.empty ss ts in
-      true
+      let (c, r) = List.fold_left2 (fun c s t -> c &&& (fun c -> subt env c s t)) (!cache, true) ss ts in
+      cache := c;
+      r
     with 
       | Invalid_argument _ -> false (* unequal lengths *)
-      | Not_subtype _ -> false
 
-  and cache : (* bool  *)TPMap.t ref = ref TPMap.empty 
+  and cache : bool TPMap.t ref = ref TPMap.empty 
   and subtype env s t = 
-    try
-      cache := subt env !cache s t;
-      true
-    with 
-      | Not_subtype str -> false
+    let (c, r) = subt env !cache s t in
+    cache := c;
+    r
 
   and typ_union cs s t = match subtype cs s t, subtype cs t s with
       true, true -> s (* t = s *)

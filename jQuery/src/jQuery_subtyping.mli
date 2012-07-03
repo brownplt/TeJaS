@@ -7,7 +7,7 @@ open Strobe_sigs
 
 module MakeActions :
   functor (Strobe : STROBE_SUBTYPING) ->
-    functor (JQ : JQUERY_ACTIONS
+    functor (JQ : JQUERY_MODULE
              with type baseTyp = Strobe.typ
   with type baseKind = Strobe.kind
   with type baseBinding = Strobe.binding
@@ -15,9 +15,8 @@ module MakeActions :
   with type kind = Strobe.extKind
   with type binding = Strobe.extBinding
   with type env = Strobe.env) ->
-      functor (Css : Css.CSS with type t = JQ.sel) ->
-          (JQUERY_SUBTYPING
-           with type typ = JQ.typ
+      (JQUERY_SUBTYPING
+       with type typ = JQ.typ
   with type kind = JQ.kind
   with type multiplicity = JQ.multiplicity
   with type sigma = JQ.sigma

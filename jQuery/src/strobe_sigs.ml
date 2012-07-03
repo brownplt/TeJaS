@@ -106,6 +106,7 @@ module type STROBE_ACTIONS = sig
   val canonical_type : typ -> typ
 
   val expose_twith : env -> typ -> typ
+  val lookup_typ : env -> id -> typ * kind
   val expose : env -> typ -> typ
   val simpl_typ : env -> typ -> typ
 
@@ -131,13 +132,10 @@ module type STROBE_SUBTYPING = sig
 
 
   exception Typ_error of Pos.t * typ_error_details
-  exception Not_subtype of typ_error_details
 
   val typ_error_details_to_string : typ_error_details -> string
-
-      
   
-  (* val subtype : env -> typ -> typ -> bool *)
+  val subtype : env -> typ -> typ -> bool
 
   (* val typ_mismatch : Pos.t -> typ_error_details -> unit *)
 

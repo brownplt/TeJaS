@@ -226,6 +226,7 @@ struct
       
   let free_ids t = IdSet.union (free_typ_ids t) (free_typ_mult_ids t)
 
+  let free_sigma_ids s = (free_sigma_typ_ids s, free_sigma_mult_ids s)
 
   let rec rename_avoid_capture (free : IdSet.t) (ys : id list) (t : typ) =
     let fresh_var old = (* a, b, ... z, aa, bb, ..., zz, ... *)

@@ -63,11 +63,14 @@ module type JQUERY_ACTIONS = sig
   val free_ids : typ -> IdSet.t
   val free_typ_ids : typ -> IdSet.t
   val free_mult_ids : multiplicity -> IdSet.t
+  val free_sigma_ids : sigma -> IdSet.t * IdSet.t
   val rename_avoid_capture : IdSet.t -> id list -> typ -> (id list * typ)
   val equivalent_typ : env -> typ -> typ -> bool
   val equivalent_multiplicity : env -> multiplicity -> multiplicity -> bool
+  val equivalent_sigma : env -> sigma -> sigma -> bool
   val canonical_multiplicity : multiplicity -> multiplicity
   val canonical_type : typ -> typ
+  val canonical_sigma : sigma -> sigma
   val mult_mult_subst : id -> multiplicity -> multiplicity -> multiplicity
   val mult_typ_subst : id -> multiplicity -> typ -> typ
   val typ_mult_subst : id -> typ -> multiplicity -> multiplicity
