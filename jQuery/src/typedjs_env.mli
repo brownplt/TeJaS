@@ -1,5 +1,4 @@
 open Prelude
-open Typedjs_syntax
 open Sig
 open Strobe_sigs
 
@@ -18,5 +17,5 @@ module Make :
   with type kind = Strobe.extKind
   with type binding = Strobe.extBinding
   with type env = Strobe.env
-  with type env_decl = Typedjs_syntax.env_decl)
+  with type env_decl = Typedjs_writtyp.WritTyp.env_decl)
         

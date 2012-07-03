@@ -1,5 +1,4 @@
 open Prelude
-open Typedjs_syntax
 open Sig
 open Strobe_sigs
 
@@ -19,15 +18,16 @@ module Make
   with type kind = Strobe.extKind
   with type binding = Strobe.extBinding
   with type env = Strobe.env
-  with type env_decl = Typedjs_syntax.env_decl) =
+  with type env_decl = Typedjs_writtyp.WritTyp.env_decl) =
 struct
   type typ = Strobe.extTyp
   type kind = Strobe.extKind
   type binding = Strobe.extBinding
   type env = Strobe.env
-  type env_decl = Typedjs_syntax.env_decl
+  type env_decl = Typedjs_writtyp.WritTyp.env_decl
 
   open Strobe
+  module W = Typedjs_writtyp.WritTyp
   module List = ListExt
   exception Not_wf_typ of string
 
@@ -67,14 +67,14 @@ struct
 
   let extend_global_env env lst =
     let rec add recIds env decl = match decl with
-      | EnvBind (p, x, typ) ->
+      | W.EnvBind (p, x, typ) ->
         if IdMap.mem x env then
           raise (Not_wf_typ (x ^ " is already bound in the environment"))
         else
           let t = expose_twith env (desugar_typ p typ) in
         (* Printf.eprintf "Binding type for %s to %s\n" x (string_of_typ t); *)
           bind_id x t env
-      | EnvType (p, x, writ_typ) ->
+      | W.EnvType (p, x, writ_typ) ->
         if IdMap.mem x env then
           raise (Not_wf_typ (sprintf "the type %s is already defined" x))
         else
@@ -82,10 +82,10 @@ struct
         (* Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t)); *)
           let k = StrobeKinding.kind_check env recIds t in
           bind' x (BTypBound(apply_name (Some x) t, k)) env
-      | EnvPrim (p, s) ->
+      | W.EnvPrim (p, s) ->
         StrobeKinding.new_prim_typ s;
         env
-      | ObjectTrio(pos, (c_id, c_typ), (p_id, p_typ), (i_id, i_typ)) ->
+      | W.ObjectTrio(pos, (c_id, c_typ), (p_id, p_typ), (i_id, i_typ)) ->
       (* add prototype field to constructor *)
         let c_typ = expose_twith env (desugar_typ pos c_typ) in
         let c_absent_pat = match c_typ with TRef(_, TObject(f)) -> absent_pat f | _ -> Pat.all in
@@ -94,7 +94,7 @@ struct
                                                 TApp(TPrim("Mutable"), [TId(p_id)])]
                                                (Pat.subtract c_absent_pat (Pat.singleton "prototype")))) in
         let constructor = replace_name (Some c_id) (expose_twith env constructor_with) in
-      (* add constructor field to prototype *)
+        (* add constructor field to prototype *)
         let p_typ = (desugar_typ pos p_typ) in
         let p_typ = match p_typ with TId _ -> simpl_typ env p_typ | _ -> p_typ in
         let (prototype_added_fields, prototype_with) = match p_typ with
@@ -113,7 +113,7 @@ struct
             (fields f), TWith(temp, (mk_obj_typ (fields f) (Pat.subtract (absent_pat f) (Pat.singleton "constructor"))))
           | _ -> failwith "impossible" in
         let prototype = match expose_twith env prototype_with with TRef (n, t) -> TSource(n, t) | t -> t in
-      (* add __proto__ field to instance *)
+        (* add __proto__ field to instance *)
         let i_typ = (desugar_typ pos i_typ) in
         let i_typ = match i_typ with TId _ -> simpl_typ env i_typ | _ -> i_typ in
         let instance_with =
@@ -142,13 +142,13 @@ struct
         (bind' c_id (BTypBound(constructor, k_c))
            (bind' p_id (BTypBound(prototype, k_p))
               (bind' i_id (BTypBound(instance, k_i)) env)))
-      | RecBind (binds) ->
+      | W.RecBind (binds) ->
         let ids = List.concat (List.map (fun b -> match b with
-          | EnvBind (_, x, _) -> [x]
-          | EnvType (_, x, _) -> [x]
-          | ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
-          | EnvPrim _
-          | RecBind _ -> []) binds) in
+          | W.EnvBind (_, x, _) -> [x]
+          | W.EnvType (_, x, _) -> [x]
+          | W.ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
+          | W.EnvPrim _
+          | W.RecBind _ -> []) binds) in
         Printf.eprintf "Recursively including ids: ";
         List.iter (fun x -> Printf.eprintf "%s " x) ids;
         List.fold_left (add ids) env binds

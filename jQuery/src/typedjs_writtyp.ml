@@ -114,23 +114,23 @@ module WritTyp = struct
                           
 
 
+    type env_decl =
+      | EnvBind of Pos.t * id * t
+      | EnvType of Pos.t * id * t
+      | EnvPrim of Pos.t * id
+      | RecBind of env_decl list
+      | ObjectTrio of Pos.t * (id * t) * (id * t) * (id * t)
+
+    type annotation =
+      | ATyp of t
+      | AUpcast of t
+      | ADowncast of t
+      | ATypAbs of id * t
+      | ATypApp of t list
+      | AAssertTyp of t
+      | ACheat of t
+
 end
-
-type env_decl =
-  | EnvBind of Pos.t * id * WritTyp.t
-  | EnvType of Pos.t * id * WritTyp.t
-  | EnvPrim of Pos.t * id
-  | RecBind of env_decl list
-  | ObjectTrio of Pos.t * (id * WritTyp.t) * (id * WritTyp.t) * (id * WritTyp.t)
-
-type annotation =
-  | ATyp of WritTyp.t
-  | AUpcast of WritTyp.t
-  | ADowncast of WritTyp.t
-  | ATypAbs of id * WritTyp.t
-  | ATypApp of WritTyp.t list
-  | AAssertTyp of WritTyp.t
-  | ACheat of WritTyp.t
 
 
 (* module Typ = struct *)

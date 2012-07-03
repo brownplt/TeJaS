@@ -1,9 +1,8 @@
 %{
 
 open Prelude
-open Typedjs_syntax
 open JQuery_syntax
-module W = Typedjs_syntax.WritTyp
+module W = Typedjs_writtyp.WritTyp
 
 let rec remove_this op = match op with
   | W.Arrow (_, aa, v, r) -> W.Arrow (None, aa, v, r)
@@ -64,8 +63,8 @@ let rec pushIntersectFunction typ = match typ with
 %start env
 
 
-%type <Typedjs_syntax.annotation> typ_ann
-%type <Typedjs_syntax.env_decl list> env
+%type <Typedjs_writtyp.WritTyp.annotation> typ_ann
+%type <Typedjs_writtyp.WritTyp.env_decl list> env
 
 %%
 
@@ -181,15 +180,15 @@ id_kind : ID COLONCOLON kind { ($1, $3) }
 typ_app : LBRACK t=typ RBRACK { t }
 
 annotation :
-  | typ { ATyp $1 }
-  | CHEAT typ { ACheat $2 }
-  | UPCAST typ { AUpcast $2 }
-  | DOWNCAST typ { ADowncast $2 }
-  | FORALL ID LTCOLON typ { ATypAbs ($2, $4) }
-  | FORALL ID { ATypAbs ($2, W.Top) }
-  | LBRACK typ RBRACK { ATypApp [$2] }
-  | ID BANG typs=nonempty_list(typ_app) { ATypApp typs }
-  | IS typ { AAssertTyp $2 }
+  | typ { W.ATyp $1 }
+  | CHEAT typ { W.ACheat $2 }
+  | UPCAST typ { W.AUpcast $2 }
+  | DOWNCAST typ { W.ADowncast $2 }
+  | FORALL ID LTCOLON typ { W.ATypAbs ($2, $4) }
+  | FORALL ID { W.ATypAbs ($2, W.Top) }
+  | LBRACK typ RBRACK { W.ATypApp [$2] }
+  | ID BANG typs=nonempty_list(typ_app) { W.ATypApp typs }
+  | IS typ { W.AAssertTyp $2 }
 
 typ_ann :
   | annotation EOF { $1 }
@@ -215,20 +214,20 @@ env_decl :
   | TYPE CONSTRUCTOR c_id=any_id EQUALS c_typ=typ
       AND PROTOTYPE p_id=any_id EQUALS p_typ=obj_ref_typ
       AND INSTANCE i_id=any_id EQUALS i_typ=obj_ref_typ
-    { ObjectTrio (Pos.real ($startpos, $endpos), (c_id, c_typ), (p_id, p_typ), (i_id, i_typ)) }
+    { W.ObjectTrio (Pos.real ($startpos, $endpos), (c_id, c_typ), (p_id, p_typ), (i_id, i_typ)) }
   | TYPE any_id LANGLE id_list RANGLE EQUALS typ 
-      { EnvType (Pos.real ($startpos, $endpos), $2,
+      { W.EnvType (Pos.real ($startpos, $endpos), $2,
      W.Lambda (List.map (fun x -> (x, W.KStar)) $4, $7)) }
-  | TYPE any_id EQUALS typ { EnvType (Pos.real ($startpos, $endpos), $2, $4) }
-  | VAL ID COLON typ { EnvBind (Pos.real ($startpos, $endpos), $2, $4) }
-  | ID COLON typ { EnvBind (Pos.real ($startpos, $endpos), $1, W.Ref $3) }
+  | TYPE any_id EQUALS typ { W.EnvType (Pos.real ($startpos, $endpos), $2, $4) }
+  | VAL ID COLON typ { W.EnvBind (Pos.real ($startpos, $endpos), $2, $4) }
+  | ID COLON typ { W.EnvBind (Pos.real ($startpos, $endpos), $1, W.Ref $3) }
   | OPERATOR STRING COLON typ 
-      { EnvBind (Pos.real ($startpos, $endpos), $2, remove_this $4) }
-  | PRIMITIVE PRIM { EnvPrim (Pos.real ($startpos, $endpos), $2) }
+      { W.EnvBind (Pos.real ($startpos, $endpos), $2, remove_this $4) }
+  | PRIMITIVE PRIM { W.EnvPrim (Pos.real ($startpos, $endpos), $2) }
 
 rec_env_decl : 
   | env_decl { $1 }
-  | REC recs=separated_nonempty_list(AND, env_decl) { RecBind(recs) }
+  | REC recs=separated_nonempty_list(AND, env_decl) { W.RecBind(recs) }
 
 env_decls
   : { [] }

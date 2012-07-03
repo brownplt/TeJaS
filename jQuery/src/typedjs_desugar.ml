@@ -1,6 +1,6 @@
 open Prelude
 
-module W = Typedjs_syntax.WritTyp
+module W = Typedjs_writtyp.WritTyp
 module List = ListExt
 module Pat = JQuery_syntax.Pat
 
