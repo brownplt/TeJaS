@@ -1,0 +1,3 @@
+[submodule "jQuery/src/LambdaJS"]
+	path = jQuery/src/LambdaJS
+	url = git@github.com:brownplt/ML-LambdaJS.git
