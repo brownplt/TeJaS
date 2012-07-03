@@ -8,12 +8,13 @@ open JQuery_syntax
 module JQ = JQueryImpl
 module S = StrobeImpl
 
-open Typedjs_syntax
 (* open JQuery_typechecking *)
-module LS = LocalStructure
 module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
 module TJSEnv = Typedjs_env.Make (StrobeMod) (Strobe_kind) (Desugar)
 module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (TJSEnv)
+module LJSfromEJS = Typedjs_fromExpr.Make (Exp)
+module WeaveAnnotations = WeaveAnnotations.Make (Exp) (Desugar)
+open Lambdajs_syntax
 
 type arith = 
   | Var of int
@@ -145,61 +146,84 @@ let main () =
     test3_help n (random_mult true 3) (random_mult false 6);
     test3 (n-1)
   end in
-  (* let test4 () = begin *)
-  (*   (\* *)
-  (*     let f = jQ<1+<'a>> -> 1<'a> in *)
-  (*     let g = 1<'a> in *)
-  (*     f g :: 1<'a> *)
-  (*   *\) *)
-  (*   let p = Pos.dummy in  *)
-  (*   let open Exp in *)
-  (*   let open JQuery_env in *)
-  (*   let txt = "type jqFirst = ['jQ<1+<'a>>] => 'jQ<1<'a>> *)
-  (*              type jqOneA = 'jQ<1<'a>> *)
-  (*              type jqZerooneB = 'jQ<01<'b>>" in *)
-  (*   let env = TJSEnv.parse_env txt "Test env" in *)
-  (*   let rec print_decl d = *)
-  (*     let open Typedjs_syntax in *)
-  (*     let open Format in *)
-  (*     let open FormatExt in *)
-  (*     let open WritTyp in *)
-  (*     match d with *)
-  (*     | EnvBind(_, id, t) -> label (id ^ " : ") [print_typ t] *)
-  (*     | EnvType(_, id, t) -> label (id ^ " = ") [print_typ t] *)
-  (*     | EnvPrim(_, id) -> horz[text "Prim"; text id] *)
-  (*     | RecBind ds -> begin match ds with *)
-  (*       | [] -> failwith "impossible" *)
-  (*       | [d] -> label "rec " [print_decl d] *)
-  (*       | d::ds -> vert ((horz[text "rec"; print_decl d])::(List.map (fun d -> horz[text "and"; print_decl d]) ds)) *)
-  (*     end *)
-  (*     | ObjectTrio (_, (c, ct), (p, pt), (i, it)) -> *)
-  (*       vert[horz[text "constructor"; text c; text "="; print_typ ct]; *)
-  (*            horz[text "prototype"; text p; text "="; print_typ pt]; *)
-  (*            horz[text "instance"; text i; text "="; print_typ it]] in *)
-  (*   vert (List.map print_decl env) Format.std_formatter; Format.print_newline(); *)
-  (*   let doLet x b e = ELet(p, x, b, e) in *)
-  (*   let cheatTyp t = ECheat(p, t, EConst(p, "")) in *)
-  (*   let tDom = TDom(None, TId "a", Css.all) in *)
-  (*   let exp =  *)
-  (*     doLet "f" (cheatTyp (TArrow(None, *)
-  (*                                 [TApp(TId("jQ"), [SMult (MOnePlus (MPlain (tDom)))])], None, *)
-  (*                                 TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))])))) *)
-  (*       (doLet "g" (cheatTyp (TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))]))) *)
-  (*          (EApp(p, EId(p, "f"), [EId (p, "g")]))) in *)
-  (*   let retTyp = (TApp(TId("jQ"), [SMult (MZeroOne (MPlain (TId "b")))])) in *)
-  (*   let env = (unchecked_bind_typ_ids [("a", TId "b")] empty_env) in *)
-  (*   begin try *)
-  (*     text "Typechecking: Is"; newline (); *)
-  (*     JQuery_syntax.Pretty.exp exp std_formatter; text " : "; print_typ retTyp; newline (); *)
-  (*     text "in environment"; newline (); *)
-  (*     braces (print_env env) std_formatter; text "?"; newline (); *)
-  (*     with_typ_exns (fun () -> check env None exp retTyp); *)
-  (*     text "Succeeded"; newline (); *)
-  (*   with Typ_error(p, e) -> (text "FAILED: "; text e; newline ()) end; *)
-  (*   text "Cache hits:   "; int !JQuery_subtyping.cache_hits; newline (); *)
-  (*   text "Cache misses: "; int !JQuery_subtyping.cache_misses; newline (); *)
-  (*   (\* JQuery_subtyping.print_cache "Cache is: " std_formatter; newline() *\) *)
-  (* end in *)
+  let test4 () = begin
+    (*
+      let f = jQ<1+<'a>> -> 1<'a> in
+      let g = 1<'a> in
+      f g :: 1<'a>
+    *)
+    (* let p = Pos.dummy in *)
+    let open JQuery_syntax.Exp in
+    let open JQuery_env in
+    let txt = "type jqFirst = ['jQ<1+<'a>>] => 'jQ<1<'a>>
+               type jqOneA = 'jQ<1<'a>>
+               type jqZerooneB = 'jQ<01<'b>>" in
+    let env = TJSEnv.parse_env txt "Test env" in
+    (* let rec print_decl d = *)
+    (*   let open Typedjs_syntax in *)
+    (*   let open Format in *)
+    (*   let open FormatExt in *)
+    (*   let open Typedjs_writtyp.WritTyp in *)
+    (*   match d with *)
+    (*   | EnvBind(_, id, t) -> label (id ^ " : ") [print_typ t] *)
+    (*   | EnvType(_, id, t) -> label (id ^ " = ") [print_typ t] *)
+    (*   | EnvPrim(_, id) -> horz[text "Prim"; text id] *)
+    (*   | RecBind ds -> begin match ds with *)
+    (*     | [] -> failwith "impossible" *)
+    (*     | [d] -> label "rec " [print_decl d] *)
+    (*     | d::ds -> vert ((horz[text "rec"; print_decl d])::(List.map (fun d -> horz[text "and"; print_decl d]) ds)) *)
+    (*   end *)
+    (*   | ObjectTrio (_, (c, ct), (p, pt), (i, it)) -> *)
+    (*     vert[horz[text "constructor"; text c; text "="; print_typ ct]; *)
+    (*          horz[text "prototype"; text p; text "="; print_typ pt]; *)
+    (*          horz[text "instance"; text i; text "="; print_typ it]] in *)
+    (* vert (List.map print_decl env) Format.std_formatter; Format.print_newline(); *)
+    (* let doLet x b e = ELet(p, x, b, e) in *)
+    (* let cheatTyp t = ECheat(p, t, EConst(p, "")) in *)
+    (* let tDom = TDom(None, TId "a", Css.all) in *)
+    let exp = "/*:: type DOM = { name : Str }; */
+               /*:: type aDom = { name : /a/ }; */
+               /*:: type abDom = { name : /a|b/ }; */
+               var f = /*: cheat ([jQ<1+<DOM>>] => jQ<1<aDom>>) */0;
+               var g = /*: cheat jQ<1<aDom>> */0;
+               var ret = /*: jQ<1<abDom>>*/(f(g));
+               " in
+    let js = JavaScript.parse_javascript exp "<test>" in
+    let rec helper env d = 
+      let open Typedjs_writtyp.WritTyp in
+      match d with
+      | EnvBind (_, x, _)
+      | EnvType (_, x, _)
+      | EnvPrim (_, x) -> IdMap.add x d env
+      | RecBind ds -> List.fold_left helper env ds
+      | ObjectTrio (_, (x, _), (y, _), (z, _)) ->
+        IdMap.add x d (IdMap.add y d (IdMap.add x d env)) in
+    let env' = List.fold_left helper IdMap.empty env in
+    let tjs = LJSfromEJS.from_exprjs env' (Exprjs.lift_decls (Exprjs_syntax.from_javascript js)) in
+    let annot = 
+      let typ_db = ReadTyps.read_typs js (List.rev !JavaScript_lexer.comments) in
+      WeaveAnnotations.weave typ_db tjs in
+    Exp.Pretty.exp annot std_formatter;
+    print_newline()
+    (*   doLet "f" (cheatTyp (TArrow(None, *)
+    (*                               [TApp(TId("jQ"), [SMult (MOnePlus (MPlain (tDom)))])], None, *)
+    (*                               TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))])))) *)
+    (*     (doLet "g" (cheatTyp (TApp(TId("jQ"), [SMult (MOne (MPlain (TId "a")))]))) *)
+    (*        (EApp(p, EId(p, "f"), [EId (p, "g")]))) in *)
+    (* let retTyp = (TApp(TId("jQ"), [SMult (MZeroOne (MPlain (TId "b")))])) in *)
+    (* let env = (unchecked_bind_typ_ids [("a", TId "b")] empty_env) in *)
+    (* begin try *)
+    (*   text "Typechecking: Is"; newline (); *)
+    (*   JQuery_syntax.Pretty.exp exp std_formatter; text " : "; print_typ retTyp; newline (); *)
+    (*   text "in environment"; newline (); *)
+    (*   braces (print_env env) std_formatter; text "?"; newline (); *)
+    (*   with_typ_exns (fun () -> check env None exp retTyp); *)
+    (*   text "Succeeded"; newline (); *)
+    (* with Typ_error(p, e) -> (text "FAILED: "; text e; newline ()) end; *)
+    (* text "Cache hits:   "; int !JQuery_subtyping.cache_hits; newline (); *)
+    (* text "Cache misses: "; int !JQuery_subtyping.cache_misses; newline (); *)
+    (* JQuery_subtyping.print_cache "Cache is: " std_formatter; newline() *)
+  end in
   let test5 () = begin
     let text = "(Tweet : \"\"\"A structure for tweets\"\"\"
                    DivElement
@@ -214,10 +238,10 @@ let main () =
     let decls = LS.parseLocalStructure text in
     List.map (fun d -> LS.Pretty.p_decl d Format.std_formatter; Format.print_newline()) decls
   end in
-  test1 500;
+  (* test1 500; *)
   (* test2 500; *)
   (* test3 100; *)
-  (* test4 (); *)
+  test4 ();
   (* Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels 1000); *)
   test5 ()
 ;;
