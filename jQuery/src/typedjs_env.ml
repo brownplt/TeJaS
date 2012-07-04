@@ -37,9 +37,39 @@ struct
     FormatExt.braces (Strobe.Pretty.env env) fmt;
     Format.pp_print_flush fmt ()
 
-  let bind x b env = IdMap.add x b env
-  let bind' x b env = bind x (Strobe.Ext.embed_b b) env
-  let bind_id x t env = bind' x (BTermTyp t) env
+  let bind x (b : Strobe.extBinding) (env : env) : env = 
+    let bs = try IdMap.find x env with Not_found -> [] in
+    let bs = List.filter (fun b' -> match Ext.extract_b b', Ext.extract_b b with
+      | BTermTyp _, BTermTyp _
+      | BTypBound _, BTypBound _
+      | BEmbed _, BEmbed _ -> false
+      | _ -> true) bs in
+    IdMap.add x (b::bs) env
+  let bind' x b env = bind x (Ext.embed_b b) env
+  let bind_id x t env = bind' x (BTermTyp (Ext.extract_t t)) env
+
+  let bind_rec_typ_id (x : id) recIds (t : extTyp) (env : env) = 
+    let k = StrobeKinding.kind_check env recIds (Ext.extract_t t) in
+    bind' x (BTypBound(Ext.extract_t t, k)) env
+
+  let bind_typ_id x t env = bind_rec_typ_id x [] t env
+
+
+  let lookup_id x (env : env) = 
+    let bs = IdMap.find x env in
+    match (ListExt.filter_map (fun b -> match Ext.extract_b b with
+    | BTermTyp t -> Some (Ext.embed_t t)
+    | _ -> None) bs) with
+    | [t] -> t
+    | _ -> raise Not_found
+
+  let lookup_typ_id x env =
+    let bs = IdMap.find x env in
+    match (ListExt.filter_map (fun b -> match Ext.extract_b b with
+    | BTypBound (t,k) -> Some (Ext.embed_t t, Ext.embed_k k)
+    | _ -> None) bs) with
+    | [tk] -> tk
+    | _ -> raise Not_found
 
   open Lexing
 
@@ -68,20 +98,22 @@ struct
   let extend_global_env env lst =
     let rec add recIds env decl = match decl with
       | W.EnvBind (p, x, typ) ->
-        if IdMap.mem x env then
-          raise (Not_wf_typ (x ^ " is already bound in the environment"))
-        else
-          let t = expose_twith env (desugar_typ p typ) in
-        (* Printf.eprintf "Binding type for %s to %s\n" x (string_of_typ t); *)
-          bind_id x t env
+        (try
+           ignore (lookup_id x env);
+           raise (Not_wf_typ (x ^ " is already bound in the environment"))
+         with Not_found ->
+           let t = expose_twith env (desugar_typ p typ) in
+           (* Printf.eprintf "Binding type for %s to %s\n" x (string_of_typ t); *)
+           bind_id x (Ext.embed_t t) env)
       | W.EnvType (p, x, writ_typ) ->
-        if IdMap.mem x env then
-          raise (Not_wf_typ (sprintf "the type %s is already defined" x))
-        else
-          let t = expose_twith env (desugar_typ p writ_typ) in
-        (* Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t)); *)
-          let k = StrobeKinding.kind_check env recIds t in
-          bind' x (BTypBound(apply_name (Some x) t, k)) env
+        (try 
+           ignore (lookup_typ_id x env);
+           raise (Not_wf_typ (sprintf "the type %s is already defined" x))
+         with Not_found ->
+           let t = expose_twith env (desugar_typ p writ_typ) in
+           (* Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t)); *)
+           let k = StrobeKinding.kind_check env recIds t in
+           bind' x (BTypBound(apply_name (Some x) t, k)) env)
       | W.EnvPrim (p, s) ->
         StrobeKinding.new_prim_typ s;
         env

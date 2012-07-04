@@ -14,6 +14,13 @@ module MakeActions
   with type kind = StrobeSub.extKind
   with type binding = StrobeSub.extBinding
   with type env = StrobeSub.env)
+  (Env : JQUERY_TYP_ENV
+   with type typ = JQ.typ
+  with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity
+  with type binding = JQ.binding
+  with type env = JQ.env
+  with type env_decl = Typedjs_writtyp.WritTyp.env_decl)
   : (JQUERY_SUBTYPING
      with type typ = JQ.typ
   with type kind = JQ.kind
@@ -43,15 +50,15 @@ struct
   let rec project s (env : env) =
     let union map1 map2 = IdMap.fold IdMap.add map1 map2 in
     let (free_t, free_m) = free_sigma_ids s in
-    let rec helper id bind acc =
+    let rec helper id bindings acc =
       if not (IdSet.mem id free_t || IdSet.mem id free_m) then acc
       else 
-        let trans = match bind with
+        let trans = List.fold_left (fun acc bind -> match bind with
           | BStrobe (Strobe.BTermTyp t) -> project (STyp (TStrobe t)) env
           | BStrobe (Strobe.BTypBound(t, _)) -> project (STyp (TStrobe t)) env
-          | BStrobe (Strobe.BEmbed b) -> helper id b acc
-          | BMultBound(m, _) -> project (SMult m) env in
-        union (IdMap.add id bind acc) trans in
+          | BStrobe (Strobe.BEmbed b) -> helper id [b] acc
+          | BMultBound(m, _) -> project (SMult m) env) acc bindings in
+        union (IdMap.add id bindings acc) trans in
     IdMap.fold helper env IdMap.empty
   let project_mult_typ m t (env : env) = IdMap.fold IdMap.add (project (SMult m) env) (project (STyp t) env)
   let project_typs t1 t2 (env : env) = IdMap.fold IdMap.add (project (STyp t1) env) (project (STyp t2) env)
@@ -100,8 +107,8 @@ struct
         else 
           let t2 = typ_typ_subst x2 (TStrobe (Strobe.TId x1)) t2 in
           let env' = match s2 with
-            | STyp t -> IdMap.add x1 (BStrobe (Strobe.BTypBound (extract_t t, Strobe.KStar))) env
-            | SMult m -> IdMap.add x1 (BMultBound (m, KMult (KStrobe Strobe.KStar))) env in
+            | STyp t -> Env.bind_typ_id x1 t env
+            | SMult m -> Env.bind_mult_id x1 m env in
           subtype_typ env' cache t1 t2
       | _ -> (cache, false))
     end
@@ -116,9 +123,8 @@ struct
     | MId n1, t2 when t2 = MId n1 -> cache, true (* SA-Refl-TVar *)
     | MId n1, _ -> (* SA-Trans-TVar *)
       (try
-         (match IdMap.find n1 env with 
-         | BMultBound (m1, _) -> subtype_mult cache m1 m2
-         | _ -> cache, false)
+         let m1 = Env.lookup_mult_id n1 env in
+         subtype_mult cache m1 m2
        with Not_found -> cache, false)
     | MPlain t1, MPlain t2 -> subtype_typ cache t1 t2
     | MOne (MPlain t1), MOne (MPlain t2)

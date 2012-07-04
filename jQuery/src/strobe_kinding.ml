@@ -37,7 +37,10 @@ struct
             (string_of_typ typ)))
 
   let rec kind_check (env : env) (recIds : id list) (typ : typ) : kind = 
-    let bind_kind_id x k env = IdMap.add x (Ext.embed_b (BTypBound(TTop, k))) env in
+    let bind_kind_id x k env = 
+      let bs = try IdMap.find x env with Not_found -> [] in
+      let bs = List.filter (fun b -> match Ext.extract_b b with BTypBound _ -> false | _ -> true) bs in
+      IdMap.add x ((Ext.embed_b (BTypBound(TTop, k)))::bs) env in
     match typ with
     | TEmbed t -> Ext.extract_k (ExtKinding.kind_check env recIds t)
     | TTop
@@ -84,7 +87,9 @@ struct
     | TId x -> 
       begin 
         try 
-          (match Ext.extract_b (IdMap.find x env) with
+          let bs = IdMap.find x env in
+          let b = List.find (fun b -> match b with BTypBound _ -> true | _ -> false) (List.map Ext.extract_b bs) in
+          (match b with
           | BTypBound(_, k) -> k
           | BTermTyp _ -> raise (Kind_error (x ^ " is a term variable, not a type variable"))
           | BEmbed _ -> raise (Kind_error (x ^ " is an extended binding, not a type variable")))

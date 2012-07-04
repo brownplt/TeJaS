@@ -35,7 +35,7 @@ module Make : JQUERY_TYP = functor (Css : Css.CSS) -> functor (STROBE : TYPS) ->
   type baseBinding = STROBE.binding
   type binding = BStrobe of baseBinding | BMultBound of multiplicity * kind
 
-  type env = binding IdMap.t
+  type env = binding list IdMap.t
 end
 
 module MakeActions
@@ -167,10 +167,16 @@ struct
       | SMult m -> multiplicity m
 
 
-    let env env =
-      let partition_env e = IdMap.fold (fun i b (other, mults) -> match b with
-        | BStrobe b' -> (IdMap.add i b other, mults)
-        | BMultBound(m, k) -> (other, IdMap.add i (m, k) mults)) e (IdMap.empty, IdMap.empty) in
+    let env (env : env) =
+      let partition_env e = 
+        IdMap.fold
+          (fun i bs (other, mults) -> 
+            List.fold_left (fun (other, mults) b -> match embed_b (extract_b b) with
+            | BStrobe b' -> 
+              let bs' = try IdMap.find i other with Not_found -> [] in
+              (IdMap.add i (b::bs') other, mults)
+            | BMultBound(m, k) -> (other, IdMap.add i (m, k) mults)) (other, mults) bs)
+          e (IdMap.empty, IdMap.empty) in
       let (other, mult_ids) = partition_env env in
       let other_print = Strobe.Pretty.env other in
       let mults = IdMapExt.p_map "Bounded mult variables: " empty
@@ -316,10 +322,10 @@ struct
       (n1 = n2) ||
         (try
            (match IdMap.find n1 env, IdMap.find n2 env with
-           | BStrobe (Strobe.BTypBound(t1, k1)), BStrobe (Strobe.BTypBound(t2, k2)) -> 
+           | [BStrobe (Strobe.BTypBound(t1, k1))], [BStrobe (Strobe.BTypBound(t2, k2))] -> 
              k1 = k2 && equivalent_typ env (embed_t t1) (embed_t t2)
-           | BStrobe (Strobe.BTermTyp t1), BStrobe (Strobe.BTermTyp t2) -> equivalent_typ env (embed_t t1) (embed_t t2)
-           | BMultBound(m1, k1), BMultBound(m2, k2) -> k1 = k2 && equivalent_multiplicity env m1 m2
+           | [BStrobe (Strobe.BTermTyp t1)], [BStrobe (Strobe.BTermTyp t2)] -> equivalent_typ env (embed_t t1) (embed_t t2)
+           | [BMultBound(m1, k1)], [BMultBound(m2, k2)] -> k1 = k2 && equivalent_multiplicity env m1 m2
            | _ -> false)
          with Not_found -> false)
     | MZero m1, MZero m2

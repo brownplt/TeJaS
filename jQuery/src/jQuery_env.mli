@@ -27,6 +27,7 @@ module MakeExt :
         (JQUERY_TYP_ENV
          with type typ = Env.typ
   with type kind = Env.kind
+  with type multiplicity = JQuery.multiplicity
   with type binding = Env.binding
   with type sigma = JQuery.sigma
   with type env = Env.env

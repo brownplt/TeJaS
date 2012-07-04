@@ -31,6 +31,7 @@ module MakeExt
      with type typ = JQuery.typ
   with type kind = JQuery.kind
   with type sigma = JQuery.sigma
+  with type multiplicity = JQuery.multiplicity
   with type binding = JQuery.binding
   with type env = JQuery.env
   with type env_decl = Env.env_decl) =
@@ -39,6 +40,7 @@ struct
   type kind = Env.kind
   type binding = Env.binding
   type sigma = JQuery.sigma
+  type multiplicity = JQuery.multiplicity
   type env = Env.env
   type env_decl = Env.env_decl
   open Env
@@ -50,10 +52,18 @@ struct
   let parse_env = Env.parse_env
   let parse_env_file = Env.parse_env_file
 
-  let bind x b env = IdMap.add x b env
-  let bind' x b env = bind x (Strobe.Ext.embed_b b) env
-  let bind_id x t env = bind' x (Strobe.BTermTyp t) env
-  let raw_bind_typ_id x t k env = bind' x (Strobe.BTypBound (t, k)) env
+  let bind x b (env : env) : env = 
+    let bs = try IdMap.find x env with Not_found -> [] in
+    let bs = List.filter (fun b' -> match embed_b (extract_b b'), b with
+      | BMultBound _, BMultBound _
+      | BStrobe (Strobe.BTermTyp _), BStrobe (Strobe.BTermTyp _)
+      | BStrobe (Strobe.BTypBound _), BStrobe (Strobe.BTypBound _) -> false
+      | _ -> true) bs in
+    IdMap.add x (b::bs) env
+  let bind' x b (env : env) = bind x (JQuery.embed_b b) env
+  let bind_id x t (env : env) = bind' x (Strobe.BTermTyp (JQuery.extract_t t)) env
+  let raw_bind_typ_id x t k (env : env) = bind' x (Strobe.BTypBound (t, k)) env
+  let raw_bind_mult_id x t m (env : env) = bind x (BMultBound (t, m)) env
 
   let kind_check env recIds (s : sigma) : kind  =
     JQueryKinding.kind_check_sigma env recIds s
@@ -62,29 +72,32 @@ struct
     let k = kind_check env recIds s in
     match s with
     | STyp t -> raw_bind_typ_id x (JQuery.extract_t t) (JQuery.extract_k k) env
-    | SMult m -> IdMap.add x (BMultBound(m, k)) env
+    | SMult m -> raw_bind_mult_id x m k env
 
-  let bind_typ_id x s env = bind_rec_typ_id x [] s env
+  let bind_typ_id x t env = bind_rec_typ_id x [] (STyp t) env
+  let bind_mult_id x m env = bind_rec_typ_id x [] (SMult m) env
 
   let bind_recursive_types (xts : (id * typ) list) (env : env) =
     let env' = List.fold_left (fun ids (x, t) -> 
       raw_bind_typ_id x (JQuery.extract_t t) Strobe.KStar ids) env xts in
-    timefn "Bindrec/Kind checking" (List.fold_left (fun env (x, t) -> bind_typ_id x (STyp t) env) env') xts
+    timefn "Bindrec/Kind checking" (List.fold_left (fun env (x, t) -> bind_typ_id x t env) env') xts
 
   let unchecked_bind_typ_ids (xts : (id * typ) list) (env : env) =
     List.fold_left (fun ids (x, t) -> raw_bind_typ_id x (JQuery.extract_t t) Strobe.KStar ids) env xts
 
-  let lookup_id x env = 
-    match JQuery.extract_b (IdMap.find x env) with
-    | Strobe.BTermTyp t -> embed_t t
+  let lookup_id x env = Env.lookup_id x env
+
+  let lookup_typ_id x env = Env.lookup_typ_id x env
+
+  let lookup_mult_id x (env : env) =
+    let bs = IdMap.find x env in
+    match (ListExt.filter_map (fun b -> match (embed_b (extract_b b)) with
+    | BMultBound (m,_) -> Some m
+    | _ -> None) bs) with
+    | [m] -> m
     | _ -> raise Not_found
 
-  let lookup_typ_id x env = 
-    match JQuery.extract_b (IdMap.find x env) with
-    | Strobe.BTypBound (t,k) -> (embed_t t, embed_k k)
-    | _ -> raise Not_found
-
-  let rec set_global_object env cname =
+  let rec set_global_object (env : env) cname =
     let (ci_typ, ci_kind) = 
       try lookup_typ_id cname env
       with Not_found -> 
@@ -95,7 +108,7 @@ struct
       let add_field env (x, pres, t) =
         if pres = Strobe.Present then
           match Strobe.Pat.singleton_string x with
-          | Some s -> bind_id s (Strobe.TRef (n, t)) env
+          | Some s -> bind_id s (JQuery.embed_t (Strobe.TRef (n, t))) env
           | None -> 
             raise (Not_wf_typ (cname ^ " field was a regex in global"))
         else
@@ -110,20 +123,22 @@ struct
     let open Typedjs_writtyp.WritTyp in
     let rec add recIds env decl = match decl with
       | EnvBind (p, x, typ) ->
-        if IdMap.mem x env then
-          raise (Not_wf_typ (x ^ " is already bound in the environment"))
-        else
-          let t = Strobe.expose_twith env (desugar_typ p typ) in
-          (* Printf.eprintf "Binding type for %s to %s\n" x (string_of_typ t); *)
-          bind_id x t env
+        (try 
+           ignore (lookup_id x env);
+           raise (Not_wf_typ (x ^ " is already bound in the environment"))
+         with Not_found ->
+           let t = JQuery.embed_t (Strobe.expose_twith env (desugar_typ p typ)) in
+           (* Printf.eprintf "Binding type for %s to %s\n" x (string_of_typ t); *)
+           bind_id x t env)
       | EnvType (p, x, writ_typ) ->
-        if IdMap.mem x env then
-          raise (Not_wf_typ (sprintf "the type %s is already defined" x))
-        else
-          let t = Strobe.expose_twith env (desugar_typ p writ_typ) in
-          (* Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t)); *)
-          let k = kind_check env recIds (STyp (embed_t t)) in
-          raw_bind_typ_id x (extract_t (apply_name (Some x) (embed_t t))) (extract_k k) env
+        (try
+           ignore (lookup_typ_id x env);
+           raise (Not_wf_typ (sprintf "the type %s is already defined" x))
+         with Not_found ->
+           let t = Strobe.expose_twith env (desugar_typ p writ_typ) in
+           (* Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t)); *)
+           let k = kind_check env recIds (STyp (embed_t t)) in
+           raw_bind_typ_id x (extract_t (apply_name (Some x) (embed_t t))) (extract_k k) env)
       | EnvPrim (p, s) ->
         JQueryKinding.new_prim_typ s;
         env

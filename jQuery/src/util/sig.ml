@@ -142,6 +142,10 @@ module type TYP_ENV = sig
   type env_decl
   val print_env : env -> FormatExt.printer
   val bind : id -> binding -> env -> env
+  val bind_id : id -> typ -> env -> env
+  val bind_typ_id : id -> typ -> env -> env
+  val lookup_id : id -> env -> typ
+  val lookup_typ_id : id -> env -> typ * kind
   val parse_env_buf : Lexing.lexbuf -> string -> env_decl list
   val parse_env : string -> string -> env_decl list
   val parse_env_file : in_channel -> string -> env_decl list

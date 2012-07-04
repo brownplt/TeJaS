@@ -12,6 +12,30 @@ module S = StrobeImpl
 module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
 module TJSEnv = Typedjs_env.Make (StrobeMod) (Strobe_kind) (Desugar)
 module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (TJSEnv) (Desugar)
+module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
+                     with type typ = JQueryImpl.typ
+  with type kind = JQueryImpl.kind
+  with type multiplicity = JQueryImpl.multiplicity
+  with type sigma = JQueryImpl.sigma
+  with type binding = JQueryImpl.binding
+  with type env = JQueryImpl.env
+  with type baseTyp = JQueryImpl.baseTyp
+  with type baseKind = JQueryImpl.baseKind
+  with type baseBinding = JQueryImpl.baseBinding) =
+  JQuery_subtyping.MakeActions (StrobeSub) (JQueryMod) (JQEnv)
+and StrobeSub : (Strobe_sigs.STROBE_SUBTYPING
+              with type typ = StrobeImpl.typ
+  with type kind = StrobeImpl.kind
+  with type binding = StrobeImpl.binding
+  with type extTyp = StrobeImpl.extTyp
+  with type extKind = StrobeImpl.extKind
+  with type extBinding = StrobeImpl.extBinding
+  with type pat = StrobeImpl.pat
+  with type obj_typ = StrobeImpl.obj_typ
+  with type presence = StrobeImpl.presence
+  with type env = StrobeImpl.env) =
+  Strobe_subtyping.MakeActions (StrobeMod) (JQuerySub) (JQEnv)
+
 module LJSfromEJS = Typedjs_fromExpr.Make (Exp)
 module WeaveAnnotations = WeaveAnnotations.Make (Exp) (Desugar)
 

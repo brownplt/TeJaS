@@ -54,8 +54,14 @@ struct
     | TForall (_, x, s, t) ->
       let k1 = kind_check_sigma env recIds s in
       let env' = match s with 
-        | STyp t -> IdMap.add x (BStrobe (Strobe.BTypBound(extract_t t, extract_k k1))) env
-        | SMult m -> IdMap.add x (BMultBound(m, k1)) env in
+        | STyp t -> 
+          let bs = try IdMap.find x env with Not_found -> [] in
+          let bs = List.filter (fun b -> match extract_b b with Strobe.BTypBound _ -> false | _ -> true) bs in
+          IdMap.add x ((BStrobe (Strobe.BTypBound(extract_t t, extract_k k1)))::bs) env
+        | SMult m -> 
+          let bs = try IdMap.find x env with Not_found -> [] in
+          let bs = List.filter (fun b -> match embed_b (extract_b b) with BMultBound _ -> false | _ -> true) bs in
+          IdMap.add x ((BMultBound(m, k1))::bs) env in
       let k2 = kind_check_typ env' recIds t in
       if k1 <> k2 then kind_mismatch_typ t k1 k2 else k1
     | TApp (t_op, s_args) ->
@@ -98,7 +104,9 @@ struct
       begin 
         let rec unwrap b = match b with BStrobe (Strobe.BEmbed b) -> unwrap b | _ -> b in
         try 
-          (match unwrap (IdMap.find x env) with
+          let bs = IdMap.find x env in
+          let b = List.find (fun b -> match b with BMultBound _ -> true | _ -> false) (List.map unwrap bs) in
+          (match b with
           | BMultBound (_, (KMult _ as k)) -> k
           | BMultBound (_, k) ->
             raise (StrobeKind.Kind_error (x ^ " is bound to MultBound(" ^ (string_of_kind k)

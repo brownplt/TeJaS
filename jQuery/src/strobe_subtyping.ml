@@ -15,6 +15,12 @@ module MakeActions
   with type baseKind = STROBE.kind
   with type baseBinding = STROBE.binding
   with type env = STROBE.env)
+  (Env : TYP_ENV
+   with type typ = ExtSub.typ
+  with type kind = ExtSub.kind
+  with type binding = ExtSub.binding
+  with type env = ExtSub.env
+  with type env_decl = Typedjs_writtyp.WritTyp.env_decl)
   : (STROBE_SUBTYPING
      with type typ = STROBE.typ
   with type kind = STROBE.kind
@@ -110,8 +116,11 @@ struct
 
 
   let pat_env (env : env) : pat IdMap.t =
-    let select_pat_bound (x, b) = match Ext.extract_b b with
+    let select_pat_bound (x, bs) = 
+      match (L.filter_map (fun b -> match Ext.extract_b b with
       | BTypBound(TRegex p, _) -> Some (x, p)
+      | _ -> None) bs) with
+      | [xp] -> Some xp
       | _ -> None in
     L.fold_right (fun (x,p) env -> IdMap.add x p env)
       (L.filter_map select_pat_bound (IdMap.bindings env))
@@ -320,9 +329,7 @@ struct
           | TId n1, t2 when t2 = TId n1 -> cache, true (* SA-Refl-TVar *)
           | TId n1, _ -> (* SA-Trans-TVar *)
             (try
-               (match Ext.extract_b (IdMap.find n1 env) with 
-               | BTypBound (s, _) -> subt env cache s t
-               | _ -> cache, false)
+               let (s, _) = lookup_typ env n1 in subt env cache s t
              with Not_found -> cache, false)
           (* NOT SOUND? *)
           (* | t, TId x ->  *)
@@ -342,13 +349,13 @@ struct
             subt env cache s1 s2 &&& (fun c -> subt env c s2 s1) &&&
               (fun c ->
                 let t2 = subst (Some x2) (TId x1) (fun x -> x) t2 in
-                let env' = IdMap.add x1 (Ext.embed_b (BTypBound (s1, KStar))) env in
+                let env' = Env.bind_typ_id x1 (Ext.embed_t s1) env in
                 subt env' c t1 t2)
           | _, TTop -> cache, true
           | TBot, _ -> cache, true
           | TLambda (_, [(x, KStar)], s), TLambda (_, [(y, KStar)], t) ->
-            let env = IdMap.add x (Ext.embed_b (BTypBound (TTop, KStar))) env in
-            let env = IdMap.add y (Ext.embed_b (BTypBound (TTop, KStar))) env in
+            let env = Env.bind_typ_id x (Ext.embed_t TTop) env in
+            let env = Env.bind_typ_id y (Ext.embed_t TTop) env in
             subt env cache s t
           | _ -> cache, false)
     end

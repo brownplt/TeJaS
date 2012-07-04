@@ -15,6 +15,13 @@ module MakeActions :
   with type kind = Strobe.extKind
   with type binding = Strobe.extBinding
   with type env = Strobe.env) ->
+      functor (Env : JQUERY_TYP_ENV
+               with type typ = JQ.typ
+  with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity
+  with type binding = JQ.binding
+  with type env = JQ.env
+  with type env_decl = Typedjs_writtyp.WritTyp.env_decl) ->
       (JQUERY_SUBTYPING
        with type typ = JQ.typ
   with type kind = JQ.kind

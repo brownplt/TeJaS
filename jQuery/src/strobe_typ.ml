@@ -57,7 +57,7 @@ module Make : STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) -> struct
   type extBinding = EXT.binding
   type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind
 
-  type env = extBinding IdMap.t
+  type env = extBinding list IdMap.t
   let proto_str = "__proto__"
     
   let proto_pat = Pat.singleton proto_str
@@ -339,11 +339,17 @@ struct
             | Inherited -> text "^" in
           horz [ text (Pat.pretty k); squish [text ":"; pretty_pres]; typ p; text "," ]
 
-    let env env =
-      let partition_env e = IdMap.fold (fun i b (ids, typs, others) -> match Ext.extract_b b with
-        | BTermTyp t -> (IdMap.add i t ids, typs, others)
-        | BTypBound(t, k) -> (ids, IdMap.add i (t, k) typs, others)
-        | BEmbed b' -> (ids, typs, IdMap.add i b others)) e (IdMap.empty, IdMap.empty, IdMap.empty) in
+    let env (env : env) =
+      let partition_env e = 
+        IdMap.fold
+          (fun i bs (ids, typs, others) -> 
+            List.fold_left (fun (ids, typs, others) b -> match Ext.extract_b b with
+            | BTermTyp t -> (IdMap.add i t ids, typs, others)
+            | BTypBound(t, k) -> (ids, IdMap.add i (t, k) typs, others)
+            | BEmbed b' -> 
+              let bs' = try IdMap.find i others with Not_found -> [] in
+              (ids, typs, IdMap.add i (b::bs') others)) (ids, typs, others) bs)
+          e (IdMap.empty, IdMap.empty, IdMap.empty) in
       let (id_typs, typ_ids, other) = partition_env env in
       let unname t = if shouldUseNames() then t else replace_name None t in
       let other_print = Ext.Pretty.env other in
@@ -523,10 +529,10 @@ struct
     | TId n1, TId n2 ->
       (n1 = n2) ||
         (try
-           (match Ext.extract_b (IdMap.find n1 env), Ext.extract_b (IdMap.find n2 env) with
-           | BTypBound(t1, k1), BTypBound(t2, k2) -> k1 = k2 && equivalent_typ env t1 t2
-           | BTermTyp t1, BTermTyp t2 -> equivalent_typ env t1 t2
-           | BEmbed _, BEmbed _ ->
+           (match List.map Ext.extract_b (IdMap.find n1 env), List.map Ext.extract_b (IdMap.find n2 env) with
+           | [BTypBound(t1, k1)], [BTypBound(t2, k2)] -> k1 = k2 && equivalent_typ env t1 t2
+           | [BTermTyp t1], [BTermTyp t2] -> equivalent_typ env t1 t2
+           | [BEmbed _], [BEmbed _] ->
              Ext.equivalent_typ env (Ext.embed_t typ1) (Ext.embed_t typ2)
            | _ -> false)
          with Not_found -> false)
@@ -642,11 +648,15 @@ struct
     | TThis t -> TThis (merge t flds)
     | _ -> typ
 
-  and lookup_typ env x = match Ext.extract_b (IdMap.find x env) with
-    | BTypBound(t, k) -> (t, k)
+  and lookup_typ env x =
+    let bs = IdMap.find x env in
+    match (ListExt.filter_map (fun b -> match Ext.extract_b b with
+    | BTypBound (t,k) -> Some (t, k)
+    | _ -> None) bs) with
+    | [tk] -> tk
     | _ -> raise Not_found
 
-  and expose_twith typenv typ = 
+  and expose_twith (typenv : env) typ = 
     let expose_twith = expose_twith typenv in 
     match Ext.extract_t (Ext.embed_t typ) with
     | TWith (t, flds) ->

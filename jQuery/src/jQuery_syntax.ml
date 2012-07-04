@@ -67,30 +67,5 @@ and Strobe_kind : (Strobe_sigs.STROBE_KINDING
   with type env = Strobe.env)
   = Strobe_kinding.Make (StrobeMod) (JQuery_kind)
 
-module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
-                     with type typ = JQueryImpl.typ
-  with type kind = JQueryImpl.kind
-  with type multiplicity = JQueryImpl.multiplicity
-  with type sigma = JQueryImpl.sigma
-  with type binding = JQueryImpl.binding
-  with type env = JQueryImpl.env
-  with type baseTyp = JQueryImpl.baseTyp
-  with type baseKind = JQueryImpl.baseKind
-  with type baseBinding = JQueryImpl.baseBinding) =
-  JQuery_subtyping.MakeActions (StrobeSub) (JQueryMod)
-and StrobeSub : (Strobe_sigs.STROBE_SUBTYPING
-              with type typ = StrobeImpl.typ
-  with type kind = StrobeImpl.kind
-  with type binding = StrobeImpl.binding
-  with type extTyp = StrobeImpl.extTyp
-  with type extKind = StrobeImpl.extKind
-  with type extBinding = StrobeImpl.extBinding
-  with type pat = StrobeImpl.pat
-  with type obj_typ = StrobeImpl.obj_typ
-  with type presence = StrobeImpl.presence
-  with type env = StrobeImpl.env) =
-  Strobe_subtyping.MakeActions (StrobeMod) (JQuerySub)
-
-
 module Exp = Typedjs_syntax.Exp (StrobeMod)
 module LS = LocalStructure

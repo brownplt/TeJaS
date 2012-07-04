@@ -26,8 +26,8 @@ debug: builddir
 
 opt: builddir
 	@rm -f debug
-	$(OCAMLBUILD) $(MAIN).native
-	@ln -sf ../obj/$(MAIN).native run
+	$(OCAMLBUILD) $(TARGET).native
+	@ln -sf ../obj/$(TARGET).native run
 
 clean:
 	rm -rf ../obj

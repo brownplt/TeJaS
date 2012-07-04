@@ -55,7 +55,7 @@ module type STROBE_TYPS = sig
   type extBinding
   type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind
 
-  type env = extBinding IdMap.t
+  type env = extBinding list IdMap.t
   val proto_str : string
 
   val proto_pat : pat

@@ -31,7 +31,7 @@ module type JQUERY_TYPS = sig
   type baseBinding
   type binding = BStrobe of baseBinding | BMultBound of multiplicity * kind
 
-  type env = binding IdMap.t
+  type env = binding list IdMap.t
 end
 
 module type JQUERY_TYP = functor (Css : CSS) -> functor (STROBE : TYPS) ->
@@ -114,7 +114,10 @@ end
 module type JQUERY_TYP_ENV = sig
   include TYP_ENV
   type sigma
+  type multiplicity
+  val bind_mult_id : id -> multiplicity -> env -> env
   val bind_rec_typ_id : id -> id list -> sigma -> env -> env
   val lookup_id : id -> env -> typ
   val lookup_typ_id : id -> env -> typ * kind
+  val lookup_mult_id : id -> env -> multiplicity
 end
