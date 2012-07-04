@@ -13,7 +13,7 @@ end
 
 module Make
   (S : Strobe_sigs.STROBE_TYPS with type pat = Pat.t)
-  (JQ : JQuery_sigs.JQUERY_TYPS
+  (JQ : JQuery_sigs.JQUERY_ACTIONS
    with type baseTyp = S.typ
   with type baseKind = S.kind
   with type typ = S.extTyp
@@ -55,34 +55,34 @@ struct
                (Pat.pretty pat1) (Pat.pretty pat2) str)
 
   let rec typ (writ_typ : W.t) : JQ.typ =
-    match writ_typ with
-    | W.Str -> JQ.TStrobe (S.TRegex Pat.all)
-    | W.Prim p -> JQ.TStrobe (S.TPrim p)
-    | W.Bool -> JQ.TStrobe (S.TUnion (Some "Bool", S.TPrim "True", S.TPrim "False"))
-    | W.Union (t1, t2) -> JQ.TStrobe (S.TUnion (None, embed_typ t1, embed_typ t2))
-    | W.Inter (t1, t2) -> JQ.TStrobe (S.TInter (None, embed_typ t1, embed_typ t2))
-    | W.Arrow (None, args, var, r) -> JQ.TStrobe (S.TArrow ((* None,  *)map embed_typ args, opt_map embed_typ var, embed_typ r))
-    | W.Arrow (Some this, args, var, r) -> JQ.TStrobe (S.TArrow ((* None, *) (embed_typ this):: (map embed_typ args), opt_map embed_typ var, embed_typ r))
-    | W.This t -> JQ.TStrobe (S.TThis (embed_typ t))
-    | W.Object flds -> JQ.TStrobe (object_typ flds)
+    JQ.embed_t (match writ_typ with
+    | W.Str -> (S.TRegex Pat.all)
+    | W.Prim p -> (S.TPrim p)
+    | W.Bool -> (S.TUnion (Some "Bool", S.TPrim "True", S.TPrim "False"))
+    | W.Union (t1, t2) -> (S.TUnion (None, embed_typ t1, embed_typ t2))
+    | W.Inter (t1, t2) -> (S.TInter (None, embed_typ t1, embed_typ t2))
+    | W.Arrow (None, args, var, r) -> (S.TArrow ((* None,  *)map embed_typ args, opt_map embed_typ var, embed_typ r))
+    | W.Arrow (Some this, args, var, r) -> (S.TArrow ((* None, *) (embed_typ this):: (map embed_typ args), opt_map embed_typ var, embed_typ r))
+    | W.This t -> (S.TThis (embed_typ t))
+    | W.Object flds -> (object_typ flds)
     | W.With(t, flds) -> (match object_typ flds with
-      | S.TObject objflds -> JQ.TStrobe (S.TWith(embed_typ t, objflds))
+      | S.TObject objflds -> (S.TWith(embed_typ t, objflds))
       | _ -> failwith "absurd")
-    | W.Pat pat -> JQ.TStrobe (S.TRegex pat)
-    | W.Ref t -> JQ.TStrobe (S.TRef (None, embed_typ t))
-    | W.Source t -> JQ.TStrobe (S.TSource (None, embed_typ t))
-    | W.Top -> JQ.TStrobe (S.TTop)
-    | W.Bot -> JQ.TStrobe (S.TBot)
-    | W.Syn x -> JQ.TStrobe (S.TId x)
-    | W.TId x -> JQ.TStrobe (S.TId x)
-    | W.App (t1, t2s) -> JQ.TApp (typ t1, map sigma t2s)
-    | W.Forall (x, s, t) -> JQ.TForall (None, x, sigma s, typ t)
-    | W.Rec (x, t) -> JQ.TStrobe (S.TRec (None, x, embed_typ t))
-    | W.Lambda (args, t) -> JQ.TStrobe (S.TLambda (None, map id_kind args, embed_typ t))
-    | W.Fix (x, k, t) -> let (x, k) = id_kind (x, k) in JQ.TStrobe (S.TFix (None, x, k, embed_typ t))
+    | W.Pat pat -> (S.TRegex pat)
+    | W.Ref t -> (S.TRef (None, embed_typ t))
+    | W.Source t -> (S.TSource (None, embed_typ t))
+    | W.Top -> (S.TTop)
+    | W.Bot -> (S.TBot)
+    | W.Syn x -> (S.TId x)
+    | W.TId x -> (S.TId x)
+    | W.App (t1, t2s) -> JQ.extract_t (JQ.TApp (typ t1, map sigma t2s))
+    | W.Forall (x, s, t) -> JQ.extract_t (JQ.TForall (None, x, sigma s, typ t))
+    | W.Rec (x, t) -> (S.TRec (None, x, embed_typ t))
+    | W.Lambda (args, t) -> (S.TLambda (None, map id_kind args, embed_typ t))
+    | W.Fix (x, k, t) -> let (x, k) = id_kind (x, k) in (S.TFix (None, x, k, embed_typ t)))
 
   and opt_map f v = match v with None -> None | Some v -> Some (f v)
-  and embed_typ t = S.TEmbed (typ t)
+  and embed_typ t = JQ.extract_t (typ t)
 
   and id_kind (id, k) = 
     let rec helper k = match k with
@@ -148,7 +148,7 @@ struct
 
 
   let desugar_typ (p : Pos.t) (wt : W.t) : JQ.typ =
-    try typ wt
+    try JQ.embed_t (JQ.extract_t (typ wt))
     with Typ_stx_error msg ->
       raise (Typ_stx_error (Pos.toString p ^ msg))
 end

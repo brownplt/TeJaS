@@ -300,6 +300,7 @@ struct
           let (hasProto, _) = findField proto_pat in
           let (hasCode, codeTyp) = findField (Pat.singleton "-*- code -*-") in
           let (hasPrototype, protoTyp) = findField (Pat.singleton "prototype") in
+          let protoTyp = match protoTyp with None -> None | Some t -> Some (Ext.extract_t (Ext.embed_t t)) in
           let isSimplePrototype = match protoTyp with
             | Some (TId t) -> t = "Object" || t = "Any" || t = "Ext"
                                                 || (String.length t > 3 && String.sub t 0 3 = "nsI")
@@ -325,7 +326,7 @@ struct
       | TSink (n, s) -> namedRef n "w:" (horz [ text "Snk"; parens [typ s] ])
       | TForall (n, x, s, t) -> 
         namedType n (hvert [ horz [text "forall"; text x; text "<:"; typ s; text "."]; typ t ])
-      | TId x -> text x
+      | TId x -> squish [text "TId("; text x; text ")"]
       | TRec (n, x, t) -> namedType n (horz [ text "rec"; text x; text "."; typ t ])
       | TUninit t -> match !t with
         | None -> text "???"
@@ -424,7 +425,7 @@ struct
   let free_ids t = free_typ_ids t
 
   let rec typ_subst x s outer typ = match typ with
-    | TEmbed t -> TEmbed (outer t)
+    | TEmbed t -> Ext.extract_t (outer t)
     | TPrim _ -> typ
     | TRegex _ -> typ
     | TId y -> if x = Some y then s else typ
@@ -567,8 +568,8 @@ struct
   (* canonicalize types as best as possible *)
   let rec canonical_type t =
     let c = canonical_type in
-    match t with
-    | TEmbed t -> TEmbed (Ext.canonical_type t)
+    match Ext.extract_t (Ext.embed_t t) with
+    | TEmbed t -> Ext.extract_t (Ext.canonical_type t)
     | TBot -> t
     | TTop -> t
     | TPrim _ -> t
@@ -593,8 +594,8 @@ struct
       | t, TTop -> t
       | TBot, _
       | _, TBot -> TBot
-      | TEmbed t1, t2 -> TEmbed(Ext.canonical_type (Ext.embed_t (TInter(n, TEmbed t1, t2))))
-      | t1, TEmbed t2 -> TEmbed(Ext.canonical_type (Ext.embed_t (TInter(n, t1, TEmbed t2))))
+      | TEmbed t1, t2 -> Ext.extract_t (Ext.canonical_type (Ext.embed_t (TInter(n, Ext.extract_t t1, t2))))
+      | t1, TEmbed t2 -> Ext.extract_t (Ext.canonical_type (Ext.embed_t (TInter(n, t1, Ext.extract_t t2))))
       | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) ->
         if equivalent_typ IdMap.empty bound1 bound2
         then TForall(n, alpha, bound1, c (TInter (None, typ1, subst (Some beta) (TId alpha) (fun x -> x) typ2)))
@@ -645,9 +646,13 @@ struct
     | BTypBound(t, k) -> (t, k)
     | _ -> raise Not_found
 
-  and expose_twith typenv typ = let expose_twith = expose_twith typenv in match typ with
+  and expose_twith typenv typ = 
+    let expose_twith = expose_twith typenv in 
+    match Ext.extract_t (Ext.embed_t typ) with
     | TWith (t, flds) ->
-      let t = match t with TId x -> (try fst2 (lookup_typ typenv x) with Not_found -> t) | _ -> t in
+      let t = match Ext.extract_t (Ext.embed_t t) with
+        | TId x -> (try fst2 (lookup_typ typenv x) with Not_found -> t)
+        | _ -> t in
       let flds' = mk_obj_typ (map (third3 expose_twith) flds.fields) flds.absent_pat in
       replace_name None (merge t flds')
     | TUnion(n, t1, t2) -> TUnion (n, expose_twith t1, expose_twith t2)
@@ -659,15 +664,15 @@ struct
     | TThis t -> TThis (expose_twith t)
     | _ -> typ
 
-  and simpl_typ typenv typ = match typ with
+  and simpl_typ typenv typ = match Ext.extract_t (Ext.embed_t typ) with
     | TEmbed _ -> typ
     | TPrim _ 
     | TUnion _
     | TInter _
     | TRegex _
     | TArrow _
-    | TRef _
     | TSource _
+    | TRef _
     | TSink _
     | TTop _
     | TBot _
@@ -727,7 +732,7 @@ struct
   and expose typenv typ = match typ with
     | TId x -> 
       (try 
-        expose typenv (simpl_typ typenv (fst2 (lookup_typ typenv x)))
+         expose typenv (simpl_typ typenv (fst2 (lookup_typ typenv x)))
        with Not_found -> Printf.eprintf "Could not find type %s\n" x; raise Not_found)
     | TThis t -> TThis (expose typenv t)
     | _ -> typ

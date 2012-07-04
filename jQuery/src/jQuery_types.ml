@@ -36,10 +36,6 @@ module Make : JQUERY_TYP = functor (Css : Css.CSS) -> functor (STROBE : TYPS) ->
   type binding = BStrobe of baseBinding | BMultBound of multiplicity * kind
 
   type env = binding IdMap.t
-
-  let embed_t t = TStrobe t
-  let embed_k k = KStrobe k
-  let embed_b b = BStrobe b
 end
 
 module MakeActions
@@ -97,7 +93,7 @@ struct
   let get_num_typ_errors () = !num_typ_errors
 
   let rec apply_name n typ = match typ with
-    | TStrobe t -> TStrobe (Strobe.apply_name n t)
+    | TStrobe t -> embed_t (Strobe.apply_name n t)
     | TForall(None, x, t, b) -> TForall(n, x, t, b)
     | TDom(None, t, sel) -> TDom(n, t, sel)
     | _ -> typ
@@ -109,7 +105,7 @@ struct
     | _ -> None
 
   and replace_name n typ = match typ with
-    | TStrobe t -> TStrobe (Strobe.replace_name n t)
+    | TStrobe t -> embed_t (Strobe.replace_name n t)
     | TForall(_, x, t, b) -> TForall(n, x, t, b)
     | TDom(_, t, sel) -> TDom(n, t, sel)
     | _ -> typ
@@ -142,7 +138,7 @@ struct
       | TStrobe t -> Strobe.Pretty.typ t
       | TForall (name, alpha, bound, body) -> begin
         let binding = match bound with
-          | STyp (TStrobe Strobe.TTop) -> text alpha
+          | STyp t when extract_t t = Strobe.TTop -> text alpha
           | STyp t -> horz [text alpha; text "<:"; typ t]
           | SMult m -> horz [text alpha; text "<:"; multiplicity m]
         in
@@ -264,11 +260,9 @@ struct
     and typ_help typ : typ = match typ with
       | TStrobe tstrobe -> begin
         let subst_t = match s with
-          | STyp t -> TStrobe (Strobe.subst (Some x) (Strobe.TEmbed t) typ_help tstrobe)
-          | SMult m -> TStrobe (Strobe.subst None Strobe.TTop typ_help tstrobe)
-        in match subst_t with
-        | TStrobe (Strobe.TEmbed t) -> t
-        | t -> t
+          | STyp t -> embed_t (Strobe.subst (Some x) (Strobe.TEmbed t) typ_help tstrobe)
+          | SMult m -> embed_t (Strobe.subst None Strobe.TTop typ_help tstrobe)
+        in embed_t (extract_t subst_t)
       end
       | TApp(f, args) -> TApp(typ_help f, List.map sigma_help args)
       | TForall (name, alpha, bound, body) -> if x = alpha then typ else
@@ -345,19 +339,23 @@ struct
 
   and canonical_type t =
     let c = canonical_type in
-    match t with
+    match embed_t (extract_t t) with
     | TApp(f, args) -> TApp(c f, List.map canonical_sigma args)
     | TStrobe(Strobe.TUnion (n, _, _)) -> begin
-      let rec collect t = match t with
-        | TStrobe(Strobe.TUnion (_, t1, t2)) -> collect (c (TStrobe t1)) @ collect (c (TStrobe t2))
-        | TStrobe(Strobe.TEmbed t) -> collect t
+      let rec collect t = match embed_t (extract_t t) with
+        | TStrobe(Strobe.TUnion (_, t1, t2)) -> collect (c (embed_t t1)) @ collect (c (embed_t t2))
+        | TStrobe(Strobe.TEmbed t) -> failwith "impossible: embed_t should've removed this case"
         | TStrobe t -> [t]
         | _ -> [Strobe.TEmbed t] in
       let pieces = collect t in
       let nodups = remove_dups pieces in
       match List.rev nodups with
       | [] -> failwith "impossible"
-      | hd::tl -> TStrobe (Strobe.apply_name n (List.fold_left (fun acc t -> if t = Strobe.TBot then acc else Strobe.TUnion(None, t, acc)) hd tl))
+      | hd::tl -> 
+        embed_t (Strobe.apply_name n (List.fold_left (fun acc t ->
+                     if t = Strobe.TBot
+                     then acc 
+                     else Strobe.TUnion(None, t, acc)) hd tl))
     end
     | TStrobe(Strobe.TInter (n, t1, t2)) -> begin match Strobe.canonical_type t1, Strobe.canonical_type t2 with
       | Strobe.TTop, t

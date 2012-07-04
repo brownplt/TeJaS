@@ -86,7 +86,7 @@ struct
         StrobeKinding.new_prim_typ s;
         env
       | W.ObjectTrio(pos, (c_id, c_typ), (p_id, p_typ), (i_id, i_typ)) ->
-      (* add prototype field to constructor *)
+        (* add prototype field to constructor *)
         let c_typ = expose_twith env (desugar_typ pos c_typ) in
         let c_absent_pat = match c_typ with TRef(_, TObject(f)) -> absent_pat f | _ -> Pat.all in
         let constructor_with = TWith(c_typ, (mk_obj_typ

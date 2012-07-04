@@ -156,10 +156,7 @@ let squash env t =
   and squash_s t =
     let open S in
     match t with
-    | TWith _ ->
-      let ret = StrobeMod.simpl_typ env t in
-      (* Printf.eprintf "Simplifying\n%s\nto\n%s\n" (string_of_typ t) (string_of_typ ret); *)
-      ret
+    | TWith _ -> StrobeMod.simpl_typ env t
     | TRef (n, t) -> TRef (n, squash_s t)
     | TSource (n, t) -> TSource (n, squash_s t)
     | TSink (n, t) -> TSink (n, squash_s t)
@@ -203,7 +200,8 @@ let squash env t =
     | MZeroOne m -> MZeroOne (squash_m m)
     | MZeroPlus m -> MZeroPlus (squash_m m)
     | MSum (m1, m2) -> MSum (squash_m m1, squash_m m2)
-  in squash_t t
+  in 
+  squash_t t
 
 let rec elim_twith env exp = 
   let open Exp in
