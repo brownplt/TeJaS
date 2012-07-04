@@ -34,7 +34,7 @@ struct
   let desugar_typ pos t = Strobe.Ext.extract_t (Desugar.desugar_typ pos t)
 
   let print_env env fmt : unit =
-    FormatExt.braces (Strobe.Pretty.env env) fmt;
+    FormatExt.label_braces "Environment: " FormatExt.cut (Strobe.Pretty.env env) fmt;
     Format.pp_print_flush fmt ()
 
   let bind x (b : Strobe.extBinding) (env : env) : env = 

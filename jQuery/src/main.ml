@@ -300,7 +300,8 @@ let actual_data () =
 let do_print_env = ref false
 
 let print_env env : unit =
- JQEnv.print_env env std_formatter
+  JQEnv.print_env env std_formatter;
+  Format.print_newline ()
 
 let set_print_env () : unit =
  do_print_env := true

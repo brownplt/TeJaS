@@ -168,18 +168,19 @@ struct
 
 
     let env (env : env) =
+      if IdMap.cardinal env = 0 then [] else
       let partition_env e = 
         IdMap.fold
           (fun i bs (other, mults) -> 
             List.fold_left (fun (other, mults) b -> match embed_b (extract_b b) with
-            | BStrobe b' -> 
+            | BStrobe b' ->
               let bs' = try IdMap.find i other with Not_found -> [] in
-              (IdMap.add i (b::bs') other, mults)
+              (IdMap.add i (embed_b b'::bs') other, mults)
             | BMultBound(m, k) -> (other, IdMap.add i (m, k) mults)) (other, mults) bs)
           e (IdMap.empty, IdMap.empty) in
       let (other, mult_ids) = partition_env env in
       let other_print = Strobe.Pretty.env other in
-      let mults = IdMapExt.p_map "Bounded mult variables: " empty
+      let mults = IdMapExt.p_map "Bounded mult variables: " cut
         text
         (fun (m, k) -> 
           horzOrVert [multiplicity m;

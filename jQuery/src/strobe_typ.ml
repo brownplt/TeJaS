@@ -326,7 +326,7 @@ struct
       | TSink (n, s) -> namedRef n "w:" (horz [ text "Snk"; parens [typ s] ])
       | TForall (n, x, s, t) -> 
         namedType n (hvert [ horz [text "forall"; text x; text "<:"; typ s; text "."]; typ t ])
-      | TId x -> squish [text "TId("; text x; text ")"]
+      | TId x -> text x
       | TRec (n, x, t) -> namedType n (horz [ text "rec"; text x; text "."; typ t ])
       | TUninit t -> match !t with
         | None -> text "???"
@@ -340,23 +340,24 @@ struct
           horz [ text (Pat.pretty k); squish [text ":"; pretty_pres]; typ p; text "," ]
 
     let env (env : env) =
+      if IdMap.cardinal env = 0 then [] else
       let partition_env e = 
         IdMap.fold
           (fun i bs (ids, typs, others) -> 
             List.fold_left (fun (ids, typs, others) b -> match Ext.extract_b b with
             | BTermTyp t -> (IdMap.add i t ids, typs, others)
             | BTypBound(t, k) -> (ids, IdMap.add i (t, k) typs, others)
-            | BEmbed b' -> 
+            | BEmbed b' ->
               let bs' = try IdMap.find i others with Not_found -> [] in
-              (ids, typs, IdMap.add i (b::bs') others)) (ids, typs, others) bs)
+              (ids, typs, IdMap.add i (b'::bs') others)) (ids, typs, others) bs)
           e (IdMap.empty, IdMap.empty, IdMap.empty) in
       let (id_typs, typ_ids, other) = partition_env env in
       let unname t = if shouldUseNames() then t else replace_name None t in
       let other_print = Ext.Pretty.env other in
-      let ids = IdMapExt.p_map "Types of term identifiers: " empty
+      let ids = IdMapExt.p_map "Types of term identifiers: " cut
         text (fun t -> typ (unname t)) 
         id_typs in
-      let typs = IdMapExt.p_map "Bounded type variables: " empty
+      let typs = IdMapExt.p_map "Bounded type variables: " cut
         text 
         (fun (t, k) -> 
           horzOrVert [typ (unname t);
