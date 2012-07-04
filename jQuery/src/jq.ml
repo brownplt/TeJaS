@@ -14,7 +14,6 @@ module TJSEnv = Typedjs_env.Make (StrobeMod) (Strobe_kind) (Desugar)
 module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (TJSEnv)
 module LJSfromEJS = Typedjs_fromExpr.Make (Exp)
 module WeaveAnnotations = WeaveAnnotations.Make (Exp) (Desugar)
-open Lambdajs_syntax
 
 type arith = 
   | Var of int
@@ -158,29 +157,7 @@ let main () =
     let txt = "type jqFirst = ['jQ<1+<'a>>] => 'jQ<1<'a>>
                type jqOneA = 'jQ<1<'a>>
                type jqZerooneB = 'jQ<01<'b>>" in
-    let env = TJSEnv.parse_env txt "Test env" in
-    (* let rec print_decl d = *)
-    (*   let open Typedjs_syntax in *)
-    (*   let open Format in *)
-    (*   let open FormatExt in *)
-    (*   let open Typedjs_writtyp.WritTyp in *)
-    (*   match d with *)
-    (*   | EnvBind(_, id, t) -> label (id ^ " : ") [print_typ t] *)
-    (*   | EnvType(_, id, t) -> label (id ^ " = ") [print_typ t] *)
-    (*   | EnvPrim(_, id) -> horz[text "Prim"; text id] *)
-    (*   | RecBind ds -> begin match ds with *)
-    (*     | [] -> failwith "impossible" *)
-    (*     | [d] -> label "rec " [print_decl d] *)
-    (*     | d::ds -> vert ((horz[text "rec"; print_decl d])::(List.map (fun d -> horz[text "and"; print_decl d]) ds)) *)
-    (*   end *)
-    (*   | ObjectTrio (_, (c, ct), (p, pt), (i, it)) -> *)
-    (*     vert[horz[text "constructor"; text c; text "="; print_typ ct]; *)
-    (*          horz[text "prototype"; text p; text "="; print_typ pt]; *)
-    (*          horz[text "instance"; text i; text "="; print_typ it]] in *)
-    (* vert (List.map print_decl env) Format.std_formatter; Format.print_newline(); *)
-    (* let doLet x b e = ELet(p, x, b, e) in *)
-    (* let cheatTyp t = ECheat(p, t, EConst(p, "")) in *)
-    (* let tDom = TDom(None, TId "a", Css.all) in *)
+    let env = JQEnv.parse_env txt "Test env" in
     let exp = "/*:: type DOM = { name : Str }; */
                /*:: type aDom = { name : /a/ }; */
                /*:: type abDom = { name : /a|b/ }; */
@@ -199,6 +176,25 @@ let main () =
       | ObjectTrio (_, (x, _), (y, _), (z, _)) ->
         IdMap.add x d (IdMap.add y d (IdMap.add x d env)) in
     let env' = List.fold_left helper IdMap.empty env in
+    let new_decls = ReadTyps.new_decls (List.rev !JavaScript_lexer.comments) in
+    let rec helper recIds env d = 
+      let open Typedjs_writtyp.WritTyp in
+      match d with
+      | EnvType(p, x, t) -> 
+        let t' = Desugar.desugar_typ p t in
+        let t'' = squash env t' in
+        (bind_rec_typ_id x recIds (TypImpl.replace_name (Some x) t'') env)
+      | ObjectTrio _ -> JQEnv.extend_global_env env [d]
+      | RecBind binds ->
+        let ids = List.concat (List.map (fun b -> match b with
+          | EnvBind (_, x, _) -> [x]
+          | EnvType (_, x, _) -> [x]
+          | ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
+          | EnvPrim _
+          | RecBind _ -> []) binds) in
+        List.fold_left (helper ids) env binds
+      | _ -> env in
+    let env' = List.fold_left (helper []) env' new_decls in
     let tjs = LJSfromEJS.from_exprjs env' (Exprjs.lift_decls (Exprjs_syntax.from_javascript js)) in
     let annot = 
       let typ_db = ReadTyps.read_typs js (List.rev !JavaScript_lexer.comments) in

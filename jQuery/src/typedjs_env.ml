@@ -154,7 +154,8 @@ struct
         List.fold_left (add ids) env binds
     in List.fold_left (add []) env lst
 
-
+  let extend_global_env env lst = failwith "STROBE: Extend_global_env Not implemented"
+  let set_global_object env cname = failwith "STROBE: Set_global_object Not implemented"
 
 (* let apply_subst subst typ = IdMap.fold typ_subst subst typ *)
 

@@ -1,5 +1,6 @@
 .PHONY = clean builddir debug
 OBJDIR=../obj
+TARGET=main
 
 comma:= ,
 empty:=
@@ -18,15 +19,15 @@ OCAMLBUILD = ocamlbuild -build-dir $(OBJDIR) -libs unix,str \
 	-lflags -I,../lib -Is $(INCLUDES) -cflags -annot -cflags -I,../lib -Is $(INCLUDES)
 
 debug: builddir
-	$(OCAMLBUILD) jq.d.byte
-	@ln -sf ../obj/jq.d.byte run
-	@echo ocamldebug $(shell find $(OBJDIR) -type d -printf "-I %p ") $(OBJDIR)/jq.d.byte > debug
+	$(OCAMLBUILD) $(TARGET).d.byte
+	@ln -sf ../obj/$(TARGET).d.byte run
+	@echo ocamldebug $(shell find $(OBJDIR) -type d -printf "-I %p ") $(OBJDIR)/$(TARGET).d.byte > debug
 	@chmod 744 debug
 
 opt: builddir
 	@rm -f debug
-	$(OCAMLBUILD) jq.native
-	@ln -sf ../obj/jq.native run
+	$(OCAMLBUILD) $(MAIN).native
+	@ln -sf ../obj/$(MAIN).native run
 
 clean:
 	rm -rf ../obj

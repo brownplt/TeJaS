@@ -30,7 +30,7 @@ module MakeActions :
   with type sel = JQ.sel)
 
 module MakeModule :
-  functor (Strobe : STROBE_ACTIONS) ->
+  functor (Strobe : STROBE_MODULE) ->
     functor (Css : Css.CSS) ->
     functor (JQ : JQUERY_ACTIONS
              with type baseTyp = Strobe.typ

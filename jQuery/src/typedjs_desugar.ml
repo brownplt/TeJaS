@@ -7,6 +7,7 @@ module Pat = JQuery_syntax.Pat
 module type DESUGAR = sig
   type typ
   type kind
+  exception Typ_stx_error of string
   val desugar_typ : Pos.t -> W.t -> typ
 end
 

@@ -462,7 +462,7 @@ struct
 end
 
 module MakeModule
-  (Strobe : STROBE_ACTIONS)
+  (Strobe : STROBE_MODULE)
   (Css : Css.CSS)
   (JQ : JQUERY_ACTIONS
    with type baseTyp = Strobe.typ

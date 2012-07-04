@@ -145,4 +145,6 @@ module type TYP_ENV = sig
   val parse_env_buf : Lexing.lexbuf -> string -> env_decl list
   val parse_env : string -> string -> env_decl list
   val parse_env_file : in_channel -> string -> env_decl list
+  val extend_global_env : env -> env_decl list -> env
+  val set_global_object : env -> string -> env
 end

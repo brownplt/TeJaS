@@ -82,7 +82,7 @@ end
 
 module type JQUERY_MODULE = sig
   include JQUERY_ACTIONS
-  module Strobe : (Strobe_sigs.STROBE_ACTIONS
+  module Strobe : (Strobe_sigs.STROBE_MODULE
                    with type typ = baseTyp
     with type kind = baseKind
     with type binding = baseBinding
@@ -111,3 +111,10 @@ module type JQUERY_KINDING = sig
   val kind_check : env -> id list -> typ -> kind
 end
 
+module type JQUERY_TYP_ENV = sig
+  include TYP_ENV
+  type sigma
+  val bind_rec_typ_id : id -> id list -> sigma -> env -> env
+  val lookup_id : id -> env -> typ
+  val lookup_typ_id : id -> env -> typ * kind
+end

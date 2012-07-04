@@ -39,8 +39,8 @@ and Strobe : (Strobe_sigs.STROBE_ACTIONS
   with type env = StrobeImpl.env) =
   Strobe_typ.MakeActions (Pat) (StrobeImpl) (JQuery)
 
-module JQueryMod = JQuery_types.MakeModule (Strobe) (Css) (JQuery)
 module StrobeMod = Strobe_typ.MakeModule (Pat) (Strobe) (JQuery)
+module JQueryMod = JQuery_types.MakeModule (StrobeMod) (Css) (JQuery)
 
 module rec JQuery_kind : (JQuery_sigs.JQUERY_KINDING
                              with type typ = JQuery.typ
@@ -71,6 +71,7 @@ module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
                      with type typ = JQueryImpl.typ
   with type kind = JQueryImpl.kind
   with type multiplicity = JQueryImpl.multiplicity
+  with type sigma = JQueryImpl.sigma
   with type binding = JQueryImpl.binding
   with type env = JQueryImpl.env
   with type baseTyp = JQueryImpl.baseTyp
