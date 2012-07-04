@@ -54,6 +54,15 @@ module type JQUERY_ACTIONS = sig
   val extract_t : typ -> baseTyp
   val extract_k : kind -> baseKind
   val extract_b : binding -> baseBinding
+  val embed_t : baseTyp -> typ
+  val embed_k : baseKind -> kind
+  val embed_b : baseBinding -> binding
+  val unwrap_t : typ -> typ
+  val unwrap_k : kind -> kind
+  val unwrap_b : binding -> binding
+  val unwrap_bt : baseTyp -> baseTyp
+  val unwrap_bk : baseKind -> baseKind
+  val unwrap_bb : baseBinding -> baseBinding
   val apply_name : string option -> typ -> typ
   val replace_name : string option -> typ -> typ
   val name_of : typ -> string option
@@ -75,9 +84,6 @@ module type JQUERY_ACTIONS = sig
   val string_of_typ : typ -> string
   val string_of_mult : multiplicity -> string
   val string_of_kind : kind -> string
-  val embed_t : baseTyp -> typ
-  val embed_k : baseKind -> kind
-  val embed_b : baseBinding -> binding
 end
 
 module type JQUERY_MODULE = sig

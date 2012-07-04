@@ -119,6 +119,12 @@ module type EXT_TYP_ACTIONS = sig
   val extract_t : typ -> baseTyp
   val extract_k : kind -> baseKind
   val extract_b : binding -> baseBinding
+  val unwrap_t : typ -> typ
+  val unwrap_k : kind -> kind
+  val unwrap_b : binding -> binding
+  val unwrap_bt : baseTyp -> baseTyp
+  val unwrap_bk : baseKind -> baseKind
+  val unwrap_bb : baseBinding -> baseBinding
 end
 
 module type EXT_TYP_SUBTYPING = sig

@@ -78,6 +78,18 @@ struct
     match k with KStrobe (Strobe.KEmbed k) -> extract_k k | KStrobe k -> k | k -> Strobe.KEmbed k
   let rec extract_b b =
     match b with BStrobe (Strobe.BEmbed b) -> extract_b b | BStrobe b -> b | b -> Strobe.BEmbed b
+  let rec unwrap_bt t =
+    match t with Strobe.TEmbed (TStrobe t) -> unwrap_bt t | _ -> t
+  let rec unwrap_bk k =
+    match k with Strobe.KEmbed (KStrobe k) -> unwrap_bk k | _ -> k
+  let rec unwrap_bb b =
+    match b with Strobe.BEmbed (BStrobe b) -> unwrap_bb b | _ -> b
+  let rec unwrap_t t =
+    match t with TStrobe (Strobe.TEmbed t) -> unwrap_t t | _ -> t
+  let rec unwrap_k k =
+    match k with KStrobe (Strobe.KEmbed k) -> unwrap_k k | _ -> k
+  let rec unwrap_b b =
+    match b with BStrobe (Strobe.BEmbed b) -> unwrap_b b | _ -> b
 
   let num_typ_errors = ref 0
 
@@ -124,7 +136,7 @@ struct
 
     let rec kind k = match k with
       | KStrobe k -> Strobe.Pretty.kind k
-      | KMult m -> squish [text "M"; angles [kind m]]
+      | KMult m -> label_angles "M" empty [kind m]
 
 
     let rec typ t = typ' false t
@@ -135,7 +147,7 @@ struct
         then match name with None -> fmt | Some n -> text n
         else match name with None -> horz [text "Unnamed"; fmt] | Some n -> horz [text "Named"; text n; fmt] in
       match t with
-      | TStrobe t -> Strobe.Pretty.typ t
+      | TStrobe t -> (if shouldUseNames () then squish else label_angles "STROBE" empty) [Strobe.Pretty.typ t]
       | TForall (name, alpha, bound, body) -> begin
         let binding = match bound with
           | STyp t when extract_t t = Strobe.TTop -> text alpha
@@ -156,12 +168,12 @@ struct
       match m with
       | MPlain t -> typ t
       | MId name -> squish [text "`"; text name]
-      | MZero m -> squish [text "0"; angles [p m]]
-      | MOne m -> squish [text "1"; angles [p m]]
-      | MZeroOne m -> squish [text "01"; angles [p m]]
-      | MOnePlus m -> squish [text "1+"; angles [p m]]
-      | MZeroPlus m -> squish [text "0+"; angles [p m]]
-      | MSum(m1, m2) -> squish [text "Sum"; angles [horz[p m1; text "++"]; p m2]]
+      | MZero m -> label_angles "0" empty [p m]
+      | MOne m -> label_angles "1" empty [p m]
+      | MZeroOne m -> label_angles "01" empty [p m]
+      | MOnePlus m -> label_angles "1+" empty [p m]
+      | MZeroPlus m -> label_angles "0+" empty [p m]
+      | MSum(m1, m2) -> label_angles "Sum" empty [horz[p m1; text "++"]; p m2]
     and sigma s = match s with
       | STyp t -> typ t
       | SMult m -> multiplicity m
@@ -187,6 +199,9 @@ struct
                       horz [text "::"; kind k]]) mult_ids in
       add_sep_between (text ",") (other_print @ [mults])
   end
+  let string_of_typ = FormatExt.to_string Pretty.typ
+  let string_of_mult = FormatExt.to_string Pretty.multiplicity
+  let string_of_kind = FormatExt.to_string Pretty.kind
 
   (* free type variables *)
   let rec free_typ_ids t = match t with
@@ -244,7 +259,7 @@ struct
         if not (IdSet.mem y free) then (y::new_ys, substs)
         else
           let x = fresh_var ((IdMapExt.keys substs) @ IdSetExt.to_list free) in
-          (x::new_ys, IdMap.add y (STyp (TStrobe (Strobe.TId x))) substs))
+          (x::new_ys, IdMap.add y (STyp (embed_t (Strobe.TId x))) substs))
         ([], IdMap.empty) ys in
     let new_ys = List.rev rev_new_ys in
     let t' = IdMap.fold subst substs (STyp t) in
@@ -267,9 +282,9 @@ struct
     and typ_help typ : typ = match typ with
       | TStrobe tstrobe -> begin
         let subst_t = match s with
-          | STyp t -> embed_t (Strobe.subst (Some x) (Strobe.TEmbed t) typ_help tstrobe)
+          | STyp t -> embed_t (Strobe.subst (Some x) (extract_t t) typ_help tstrobe)
           | SMult m -> embed_t (Strobe.subst None Strobe.TTop typ_help tstrobe)
-        in embed_t (extract_t subst_t)
+        in unwrap_t subst_t
       end
       | TApp(f, args) -> TApp(typ_help f, List.map sigma_help args)
       | TForall (name, alpha, bound, body) -> if x = alpha then typ else
@@ -298,7 +313,7 @@ struct
     | TForall(_, alpha, s1, t1), TForall(_, beta, s2, t2) ->
       equivalent_sigma env s1 s2 && (match s1 with
       | SMult _ -> equivalent_typ env t1 (mult_typ_subst beta (MId alpha) t2)
-      | STyp _ -> equivalent_typ env t1 (typ_typ_subst beta (TStrobe (Strobe.TId alpha)) t2))
+      | STyp _ -> equivalent_typ env t1 (typ_typ_subst beta (embed_t (Strobe.TId alpha)) t2))
     (* | TLambda(_, args1, ret1), TLambda(_, args2, ret2) -> *)
     (*   if (List.length args1 <> List.length args2) then false *)
     (*   else if not (List.for_all2 (fun (_, k1) (_, k2) -> k1 = k2) args1 args2) then false *)
@@ -345,47 +360,56 @@ struct
     | SMult m -> SMult (canonical_multiplicity m)
 
   and canonical_type t =
+    let module S = Strobe in
     let c = canonical_type in
-    match embed_t (extract_t t) with
+    let c'' t = c (embed_t t) in
+    let c' t = extract_t (c'' t) in
+    let t = unwrap_t t in
+    match t with
     | TApp(f, args) -> TApp(c f, List.map canonical_sigma args)
-    | TStrobe(Strobe.TUnion (n, _, _)) -> begin
-      let rec collect t = match embed_t (extract_t t) with
-        | TStrobe(Strobe.TUnion (_, t1, t2)) -> collect (c (embed_t t1)) @ collect (c (embed_t t2))
-        | TStrobe(Strobe.TEmbed t) -> failwith "impossible: embed_t should've removed this case"
-        | TStrobe t -> [t]
-        | _ -> [Strobe.TEmbed t] in
+    | TStrobe(S.TUnion (n, _, _)) -> begin
+      let rec collect t = match unwrap_t t with
+        | TStrobe(S.TUnion (_, t1, t2)) -> collect (c (embed_t t1)) @ collect (c (embed_t t2))
+        | TStrobe(S.TEmbed t) -> failwith "impossible: embed_t should've removed this case"
+        | TStrobe t -> [unwrap_bt t]
+        | _ -> [extract_t t] in
       let pieces = collect t in
       let nodups = remove_dups pieces in
       match List.rev nodups with
       | [] -> failwith "impossible"
       | hd::tl -> 
-        embed_t (Strobe.apply_name n (List.fold_left (fun acc t ->
-                     if t = Strobe.TBot
+        embed_t (S.apply_name n (List.fold_left (fun acc t ->
+                     if t = S.TBot
                      then acc 
-                     else Strobe.TUnion(None, t, acc)) hd tl))
+                     else S.TUnion(None, t, acc)) hd tl))
     end
-    | TStrobe(Strobe.TInter (n, t1, t2)) -> begin match Strobe.canonical_type t1, Strobe.canonical_type t2 with
-      | Strobe.TTop, t
-      | t, Strobe.TTop -> begin match t with
-        | Strobe.TEmbed t -> t
-        | t -> TStrobe t
-      end
-      | Strobe.TBot, _
-      | _, Strobe.TBot -> TStrobe Strobe.TBot
-      | Strobe.TEmbed (TForall(_, alpha, bound1, typ1) as t1), 
-        Strobe.TEmbed (TForall(_, beta, bound2, typ2) as t2) ->
-        if equivalent_sigma IdMap.empty bound1 bound2
-        then TForall(n, alpha, bound1, 
-                     canonical_type
-                       (TStrobe (Strobe.TInter (None, Strobe.TEmbed typ1, 
-                                                Strobe.TEmbed 
-                                                  (typ_typ_subst beta (TStrobe (Strobe.TId alpha)) typ2)))))
-        else TStrobe (Strobe.TInter(n, Strobe.TEmbed t1, Strobe.TEmbed t2))
-      | t1, t2 -> if t1 = t2 then TStrobe t1 else TStrobe (Strobe.TInter(n, t1, t2))
+    | TStrobe(S.TInter (n, t1, t2)) -> begin
+      match unwrap_bt t1, unwrap_bt t2 with
+      | S.TUnion (_, u1, u2), t -> c'' (S.TUnion (n, c' (S.TInter (None, u1, t)), c' (S.TInter (None, u2, t))))
+      | t, S.TUnion (_, u1, u2) -> c'' (S.TUnion (n, c' (S.TInter (None, t, u1)), c' (S.TInter (None, t, u2))))
+      | t1, t2 -> match S.canonical_type t1, S.canonical_type t2 with
+        | S.TTop, t
+        | t, S.TTop -> begin match t with
+          | S.TEmbed t -> unwrap_t t
+          | t -> embed_t t
+        end
+        | S.TBot, _
+        | _, S.TBot -> embed_t S.TBot
+        | S.TPrim p1, S.TPrim p2 -> if p1 = p2 then embed_t t1 else embed_t S.TBot (* Prims are unique *)
+        | S.TEmbed (TForall(_, alpha, bound1, typ1) as t1), 
+          S.TEmbed (TForall(_, beta, bound2, typ2) as t2) ->
+          if equivalent_sigma IdMap.empty bound1 bound2
+          then TForall(n, alpha, bound1, 
+                       canonical_type
+                         (embed_t (S.TInter (None, extract_t typ1, 
+                                             extract_t
+                                               (typ_typ_subst beta (embed_t (S.TId alpha)) typ2)))))
+          else embed_t (S.TInter(n, extract_t t1, extract_t t2))
+        | t1, t2 -> if t1 = t2 then embed_t t1 else embed_t (S.TInter(n, t1, t2))
     end
-    | TStrobe t -> begin match Strobe.canonical_type t with
-      | Strobe.TEmbed t -> t
-      | t -> TStrobe t
+    | TStrobe t -> begin match S.canonical_type t with
+      | S.TEmbed t -> t
+      | t -> embed_t t
     end
     | TForall (n, alpha, bound, typ) -> TForall(n, alpha, canonical_sigma bound, c typ)
     | TDom(n, TDom(_, t, sel1), sel2) -> c (TDom(n, t, Css.intersect sel1 sel2))
@@ -398,7 +422,7 @@ struct
     match m with
     | MPlain t -> MOne (MPlain (canonical_type t))
     | MId _ -> MOne m
-    | MZero _ -> MZero (MPlain (TStrobe Strobe.TBot))
+    | MZero _ -> MZero (MPlain (embed_t Strobe.TBot))
     | MOne m -> c m
     | MZeroOne (MPlain t) -> MZeroOne (MPlain (canonical_type t))
     | MZeroOne (MId _) -> m
@@ -425,7 +449,7 @@ struct
     | MZeroPlus (MZeroPlus m) -> c (MZeroPlus m)
     | MZeroPlus (MSum (m1, m2)) -> let m' = MZeroPlus (c (MSum (m1, m2))) in if m' = m then m else c m'
     | MSum(m1, m2) -> 
-      let c_u t1 t2 = canonical_type (TStrobe (Strobe.TUnion(None, Strobe.TEmbed t1, Strobe.TEmbed t2))) in
+      let c_u t1 t2 = canonical_type (embed_t (Strobe.TUnion(None, extract_t t1, extract_t t2))) in
       match c m1, c m2 with
       | MZero _, t2 -> t2
       | t1, MZero _ -> t1
@@ -460,10 +484,6 @@ struct
   (*     incr num_typ_errors; *)
   (*     eprintf "type error at %s : %s\n" (Pos.toString p) s *)
   (*   end *)
-
-  let string_of_typ = FormatExt.to_string Pretty.typ
-  let string_of_mult = FormatExt.to_string Pretty.multiplicity
-  let string_of_kind = FormatExt.to_string Pretty.kind
 end
 
 module MakeModule

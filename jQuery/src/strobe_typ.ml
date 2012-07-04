@@ -199,7 +199,7 @@ struct
         then match name with None -> fmt | Some n -> squish [text mut; text n] 
         else match name with None -> horz [text "Unnamed*"; fmt] | Some n -> horz [text "Named*"; text n; fmt] in
       match t with
-      | TEmbed t -> Ext.Pretty.typ t
+      | TEmbed t -> (if shouldUseNames () then squish else label_angles "EMBED" empty) [Ext.Pretty.typ t]
       | TTop -> text "Any"
       | TBot -> text "DoesNotReturn"
       | TPrim p -> text ("@" ^ p)
@@ -255,7 +255,7 @@ struct
                       (squish (intersperse print_space 
                                  ((horz [empty; typ t]) :: List.map (fun t -> horz [text "&"; typ t]) ts)))]
         end)
-      | TThis t -> squish [text "this"; parens [typ t]]
+      | TThis t -> label_parens "this" empty [typ t]
       | TArrow (tt::arg_typs, varargs, r_typ) ->
         let multiLine = horzOnly ||
           List.exists (fun at -> match at with 
@@ -300,7 +300,7 @@ struct
           let (hasProto, _) = findField proto_pat in
           let (hasCode, codeTyp) = findField (Pat.singleton "-*- code -*-") in
           let (hasPrototype, protoTyp) = findField (Pat.singleton "prototype") in
-          let protoTyp = match protoTyp with None -> None | Some t -> Some (Ext.extract_t (Ext.embed_t t)) in
+          let protoTyp = match protoTyp with None -> None | Some t -> Some (Ext.unwrap_bt t) in
           let isSimplePrototype = match protoTyp with
             | Some (TId t) -> t = "Object" || t = "Any" || t = "Ext"
                                                 || (String.length t > 3 && String.sub t 0 3 = "nsI")
@@ -511,7 +511,8 @@ struct
 
 
   (** Decides if two types are syntactically equal. This helps subtyping. *)
-  let rec equivalent_typ (env : env) (typ1 : typ) (typ2 : typ) : bool = match (typ1, typ2) with
+  let rec equivalent_typ (env : env) (typ1 : typ) (typ2 : typ) : bool = 
+    match (Ext.unwrap_bt typ1, Ext.unwrap_bt typ2) with
     | TTop, TTop
     | TBot, TBot -> true
     | TPrim p1, TPrim p2 -> p1 = p2
@@ -575,7 +576,8 @@ struct
   (* canonicalize types as best as possible *)
   let rec canonical_type t =
     let c = canonical_type in
-    match Ext.extract_t (Ext.embed_t t) with
+    let t = Ext.unwrap_bt t in
+    match t with
     | TEmbed t -> Ext.extract_t (Ext.canonical_type t)
     | TBot -> t
     | TTop -> t
@@ -587,27 +589,29 @@ struct
     | TUnion (n, _, _) -> begin
       let rec collect t = match t with
         | TUnion (_, t1, t2) -> collect (c t1) @ collect (c t2)
-        | _ -> [t] in
+        | _ -> [Ext.unwrap_bt t] in
       let pieces = collect t in
       let nodups = L.remove_dups pieces in
       match List.rev nodups with
       | [] -> failwith "impossible"
       | hd::tl -> apply_name n (List.fold_left (fun acc t -> if t = TBot then acc else TUnion(None, t, acc)) hd tl)
     end
-    | TInter (n, TUnion (_, u1, u2), t) -> c (TUnion (n, c (TInter (None, u1, t)), c (TInter (None, u2, t))))
-    | TInter (n, t, TUnion (_, u1, u2)) -> c (TUnion (n, c (TInter (None, t, u1)), c (TInter (None, t, u2))))
-    | TInter (n, t1, t2) -> begin match c t1, c t2 with
-      | TTop, t
-      | t, TTop -> t
-      | TBot, _
-      | _, TBot -> TBot
-      | TEmbed t1, t2 -> Ext.extract_t (Ext.canonical_type (Ext.embed_t (TInter(n, Ext.extract_t t1, t2))))
-      | t1, TEmbed t2 -> Ext.extract_t (Ext.canonical_type (Ext.embed_t (TInter(n, t1, Ext.extract_t t2))))
-      | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) ->
-        if equivalent_typ IdMap.empty bound1 bound2
-        then TForall(n, alpha, bound1, c (TInter (None, typ1, subst (Some beta) (TId alpha) (fun x -> x) typ2)))
-        else TInter(n, t1, t2)
-      | t1, t2 -> if t1 = t2 then t1 else TInter(n, t1, t2)
+    | TInter (n, t1, t2) -> begin match Ext.unwrap_bt t1, Ext.unwrap_bt t2 with
+      | TUnion (_, u1, u2), t -> c (TUnion (n, c (TInter (None, u1, t)), c (TInter (None, u2, t))))
+      | t, TUnion (_, u1, u2) -> c (TUnion (n, c (TInter (None, t, u1)), c (TInter (None, t, u2))))
+      | t1, t2 -> match Ext.unwrap_bt (c t1), Ext.unwrap_bt (c t2) with
+        | TTop, t
+        | t, TTop -> t
+        | TBot, _
+        | _, TBot -> TBot
+        | TPrim p1, TPrim p2 -> if p1 = p2 then t1 else TBot (* Prims are unique *)
+        | TEmbed t1, t2 -> Ext.extract_t (Ext.canonical_type (Ext.embed_t (TInter(n, Ext.extract_t t1, t2))))
+        | t1, TEmbed t2 -> Ext.extract_t (Ext.canonical_type (Ext.embed_t (TInter(n, t1, Ext.extract_t t2))))
+        | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) ->
+          if equivalent_typ IdMap.empty bound1 bound2
+          then TForall(n, alpha, bound1, c (TInter (None, typ1, subst (Some beta) (TId alpha) (fun x -> x) typ2)))
+          else TInter(n, t1, t2)
+        | t1, t2 -> if t1 = t2 then t1 else TInter(n, t1, t2)
     end
     | TForall (n, alpha, bound, typ) -> TForall(n, alpha, c bound, c typ)
     | TRec (n, alpha, typ) -> TRec(n, alpha, c typ)
@@ -659,9 +663,9 @@ struct
 
   and expose_twith (typenv : env) typ = 
     let expose_twith = expose_twith typenv in 
-    match Ext.extract_t (Ext.embed_t typ) with
+    match Ext.unwrap_bt typ with
     | TWith (t, flds) ->
-      let t = match Ext.extract_t (Ext.embed_t t) with
+      let t = match Ext.unwrap_bt t with
         | TId x -> (try fst2 (lookup_typ typenv x) with Not_found -> t)
         | _ -> t in
       let flds' = mk_obj_typ (map (third3 expose_twith) flds.fields) flds.absent_pat in
@@ -675,7 +679,7 @@ struct
     | TThis t -> TThis (expose_twith t)
     | _ -> typ
 
-  and simpl_typ typenv typ = match Ext.extract_t (Ext.embed_t typ) with
+  and simpl_typ typenv typ = let typ = Ext.unwrap_bt typ in match typ with
     | TEmbed _ -> typ
     | TPrim _ 
     | TUnion _

@@ -7,6 +7,7 @@ module TestRealCSS = Css.TestRealCSS
 open JQuery_syntax
 module JQ = JQueryImpl
 module S = StrobeImpl
+module SimpleTests = Simple_tests
 
 (* open JQuery_typechecking *)
 module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
@@ -200,11 +201,11 @@ let squash env t =
     | TApp(t, ts) -> TApp(squash_s t, map squash_s ts)
     | TFix(n, id, k, t) -> TFix(n, id, k, squash_s t)
     | TUninit ty -> ty := optsquash !ty; t
-    | TEmbed t -> TEmbed (squash_t t)
+    | TEmbed t -> JQueryMod.extract_t (squash_t t)
   and squash_t t =
     let open JQ in
     match t with
-    | TStrobe t -> TStrobe (squash_s t)
+    | TStrobe t -> JQueryMod.embed_t (squash_s t)
     | TForall(n, id, s, t) -> TForall(n, id, squash_sig s, squash_t t)
     | TApp(t, ss) -> TApp(squash_t t, List.map squash_sig ss)
     | TDom(n, t, s) -> TDom(n, squash_t t, s)
@@ -385,6 +386,8 @@ let main () : unit =
        "Print the definition of a single type");
       ("-print-env", Arg.Unit set_print_env,
        "Print the current environment");
+      ("-simple-tests", Arg.Unit (set_action SimpleTests.run_tests),
+       "Run a suite of simple tests");
       set_simpl_cps;
     ]
     (fun s -> set_cin (open_in s) s)

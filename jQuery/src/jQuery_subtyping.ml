@@ -54,8 +54,8 @@ struct
       if not (IdSet.mem id free_t || IdSet.mem id free_m) then acc
       else 
         let trans = List.fold_left (fun acc bind -> match bind with
-          | BStrobe (Strobe.BTermTyp t) -> project (STyp (TStrobe t)) env
-          | BStrobe (Strobe.BTypBound(t, _)) -> project (STyp (TStrobe t)) env
+          | BStrobe (Strobe.BTermTyp t) -> project (STyp (embed_t t)) env
+          | BStrobe (Strobe.BTypBound(t, _)) -> project (STyp (embed_t t)) env
           | BStrobe (Strobe.BEmbed b) -> helper id [b] acc
           | BMultBound(m, _) -> project (SMult m) env) acc bindings in
         union (IdMap.add id bindings acc) trans in
@@ -105,7 +105,7 @@ struct
         (* Kernel rule *)
         if not (equivalent_sigma env s1 s2) then cache, false
         else 
-          let t2 = typ_typ_subst x2 (TStrobe (Strobe.TId x1)) t2 in
+          let t2 = typ_typ_subst x2 (embed_t (Strobe.TId x1)) t2 in
           let env' = match s2 with
             | STyp t -> Env.bind_typ_id x1 t env
             | SMult m -> Env.bind_mult_id x1 m env in
