@@ -53,7 +53,8 @@ module type STROBE_TYPS = sig
   type field = pat * presence * typ
 
   type extBinding
-  type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind | BLabelTyp of typ
+  type binding = 
+      BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind | BLabelTyp of typ | BTyvar of kind
 
   type env = extBinding list IdMap.t
   val proto_str : string
@@ -95,6 +96,7 @@ module type STROBE_ACTIONS = sig
     | TypTypTyp of (typ -> typ -> typ -> string) * typ * typ * typ
 
 
+  exception Kind_error of string
   exception Typ_error of Pos.t * typ_error_details
 
   val typ_error_details_to_string : typ_error_details -> string
@@ -137,6 +139,8 @@ module type STROBE_ACTIONS = sig
 
   val typ_assoc : env -> typ -> typ -> typ IdMap.t
 
+  val trace : string -> string -> (unit -> 'a) -> 'a
+
   (* val merge : typ -> obj_typ -> typ *)
 
 end
@@ -169,7 +173,6 @@ end
 
 module type STROBE_KINDING = sig
   include STROBE_TYPS
-  exception Kind_error of string
   val list_prims : unit -> id list
   val new_prim_typ : string -> unit
   val kind_check : env -> id list -> typ -> kind

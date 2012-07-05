@@ -20,16 +20,13 @@ module Make
   with type obj_typ = Typ.obj_typ
   with type presence = Typ.presence
   with type env = Typ.env)
-  (Kind : Strobe_sigs.STROBE_KINDING
-   with type typ = Typ.typ
-  with type kind = Typ.kind
-  with type binding = Typ.binding
-  with type extTyp = Typ.extTyp
-  with type extKind = Typ.extKind
-  with type extBinding = Typ.extBinding
-  with type obj_typ = Typ.obj_typ
-  with type presence = Typ.presence
-  with type pat = Typ.pat
+  (Kind : EXT_KINDING
+   with type baseTyp = Typ.typ
+  with type baseKind = Typ.kind
+  with type baseBinding = Typ.binding
+  with type typ = Typ.extTyp
+  with type kind = Typ.extKind
+  with type binding = Typ.extBinding
   with type env = Typ.env)
   (Semicfa : SEMICFA
    with type env = Typ.env
@@ -78,15 +75,16 @@ struct
 
   let check_kind p env (typ : typ) : typ =
     try
-      match Kind.kind_check env [] typ with
-      | KStar -> typ
+      match Ext.extract_k (Kind.kind_check env [] (Ext.embed_t typ)) with
+      | KStar 
+      | KEmbed _ -> typ
       | k ->
         raise (Sub.Typ_error  (p, Sub.TypKind((fun t k -> sprintf "type %s has kind %s; expected *"
           (string_of_typ t) (string_of_kind k)), typ, k)))
     with
-    | Kind.Kind_error msg ->
+    | Typ.Kind_error msg ->
       Printf.eprintf "Couldn't check type for %s\n" (string_of_typ typ);
-      raise (Kind.Kind_error (Pos.toString p ^ ": " ^ msg))
+      raise (Typ.Kind_error (Pos.toString p ^ ": " ^ msg))
         
   let expose_simpl_typ env typ = expose env (simpl_typ env typ)
 
@@ -125,7 +123,7 @@ struct
         | Some (TRegex _), Some r -> Some (apply_name (combine n' n) r)
         | _ -> None)
       | TForall _ -> Some (apply_name n t) (* BSL : This seems incomplete; extract_ref won't descend under a Forall *)
-      | _ -> (* (printf "%s: Got to %s\n" msg (string_of_typ t)); *) None in
+      | _ -> (printf "%s: Got to %s\n" msg (string_of_typ t)); None in
     match helper t None with
     | Some t -> t
     | None -> raise (Sub.Typ_error (p, Sub.StringTyp((fun s t -> sprintf "%s: Ambiguous ref type for type %s"
@@ -170,7 +168,7 @@ struct
     | EIf(p, _, _, _) -> "EIf " ^ (Pos.toString p)
     | EApp(p, _, _) -> "EApp " ^ (Pos.toString p)
     | EFunc(p, _, _, _) -> "EFunc " ^ (Pos.toString p)
-    | ELet(p, _, _, _) -> "ELet " ^ (Pos.toString p)
+    | ELet(p, x, _, _) -> "ELet " ^ x ^ " " ^ (Pos.toString p)
     | ERec(p, _, _) -> "ERec " ^ (Pos.toString p)
     | ESeq(p, _, _) -> "ESeq " ^ (Pos.toString p)
     | ELabel(p, _, _) -> "ELabel " ^ (Pos.toString p)
@@ -223,19 +221,8 @@ struct
     | ECheat (p, t, e) -> usesThis e
     | EParen (p, e) -> usesThis e
 
-  let depth = ref 0
-  let trace (msg : string) (thunk : exp -> 'a) (exp : exp)  = thunk exp
-  (* Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') msg (simpl_print exp); *)
-  (* depth := !depth + 1; *)
-  (* try *)
-  (*   let ret = thunk exp in *)
-  (*   depth := !depth - 1; *)
-  (*   Printf.eprintf "%s<--%s %s\n" (String.make (!depth) ' ') msg (simpl_print exp); *)
-  (*   ret *)
-  (* with e -> *)
-  (*   depth := !depth - 1; *)
-  (*   Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') msg (simpl_print exp); *)
-  (*   raise e *)
+  let trace (msg : string) (thunk : exp -> 'a) (exp : exp) = (* thunk exp *)
+    Typ.trace msg (simpl_print exp) (fun () -> thunk exp)
 
   let rec check (env : env) (default_typ : Typ.extTyp option) (exp : exp) (typ : Typ.typ) : unit =
     try trace "Check" (fun exp -> check' env default_typ exp typ) exp

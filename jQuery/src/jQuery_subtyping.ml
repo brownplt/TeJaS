@@ -58,6 +58,7 @@ struct
           | BStrobe (Strobe.BTypBound(t, _))
           | BStrobe (Strobe.BLabelTyp t) -> project (STyp (embed_t t)) env
           | BStrobe (Strobe.BEmbed b) -> helper id [b] acc
+          | BStrobe (Strobe.BTyvar _) -> acc
           | BMultBound(m, _) -> project (SMult m) env) acc bindings in
         union (IdMap.add id bindings acc) trans in
     IdMap.fold helper env IdMap.empty

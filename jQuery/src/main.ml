@@ -59,7 +59,7 @@ module rec StrobeTC : (Strobe_sigs.STROBE_TYPECHECKING
   with type presence = StrobeImpl.presence
   with type env = StrobeImpl.env
   with type exp = Exp.exp) =
-  Strobe_typechecking.Make (StrobeMod) (Exp) (JQEnv) (StrobeSub) (Strobe_kind) (DummySemicfa) (DummyStatic) (JQueryTC)
+  Strobe_typechecking.Make (StrobeMod) (Exp) (JQEnv) (StrobeSub) (JQuery_kind) (DummySemicfa) (DummyStatic) (JQueryTC)
 and JQueryTC : (JQuery_sigs.JQUERY_TYPECHECKING
                        with type typ = JQueryImpl.typ
   with type kind = JQueryImpl.kind
@@ -443,7 +443,7 @@ with
       eprintf "%s not well-formed:\n%s\n" (Pos.toString p) s; exit 2
   | StrobeSub.Typ_error (p, s) ->
       eprintf "fatal type error at %s: %s\n" (Pos.toString p) (StrobeSub.typ_error_details_to_string s); exit 2
-  | Strobe_kind.Kind_error s ->
+  | Strobe.Kind_error s ->
       eprintf "type error (kinding): %s\n" s; exit 2
   | Desugar.Typ_stx_error s ->
       eprintf "type error (annotation): %s\n" s; exit 2

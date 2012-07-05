@@ -74,13 +74,25 @@ struct
     | W.Top -> (S.TTop)
     | W.Bot -> (S.TBot)
     | W.Syn x -> (S.TId x)
-    | W.TId x -> (S.TId x)
+    | W.TId x -> S.TId x
     | W.App (t1, t2s) -> JQ.extract_t (JQ.TApp (typ t1, map sigma t2s))
-    | W.Forall (x, s, t) -> JQ.extract_t (JQ.TForall (None, x, sigma s, typ t))
+    | W.Forall (x, s, t) -> 
+      let s = sigma s in
+      let t = typ t in
+      let t' = match s with
+        | JQ.STyp _ -> t
+        | JQ.SMult _ -> JQ.mult_typ_subst x (JQ.MId x) t in
+      JQ.extract_t (JQ.TForall (None, x, s, t'))
     | W.Rec (x, t) -> (S.TRec (None, x, embed_typ t))
-    | W.Lambda (args, t) -> (S.TLambda (None, map id_kind args, embed_typ t))
+    | W.Lambda (args, t) -> 
+      let args = map id_kind args in
+      let t = typ t in
+      let t' = List.fold_left (fun t (x, k) -> match JQ.embed_k k with
+        | JQ.KMult _ -> JQ.mult_typ_subst x (JQ.MId x) t
+        | _ -> t) t args in
+      (S.TLambda (None, args, JQ.extract_t t'))
     | W.Fix (x, k, t) -> let (x, k) = id_kind (x, k) in (S.TFix (None, x, k, embed_typ t)))
-
+      
   and opt_map f v = match v with None -> None | Some v -> Some (f v)
   and embed_typ t = JQ.extract_t (typ t)
 

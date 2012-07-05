@@ -135,7 +135,7 @@ struct
       useNames, shouldUseNames
 
     let rec kind k = match k with
-      | KStrobe k -> Strobe.Pretty.kind k
+      | KStrobe k -> (if shouldUseNames () then squish else label_angles "KSTROBE" cut) [Strobe.Pretty.kind k]
       | KMult m -> label_angles "M" empty [kind m]
 
 
@@ -180,7 +180,7 @@ struct
 
 
     let env (env : env) =
-      if IdMap.cardinal env = 0 then [] else
+      if IdMap.cardinal env = 0 then [text "No bounded mult variables"] else
       let partition_env e = 
         IdMap.fold
           (fun i bs (other, mults) -> 
@@ -271,14 +271,22 @@ struct
       | STyp typ -> STyp (typ_help typ)
       | SMult mult -> SMult (mult_help mult)
     and mult_help mult : multiplicity = match mult with
-      | MPlain typ -> MPlain (typ_help typ)
-      | MId y -> if x = y then match s with SMult m -> m | STyp _ -> mult else mult
+      | MPlain typ -> plain_help typ
+      | MId y -> if x = y then (Printf.eprintf "got here?\n"; match s with SMult m -> m | STyp _ -> mult) else mult
       | MZero m -> MZero (mult_help m)
       | MOne m -> MOne (mult_help m)
       | MZeroOne m -> MZeroOne (mult_help m)
       | MOnePlus m -> MOnePlus (mult_help m)
       | MZeroPlus m -> MZeroPlus (mult_help m)
       | MSum (m1, m2) -> MSum (mult_help m1, mult_help m2)
+    and plain_help typ : multiplicity = match typ with
+      | TStrobe (Strobe.TId y) -> 
+        if y = x 
+        then match s with
+        | STyp t -> MPlain t
+        | SMult m -> m
+        else MPlain typ
+      | _ -> MPlain (typ_help typ)
     and typ_help typ : typ = match typ with
       | TStrobe tstrobe -> begin
         let subst_t = match s with

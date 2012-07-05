@@ -56,17 +56,22 @@ struct
 
   let bind x b (env : env) : env = 
     let bs = try IdMap.find x env with Not_found -> [] in
-    let bs = List.filter (fun b' -> match embed_b (extract_b b'), b with
+    let bs = List.filter (fun b' -> match unwrap_b b', b with
       | BMultBound _, BMultBound _
       | BStrobe (Strobe.BTermTyp _), BStrobe (Strobe.BTermTyp _)
       | BStrobe (Strobe.BTypBound _), BStrobe (Strobe.BTypBound _)
+      | BStrobe (Strobe.BTyvar _), BStrobe (Strobe.BTyvar _)
       | BStrobe (Strobe.BLabelTyp _), BStrobe (Strobe.BLabelTyp _) -> false
       | _ -> true) bs in
     IdMap.add x (b::bs) env
   let bind' x b (env : env) = bind x (JQuery.embed_b b) env
   let bind_id x t (env : env) = bind' x (Strobe.BTermTyp (JQuery.extract_t t)) env
   let bind_lbl x t env = bind' x (Strobe.BLabelTyp (JQuery.extract_t t)) env
-  let raw_bind_typ_id x t k (env : env) = bind' x (Strobe.BTypBound (t, k)) env
+  let raw_bind_typ_id x t k (env : env) = 
+    match JQuery.embed_k k with 
+    | JQuery.KMult _ -> raise (Strobe.Kind_error (Printf.sprintf "Trying to bind %s at type %s with kind %s" 
+                                                    x (Strobe.string_of_typ t) (Strobe.string_of_kind k)))
+    | _ -> bind' x (Strobe.BTypBound (t, k)) env
   let raw_bind_mult_id x t m (env : env) = bind x (BMultBound (t, m)) env
 
   let kind_check env recIds (s : sigma) : kind  =

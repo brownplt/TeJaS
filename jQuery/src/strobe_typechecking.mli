@@ -20,16 +20,13 @@ module Make :
   with type obj_typ = Typ.obj_typ
   with type presence = Typ.presence
   with type env = Typ.env) ->
-          functor (Kind : Strobe_sigs.STROBE_KINDING
-                   with type typ = Typ.typ
-  with type kind = Typ.kind
-  with type binding = Typ.binding
-  with type extTyp = Typ.extTyp
-  with type extKind = Typ.extKind
-  with type extBinding = Typ.extBinding
-  with type obj_typ = Typ.obj_typ
-  with type presence = Typ.presence
-  with type pat = Typ.pat
+          functor (Kind : EXT_KINDING
+                   with type baseTyp = Typ.typ
+  with type baseKind = Typ.kind
+  with type baseBinding = Typ.binding
+  with type typ = Typ.extTyp
+  with type kind = Typ.extKind
+  with type binding = Typ.extBinding
   with type env = Typ.env) ->
             functor (Semicfa : SEMICFA
                      with type env = Typ.env

@@ -42,6 +42,7 @@ struct
     let bs = List.filter (fun b' -> match Ext.extract_b b', Ext.extract_b b with
       | BTermTyp _, BTermTyp _
       | BTypBound _, BTypBound _
+      | BTyvar _, BTyvar _
       | BLabelTyp _, BLabelTyp _
       | BEmbed _, BEmbed _ -> false
       | _ -> true) bs in

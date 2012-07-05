@@ -55,7 +55,8 @@ module Make : STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) -> struct
   type field = pat * presence * typ
 
   type extBinding = EXT.binding
-  type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind | BLabelTyp of typ
+  type binding =
+      BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind | BLabelTyp of typ | BTyvar of kind
 
   type env = extBinding list IdMap.t
   let proto_str = "__proto__"
@@ -168,7 +169,7 @@ struct
       useNames, shouldUseNames
 
     let rec kind k = match k with
-      | KEmbed k -> Ext.Pretty.kind k
+      | KEmbed k -> (if shouldUseNames () then squish else label_angles "KEMBED" cut) [Ext.Pretty.kind k]
       | KStar -> text "*"
       | KArrow (ks, k) -> horz [horz (intersperse (text ",") (map pr_kind ks)); text "=>"; kind k]
 
@@ -340,33 +341,43 @@ struct
           horz [ text (Pat.pretty k); squish [text ":"; pretty_pres]; typ p; text "," ]
 
     let env (env : env) =
-      if IdMap.cardinal env = 0 then [] else
+      if IdMap.cardinal env = 0 then [text "Empty environment"] else
       let partition_env e = 
         IdMap.fold
-          (fun i bs (ids, typs, labels, others) -> 
-            List.fold_left (fun (ids, typs, labels, others) b -> match Ext.extract_b b with
-            | BTermTyp t -> (IdMap.add i t ids, typs, labels, others)
-            | BTypBound(t, k) -> (ids, IdMap.add i (t, k) typs, labels, others)
-            | BLabelTyp t -> (ids, typs, IdMap.add i t labels, others)
+          (fun i bs (ids, typs, kinds, labels, others) -> 
+            List.fold_left (fun (ids, typs, kinds, labels, others) b -> match Ext.extract_b b with
+            | BTermTyp t -> (IdMap.add i t ids, typs, kinds, labels, others)
+            | BTypBound(t, k) -> (ids, IdMap.add i (t, k) typs, kinds, labels, others)
+            | BLabelTyp t -> (ids, typs, kinds, IdMap.add i t labels, others)
+            | BTyvar k -> (ids, typs, IdMap.add i k kinds, labels, others)
             | BEmbed b' ->
               let bs' = try IdMap.find i others with Not_found -> [] in
-              (ids, typs, labels, IdMap.add i (b'::bs') others)) (ids, typs, labels, others) bs)
-          e (IdMap.empty, IdMap.empty, IdMap.empty, IdMap.empty) in
-      let (id_typs, typ_ids, labels, other) = partition_env env in
+              (ids, typs, kinds, labels, IdMap.add i (b'::bs') others)) (ids, typs, kinds, labels, others) bs)
+          e (IdMap.empty, IdMap.empty, IdMap.empty, IdMap.empty, IdMap.empty) in
+      let (id_typs, typ_ids, tyvars, labels, other) = partition_env env in
       let unname t = if shouldUseNames() then t else replace_name None t in
       let other_print = Ext.Pretty.env other in
-      let ids = IdMapExt.p_map "Types of term identifiers: " cut
-        text (fun t -> typ (unname t)) 
-        id_typs in
-      let typs = IdMapExt.p_map "Bounded type variables: " cut
-        text 
-        (fun (t, k) -> 
-          horzOrVert [typ (unname t);
-                      horz [text "::"; kind k]]) typ_ids in
-      let labels = IdMapExt.p_map "Types of labels:" cut
-        text (fun t -> typ (unname t))
-        labels in
-      add_sep_between (text ",") ([ids; typs; labels] @ other_print)
+      let ids = if IdMap.cardinal id_typs > 0 
+        then [IdMapExt.p_map "Types of term identifiers: " cut
+                 text (fun t -> typ (unname t)) 
+                 id_typs]
+        else [] in
+      let typs = if IdMap.cardinal typ_ids > 0
+        then [IdMapExt.p_map "Bounded type variables: " cut
+                 text 
+                 (fun (t, k) -> 
+                   horzOrVert [typ (unname t);
+                               horz [text "::"; kind k]]) typ_ids]
+        else [] in
+      let tyvars = if IdMap.cardinal tyvars > 0
+        then [IdMapExt.p_map "Typlambda variables: " cut text kind tyvars]
+        else [] in
+      let labels = if IdMap.cardinal labels > 0
+        then [IdMapExt.p_map "Types of labels:" cut
+                 text (fun t -> typ (unname t))
+                 labels]
+        else [] in
+      add_sep_between (text ",") (ids @ typs @ tyvars @ labels @ other_print)
   end
 
   let string_of_typ = FormatExt.to_string Pretty.typ
@@ -424,6 +435,22 @@ struct
         incr num_typ_errors;
         eprintf "type error at %s : %s\n" (Pos.toString p) (typ_error_details_to_string s)
       end
+
+  exception Kind_error of string
+
+  let depth = ref 0
+  let trace (prompt : string) (msg : string) (thunk : unit -> 'a) = (* thunk () *)
+  Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg;
+  depth := !depth + 1;
+  try
+    let ret = thunk () in
+    depth := !depth - 1;
+    Printf.eprintf "%s<--%s %s\n" (String.make (!depth) ' ') prompt msg;
+    ret
+  with e ->
+    depth := !depth - 1;
+    Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') prompt msg;
+    raise e
 
 
 

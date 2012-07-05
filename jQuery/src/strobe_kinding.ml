@@ -36,11 +36,17 @@ struct
             (string_of_kind calculated_kind)
             (string_of_typ typ)))
 
+  let trace prompt print thunk arg = thunk arg
+    (* Strobe.trace prompt (print arg) (fun () -> thunk arg) *)
+
   let rec kind_check (env : env) (recIds : id list) (typ : typ) : kind = 
+    trace "KindCheck" (fun _ -> "<Strobe.typ>") (fun typ -> kind_check' env recIds typ) typ
+
+  and kind_check' (env : env) (recIds : id list) (typ : typ) : kind =
     let bind_kind_id x k env = 
       let bs = try IdMap.find x env with Not_found -> [] in
-      let bs = List.filter (fun b -> match Ext.extract_b b with BTypBound _ -> false | _ -> true) bs in
-      IdMap.add x ((Ext.embed_b (BTypBound(TTop, k)))::bs) env in
+      let bs = List.filter (fun b -> match Ext.extract_b b with BTyvar _ -> false | _ -> true) bs in
+      IdMap.add x ((Ext.embed_b (BTyvar k))::bs) env in
     match typ with
     | TEmbed t -> Ext.extract_k (ExtKinding.kind_check env recIds t)
     | TTop
@@ -88,21 +94,16 @@ struct
       begin 
         try 
           let bs = IdMap.find x env in
-          let b = List.find (fun b -> match b with BTypBound _ -> true | _ -> false) (List.map Ext.extract_b bs) in
+          let b = List.find (fun b -> match b with BTyvar _ | BTypBound _ -> true | _ -> false) (List.map Ext.extract_b bs) in
           (match b with
-          | BTypBound(_, k) -> k
-          | BTermTyp _ -> raise (Kind_error (x ^ " is a term variable, not a type variable"))
-          | BLabelTyp _ -> raise (Kind_error (x ^ " is a label name, not a type variable"))
-          | BEmbed _ -> raise (Kind_error (x ^ " is an extended binding, not a type variable")))
+          | BTyvar k -> k
+          | BTypBound (_, k) -> k
+          | _ -> failwith "impossible: List.find should only have returned BTyvars")
         with Not_found ->
           if (not (List.mem x recIds)) then
-            (* let strfmt = Format.str_formatter in *)
-            (* let envText = (IdMap.iter (fun id k ->  *)
-            (*   FormatExt.horz [FormatExt.text id; FormatExt.text "="; Pretty.kind k] strfmt; *)
-            (*   Format.pp_print_newline strfmt () *)
-            (* ) env); Format.flush_str_formatter() in *)
-            let s = (sprintf "type variable %s is unbound in env" x (* envText *)) in
-            (* Printf.printf "%s" s; print_newline(); *)
+            let envText = FormatExt.to_string (fun e -> FormatExt.braces (Strobe.Pretty.env e)) env in
+            let s = (sprintf "type variable %s is unbound in env %s" x envText) in
+            Printf.eprintf "%s" s; 
             raise (Kind_error s)
           else KStar
       end
