@@ -363,7 +363,11 @@ end
 
 
 
-
+module type STATIC = sig
+  type env
+  type typ
+  val static : env -> RTSet.t -> typ -> typ
+end
 
 
 

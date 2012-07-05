@@ -37,57 +37,6 @@ struct
   open STROBE
 
 
-  let num_typ_errors = ref 0
-
-  let error_on_mismatch = ref false
-
-  let with_typ_exns thunk = 
-    let prev = !error_on_mismatch in
-    error_on_mismatch := true;
-    let r = thunk () in
-    error_on_mismatch := prev;
-    r
-
-  let get_num_typ_errors () = !num_typ_errors
-
-  type typ_error_details =
-    | TypKind of (typ -> kind -> string) * typ * kind
-    | StringTyp of (string -> typ -> string) * string * typ
-    | FixedString of string
-    | String of (string -> string) * string
-    | TypTyp of (typ -> typ -> string) * typ * typ
-    | NumNum of (int -> int -> string) * int * int
-    | Typ of (typ -> string) * typ
-    | Pat of (pat -> string) * pat
-    | PatPat of (pat -> pat -> string) * pat * pat
-    | PatPatTyp of (pat -> pat -> typ -> string) * pat * pat * typ
-    | PatTyp of (pat -> typ -> string) * pat * typ
-    | TypTypTyp of (typ -> typ -> typ -> string) * typ * typ * typ
-
-
-  exception Typ_error of Pos.t * typ_error_details
-
-  let typ_error_details_to_string s = match s with
-    | TypKind(s, t, k) -> s t k
-    | StringTyp(s,m,t) -> s m t
-    | FixedString s -> s
-    | String(s, m) -> s m
-    | TypTyp(s, t1, t2) -> s t1 t2
-    | NumNum(s, d1, d2) -> s d1 d2
-    | Typ(s, t) -> s t
-    | Pat(s, p) -> s p
-    | PatPat(s, p1, p2) -> s p1 p2
-    | PatPatTyp(s, p1, p2, t) -> s p1 p2 t
-    | PatTyp(s, p, t) -> s p t
-    | TypTypTyp(s, t1, t2, t3) -> s t1 t2 t3
-  let typ_mismatch p s = 
-    if !error_on_mismatch then
-      raise (Typ_error (p, s))
-    else
-      begin
-        incr num_typ_errors;
-        eprintf "type error at %s : %s\n" (Pos.toString p) (typ_error_details_to_string s)
-      end
 
   (* Necessary for equi-recursive subtyping. *)
   module TypPair = struct
@@ -209,7 +158,28 @@ struct
   let cache_hits = ref 0
   let cache_misses = ref 0
 
-  let rec inherits p (env : env) (orig_t : typ) (pat : pat) : typ =
+  let rec simpl_lookup p (env : env) (t : typ) (pat : pat) : typ =
+    (* TODO: it's okay to overlap with a maybe, but not a hidden field;
+       inherit_guard_pat does not apply *)
+    match t with
+    | TObject ot -> 
+      let guard_pat = Pat.unions (map fst3 ot.fields) in
+      if Pat.is_subset (pat_env env) pat guard_pat then
+        let sel (f_pat, _, f_prop) =
+          if Pat.is_overlapped f_pat pat then Some f_prop
+          else None in
+        L.fold_right (fun s t -> typ_union env s t)
+          (L.filter_map sel ot.fields)
+          TBot
+      else
+        raise (Typ_error (p, FixedString "simpl_lookup: checking for a hidden or absent field"))
+    | TUninit t -> begin match !t with
+      | None -> raise (Invalid_argument "simpl_lookup expects TObject")
+      | Some t -> simpl_lookup p env t pat
+    end
+    | _ -> raise (Typ_error (p, FixedString "simpl_lookup: object expected"))
+
+  and inherits p (env : env) (orig_t : typ) (pat : pat) : typ =
     try
       let t = expose env (simpl_typ env orig_t) in
       if Pat.is_subset (pat_env env) pat (inherit_guard_pat env t) then

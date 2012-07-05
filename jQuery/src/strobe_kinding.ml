@@ -92,6 +92,7 @@ struct
           (match b with
           | BTypBound(_, k) -> k
           | BTermTyp _ -> raise (Kind_error (x ^ " is a term variable, not a type variable"))
+          | BLabelTyp _ -> raise (Kind_error (x ^ " is a label name, not a type variable"))
           | BEmbed _ -> raise (Kind_error (x ^ " is an extended binding, not a type variable")))
         with Not_found ->
           if (not (List.mem x recIds)) then

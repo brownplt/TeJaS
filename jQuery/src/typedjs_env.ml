@@ -42,11 +42,14 @@ struct
     let bs = List.filter (fun b' -> match Ext.extract_b b', Ext.extract_b b with
       | BTermTyp _, BTermTyp _
       | BTypBound _, BTypBound _
+      | BLabelTyp _, BLabelTyp _
       | BEmbed _, BEmbed _ -> false
       | _ -> true) bs in
     IdMap.add x (b::bs) env
   let bind' x b env = bind x (Ext.embed_b b) env
   let bind_id x t env = bind' x (BTermTyp (Ext.extract_t t)) env
+  let bind_lbl x t env = bind' x (BLabelTyp (Ext.extract_t t)) env
+
 
   let bind_rec_typ_id (x : id) recIds (t : extTyp) (env : env) = 
     let k = StrobeKinding.kind_check env recIds (Ext.extract_t t) in
@@ -70,6 +73,22 @@ struct
     | _ -> None) bs) with
     | [tk] -> tk
     | _ -> raise Not_found
+
+
+  let lookup_lbl x (env : env) = 
+    let bs = IdMap.find x env in
+    match (ListExt.filter_map (fun b -> match Ext.extract_b b with
+    | BLabelTyp t -> Some (Ext.embed_t t)
+    | _ -> None) bs) with
+    | [t] -> t
+    | _ -> raise Not_found
+
+  let clear_labels env =
+    let env' = IdMap.map 
+      (fun bs -> List.filter (fun b -> match Ext.extract_b b with BLabelTyp _ -> false | _ -> true) bs) env in
+    try
+      bind_lbl "%return" (lookup_lbl "%return" env) env'
+    with Not_found -> env'
 
   open Lexing
 
@@ -191,57 +210,6 @@ struct
 
 (* let apply_subst subst typ = IdMap.fold typ_subst subst typ *)
 
-
-(* (\* Quick hack to infer types; it often works. Sometimes it does not. *\) *)
-(* let assoc_merge = IdMap.merge (fun x opt_s opt_t -> match opt_s, opt_t with *)
-(*   | Some (TId y), Some (TId z) ->  *)
-(*     if x = y then opt_t else opt_s *)
-(*   | Some (TId _), Some t  *)
-(*   | Some t, Some (TId _) -> Some t *)
-(*   | Some t, _ *)
-(*   | _, Some t -> *)
-(*     Some t *)
-(*   | None, None -> None) *)
-
-
-(* let rec typ_assoc (env : env) (typ1 : typ) (typ2 : typ) =  *)
-(*   match (typ1, typ2) with *)
-(*     | TId x, _ -> IdMap.singleton x typ2 *)
-(*     | TApp (s1, [s2]), TApp (t1, [t2]) *)
-(*     | TInter (_, s1, s2), TInter (_, t1, t2) *)
-(*     | TUnion (_, s1, s2), TUnion (_, t1, t2) ->  *)
-(*       assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2) *)
-
-(*     | TApp (s1, s2), t *)
-(*     | t, TApp (s1, s2) -> *)
-(*       typ_assoc env (simpl_typ env (TApp (s1, s2))) t *)
-
-(*     | TObject o1, TObject o2 -> *)
-(*       let flds1 = fields o1 in *)
-(*       let flds2 = fields o2 in *)
-(*       List.fold_left assoc_merge *)
-(*         IdMap.empty *)
-(*         (List.map2_noerr (fld_assoc env) flds1 flds2) *)
-(*     | TSource (_, s), TSource (_, t) *)
-(*     | TSink (_, s), TSink (_, t) *)
-(*     | TRef (_, s), TRef (_, t) -> *)
-(*       typ_assoc env s t *)
-(*     | TArrow (args1, v1, r1), TArrow (args2, v2, r2) -> *)
-(*       List.fold_left assoc_merge *)
-(*         ((fun base -> match v1, v2 with *)
-(*         | Some v1, Some v2 -> assoc_merge (typ_assoc env v1 v2) base *)
-(*         | _ -> base) *)
-(*             (typ_assoc env r1 r2)) *)
-(*         (List.map2_noerr (typ_assoc env) args1 args2) *)
-(*     | TRec (_, x, s), TRec (_, y, t) -> *)
-(*       (\* could do better here, renaming*\) *)
-(*       typ_assoc env s t *)
-(*     | TForall (_, x, s1, s2), TForall (_, y, t1, t2) -> *)
-(*       (\* also here *\) *)
-(*       assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2) *)
-(*     | _ -> IdMap.empty *)
-
-(* and fld_assoc env (_, _, s) (_, _, t) = typ_assoc env s t *)
 
 (* let tid_env env = env.typ_ids *)
 

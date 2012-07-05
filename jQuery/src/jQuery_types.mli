@@ -51,4 +51,6 @@ module MakeModule :
   with type baseKind = JQ.baseKind
   with type baseBinding = JQ.baseBinding
   with type env = JQ.env
-  with type sel = JQ.sel)
+  with type sel = JQ.sel
+  with module Strobe = Strobe
+    with module Css = Css)

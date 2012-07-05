@@ -53,7 +53,7 @@ module type STROBE_TYPS = sig
   type field = pat * presence * typ
 
   type extBinding
-  type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind
+  type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind | BLabelTyp of typ
 
   type env = extBinding list IdMap.t
   val proto_str : string
@@ -79,6 +79,31 @@ module type STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) ->
 
 module type STROBE_ACTIONS = sig
   include STROBE_TYPS
+
+  type typ_error_details =
+    | TypKind of (typ -> kind -> string) * typ * kind
+    | StringTyp of (string -> typ -> string) * string * typ
+    | FixedString of string
+    | String of (string -> string) * string
+    | TypTyp of (typ -> typ -> string) * typ * typ
+    | NumNum of (int -> int -> string) * int * int
+    | Typ of (typ -> string) * typ
+    | Pat of (pat -> string) * pat
+    | PatPat of (pat -> pat -> string) * pat * pat
+    | PatPatTyp of (pat -> pat -> typ -> string) * pat * pat * typ
+    | PatTyp of (pat -> typ -> string) * pat * typ
+    | TypTypTyp of (typ -> typ -> typ -> string) * typ * typ * typ
+
+
+  exception Typ_error of Pos.t * typ_error_details
+
+  val typ_error_details_to_string : typ_error_details -> string
+  
+  val typ_mismatch : Pos.t -> typ_error_details -> unit
+
+  val get_num_typ_errors : unit -> int
+
+  val with_typ_exns : (unit -> 'a) -> 'a
 
   module Pretty : sig
     val typ : typ -> FormatExt.printer
@@ -110,40 +135,22 @@ module type STROBE_ACTIONS = sig
   val expose : env -> typ -> typ
   val simpl_typ : env -> typ -> typ
 
+  val typ_assoc : env -> typ -> typ -> typ IdMap.t
+
   (* val merge : typ -> obj_typ -> typ *)
 
 end
 
 module type STROBE_SUBTYPING = sig
   include STROBE_ACTIONS
-  type typ_error_details =
-    | TypKind of (typ -> kind -> string) * typ * kind
-    | StringTyp of (string -> typ -> string) * string * typ
-    | FixedString of string
-    | String of (string -> string) * string
-    | TypTyp of (typ -> typ -> string) * typ * typ
-    | NumNum of (int -> int -> string) * int * int
-    | Typ of (typ -> string) * typ
-    | Pat of (pat -> string) * pat
-    | PatPat of (pat -> pat -> string) * pat * pat
-    | PatPatTyp of (pat -> pat -> typ -> string) * pat * pat * typ
-    | PatTyp of (pat -> typ -> string) * pat * typ
-    | TypTypTyp of (typ -> typ -> typ -> string) * typ * typ * typ
-
-
-  exception Typ_error of Pos.t * typ_error_details
-
-  val typ_error_details_to_string : typ_error_details -> string
-  
   val subtype : env -> typ -> typ -> bool
 
-  (* val typ_mismatch : Pos.t -> typ_error_details -> unit *)
+  val pat_env : env -> pat IdMap.t
 
-  (* val get_num_typ_errors : unit -> int *)
-
-  (* val with_typ_exns : (unit -> 'a) -> 'a *)
-
-  (* val pat_env : env -> pat IdMap.t *)
+  val simpl_lookup : Pos.t -> env -> typ -> pat -> typ
+  val inherits : Pos.t -> env -> typ -> pat -> typ
+  val typ_union : env -> typ -> typ -> typ
+  val typ_intersect : env -> typ -> typ -> typ
 
 end
 
@@ -168,3 +175,13 @@ module type STROBE_KINDING = sig
   val kind_check : env -> id list -> typ -> kind
 end
 
+module type STROBE_TYPECHECKING = sig
+  include STROBE_ACTIONS
+  type exp
+  val check : env -> extTyp option -> exp -> typ -> unit
+  val synth : env -> extTyp option -> exp -> typ
+  val disable_flows : unit -> unit
+  val bind_forall_vars : env -> typ -> env * typ
+  val typecheck : env -> extTyp option -> exp -> unit
+  val trace : string -> (exp -> 'a) -> exp -> 'a
+end

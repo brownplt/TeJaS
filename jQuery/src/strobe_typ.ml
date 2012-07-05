@@ -55,7 +55,7 @@ module Make : STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) -> struct
   type field = pat * presence * typ
 
   type extBinding = EXT.binding
-  type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind
+  type binding = BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind | BLabelTyp of typ
 
   type env = extBinding list IdMap.t
   let proto_str = "__proto__"
@@ -343,15 +343,16 @@ struct
       if IdMap.cardinal env = 0 then [] else
       let partition_env e = 
         IdMap.fold
-          (fun i bs (ids, typs, others) -> 
-            List.fold_left (fun (ids, typs, others) b -> match Ext.extract_b b with
-            | BTermTyp t -> (IdMap.add i t ids, typs, others)
-            | BTypBound(t, k) -> (ids, IdMap.add i (t, k) typs, others)
+          (fun i bs (ids, typs, labels, others) -> 
+            List.fold_left (fun (ids, typs, labels, others) b -> match Ext.extract_b b with
+            | BTermTyp t -> (IdMap.add i t ids, typs, labels, others)
+            | BTypBound(t, k) -> (ids, IdMap.add i (t, k) typs, labels, others)
+            | BLabelTyp t -> (ids, typs, IdMap.add i t labels, others)
             | BEmbed b' ->
               let bs' = try IdMap.find i others with Not_found -> [] in
-              (ids, typs, IdMap.add i (b'::bs') others)) (ids, typs, others) bs)
-          e (IdMap.empty, IdMap.empty, IdMap.empty) in
-      let (id_typs, typ_ids, other) = partition_env env in
+              (ids, typs, labels, IdMap.add i (b'::bs') others)) (ids, typs, labels, others) bs)
+          e (IdMap.empty, IdMap.empty, IdMap.empty, IdMap.empty) in
+      let (id_typs, typ_ids, labels, other) = partition_env env in
       let unname t = if shouldUseNames() then t else replace_name None t in
       let other_print = Ext.Pretty.env other in
       let ids = IdMapExt.p_map "Types of term identifiers: " cut
@@ -362,11 +363,68 @@ struct
         (fun (t, k) -> 
           horzOrVert [typ (unname t);
                       horz [text "::"; kind k]]) typ_ids in
-      add_sep_between (text ",") ([ids; typs] @ other_print)
+      let labels = IdMapExt.p_map "Types of labels:" cut
+        text (fun t -> typ (unname t))
+        labels in
+      add_sep_between (text ",") ([ids; typs; labels] @ other_print)
   end
 
   let string_of_typ = FormatExt.to_string Pretty.typ
   let string_of_kind = FormatExt.to_string Pretty.kind
+
+
+  let num_typ_errors = ref 0
+
+  let error_on_mismatch = ref false
+
+  let with_typ_exns thunk = 
+    let prev = !error_on_mismatch in
+    error_on_mismatch := true;
+    let r = thunk () in
+    error_on_mismatch := prev;
+    r
+
+  let get_num_typ_errors () = !num_typ_errors
+
+  type typ_error_details =
+    | TypKind of (typ -> kind -> string) * typ * kind
+    | StringTyp of (string -> typ -> string) * string * typ
+    | FixedString of string
+    | String of (string -> string) * string
+    | TypTyp of (typ -> typ -> string) * typ * typ
+    | NumNum of (int -> int -> string) * int * int
+    | Typ of (typ -> string) * typ
+    | Pat of (pat -> string) * pat
+    | PatPat of (pat -> pat -> string) * pat * pat
+    | PatPatTyp of (pat -> pat -> typ -> string) * pat * pat * typ
+    | PatTyp of (pat -> typ -> string) * pat * typ
+    | TypTypTyp of (typ -> typ -> typ -> string) * typ * typ * typ
+
+
+  exception Typ_error of Pos.t * typ_error_details
+
+  let typ_error_details_to_string s = match s with
+    | TypKind(s, t, k) -> s t k
+    | StringTyp(s,m,t) -> s m t
+    | FixedString s -> s
+    | String(s, m) -> s m
+    | TypTyp(s, t1, t2) -> s t1 t2
+    | NumNum(s, d1, d2) -> s d1 d2
+    | Typ(s, t) -> s t
+    | Pat(s, p) -> s p
+    | PatPat(s, p1, p2) -> s p1 p2
+    | PatPatTyp(s, p1, p2, t) -> s p1 p2 t
+    | PatTyp(s, p, t) -> s p t
+    | TypTypTyp(s, t1, t2, t3) -> s t1 t2 t3
+  let typ_mismatch p s = 
+    if !error_on_mismatch then
+      raise (Typ_error (p, s))
+    else
+      begin
+        incr num_typ_errors;
+        eprintf "type error at %s : %s\n" (Pos.toString p) (typ_error_details_to_string s)
+      end
+
 
 
   let rec map_reduce_t (map : extTyp -> 'a) (red : 'b -> 'a -> 'b) b t = match t with
@@ -751,6 +809,58 @@ struct
        with Not_found -> Printf.eprintf "Could not find type %s\n" x; raise Not_found)
     | TThis t -> TThis (expose typenv t)
     | _ -> typ
+
+
+(* Quick hack to infer types; it often works. Sometimes it does not. *)
+  let assoc_merge = IdMap.merge (fun x opt_s opt_t -> match opt_s, opt_t with
+    | Some (TId y), Some (TId z) ->
+      if x = y then opt_t else opt_s
+    | Some (TId _), Some t
+    | Some t, Some (TId _) -> Some t
+    | Some t, _
+    | _, Some t ->
+      Some t
+    | None, None -> None)
+
+
+  let rec typ_assoc (env : env) (typ1 : typ) (typ2 : typ) =
+    match (typ1, typ2) with
+    | TId x, _ -> IdMap.singleton x typ2
+    | TApp (s1, [s2]), TApp (t1, [t2])
+    | TInter (_, s1, s2), TInter (_, t1, t2)
+    | TUnion (_, s1, s2), TUnion (_, t1, t2) ->
+      assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
+
+    | TApp (s1, s2), t
+    | t, TApp (s1, s2) ->
+      typ_assoc env (simpl_typ env (TApp (s1, s2))) t
+
+    | TObject o1, TObject o2 ->
+      let flds1 = fields o1 in
+      let flds2 = fields o2 in
+      List.fold_left assoc_merge
+        IdMap.empty
+        (ListExt.map2_noerr (fld_assoc env) flds1 flds2)
+    | TSource (_, s), TSource (_, t)
+    | TSink (_, s), TSink (_, t)
+    | TRef (_, s), TRef (_, t) ->
+      typ_assoc env s t
+    | TArrow (args1, v1, r1), TArrow (args2, v2, r2) ->
+      List.fold_left assoc_merge
+        ((fun base -> match v1, v2 with
+        | Some v1, Some v2 -> assoc_merge (typ_assoc env v1 v2) base
+        | _ -> base)
+            (typ_assoc env r1 r2))
+        (ListExt.map2_noerr (typ_assoc env) args1 args2)
+    | TRec (_, x, s), TRec (_, y, t) ->
+      (* could do better here, renaming*)
+      typ_assoc env s t
+    | TForall (_, x, s1, s2), TForall (_, y, t1, t2) ->
+      (* also here *)
+      assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
+    | _ -> IdMap.empty
+
+  and fld_assoc env (_, _, s) (_, _, t) = typ_assoc env s t
 
 
 end

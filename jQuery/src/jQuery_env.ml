@@ -51,17 +51,21 @@ struct
   let parse_env_buf = Env.parse_env_buf
   let parse_env = Env.parse_env
   let parse_env_file = Env.parse_env_file
+  let lookup_lbl = Env.lookup_lbl
+  let clear_labels = Env.clear_labels
 
   let bind x b (env : env) : env = 
     let bs = try IdMap.find x env with Not_found -> [] in
     let bs = List.filter (fun b' -> match embed_b (extract_b b'), b with
       | BMultBound _, BMultBound _
       | BStrobe (Strobe.BTermTyp _), BStrobe (Strobe.BTermTyp _)
-      | BStrobe (Strobe.BTypBound _), BStrobe (Strobe.BTypBound _) -> false
+      | BStrobe (Strobe.BTypBound _), BStrobe (Strobe.BTypBound _)
+      | BStrobe (Strobe.BLabelTyp _), BStrobe (Strobe.BLabelTyp _) -> false
       | _ -> true) bs in
     IdMap.add x (b::bs) env
   let bind' x b (env : env) = bind x (JQuery.embed_b b) env
   let bind_id x t (env : env) = bind' x (Strobe.BTermTyp (JQuery.extract_t t)) env
+  let bind_lbl x t env = bind' x (Strobe.BLabelTyp (JQuery.extract_t t)) env
   let raw_bind_typ_id x t k (env : env) = bind' x (Strobe.BTypBound (t, k)) env
   let raw_bind_mult_id x t m (env : env) = bind x (BMultBound (t, m)) env
 

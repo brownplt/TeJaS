@@ -54,8 +54,9 @@ struct
       if not (IdSet.mem id free_t || IdSet.mem id free_m) then acc
       else 
         let trans = List.fold_left (fun acc bind -> match bind with
-          | BStrobe (Strobe.BTermTyp t) -> project (STyp (embed_t t)) env
-          | BStrobe (Strobe.BTypBound(t, _)) -> project (STyp (embed_t t)) env
+          | BStrobe (Strobe.BTermTyp t)
+          | BStrobe (Strobe.BTypBound(t, _))
+          | BStrobe (Strobe.BLabelTyp t) -> project (STyp (embed_t t)) env
           | BStrobe (Strobe.BEmbed b) -> helper id [b] acc
           | BMultBound(m, _) -> project (SMult m) env) acc bindings in
         union (IdMap.add id bindings acc) trans in

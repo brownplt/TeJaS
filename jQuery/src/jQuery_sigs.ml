@@ -127,3 +127,14 @@ module type JQUERY_TYP_ENV = sig
   val lookup_typ_id : id -> env -> typ * kind
   val lookup_mult_id : id -> env -> multiplicity
 end
+
+module type JQUERY_TYPECHECKING = sig
+  include JQUERY_ACTIONS
+  type exp
+  val check : env -> typ option -> exp -> typ -> unit
+  val synth : env -> typ option -> exp -> typ
+  val disable_flows : unit -> unit
+  val bind_forall_vars : env -> typ -> env * typ
+  val typecheck : env -> typ option -> exp -> unit
+  val trace : string -> (exp -> 'a) -> exp -> 'a
+end

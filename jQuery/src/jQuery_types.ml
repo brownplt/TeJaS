@@ -508,7 +508,9 @@ module MakeModule
   with type kind = Strobe.extKind
   with type binding = Strobe.extBinding
   with type env = Strobe.env
-  with type sel = JQ.sel) =
+  with type sel = JQ.sel
+  with module Strobe = Strobe
+    with module Css = Css) =
 struct
   include JQ
   module Strobe = Strobe

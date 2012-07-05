@@ -139,6 +139,31 @@ module type EXT_KINDING = sig
   val kind_check : env -> id list -> typ -> kind
 end
 
+module type SEMICFA = sig
+  type env
+  type exp
+  val semicfa : IdSet.t -> env -> exp -> exp
+end
+
+module type TYPECHECKING = sig
+  include TYP_ACTIONS
+  type exp
+  val check : env -> typ option -> exp -> typ -> unit
+  val synth : env -> typ option -> exp -> typ
+  val disable_flows : unit -> unit
+  val bind_forall_vars : env -> typ -> env * typ
+  val typecheck : env -> typ option -> exp -> unit
+end
+
+module type EXT_TYPECHECKING = sig
+  include EXT_TYP_ACTIONS
+  type exp
+  val check : env -> typ option -> exp -> typ -> unit
+  val synth : env -> typ option -> exp -> typ
+  val disable_flows : unit -> unit
+  val typecheck : env -> typ option -> exp -> unit
+  val bind_forall_vars : env -> typ -> env * typ
+end
 
 module type TYP_ENV = sig
   type typ
@@ -150,8 +175,11 @@ module type TYP_ENV = sig
   val bind : id -> binding -> env -> env
   val bind_id : id -> typ -> env -> env
   val bind_typ_id : id -> typ -> env -> env
+  val bind_lbl : id -> typ -> env -> env
+  val clear_labels : env -> env
   val lookup_id : id -> env -> typ
   val lookup_typ_id : id -> env -> typ * kind
+  val lookup_lbl : id -> env -> typ
   val parse_env_buf : Lexing.lexbuf -> string -> env_decl list
   val parse_env : string -> string -> env_decl list
   val parse_env_file : in_channel -> string -> env_decl list

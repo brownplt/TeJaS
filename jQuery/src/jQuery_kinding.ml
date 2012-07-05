@@ -111,14 +111,8 @@ struct
           | BMultBound (_, k) ->
             raise (StrobeKind.Kind_error (x ^ " is bound to MultBound(" ^ (string_of_kind k)
                                ^ "); that should be impossible!"))
-          | BStrobe (Strobe.BTypBound (_, Strobe.KEmbed (KMult _ as k))) -> 
-            raise (StrobeKind.Kind_error (x ^ " is bound to TypBound(" ^ (string_of_kind k) ^ "); that should be impossible!"))
-          | BStrobe (Strobe.BTypBound (_, k)) ->
-            raise (StrobeKind.Kind_error (x ^ " is bound to TypBound(" ^ (Strobe.string_of_kind k)
-                               ^ "); expected KMult(_)"))
-          | BStrobe (Strobe.BTermTyp _) ->
-            raise (StrobeKind.Kind_error (x ^ " is a term variable, not a type variable"))
-          | BStrobe (Strobe.BEmbed _) -> failwith "impossible: unwrap should've removed these wrappers")
+          | BStrobe _ -> failwith "impossible: List.find can only find a BMultBound here"
+          )
         with Not_found ->
           if (not (List.mem x recIds)) then
             (* let strfmt = Format.str_formatter in *)

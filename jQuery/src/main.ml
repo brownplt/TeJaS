@@ -9,12 +9,11 @@ module JQ = JQueryImpl
 module S = StrobeImpl
 module SimpleTests = Simple_tests
 
-(* open JQuery_typechecking *)
 module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
 module TJSEnv = Typedjs_env.Make (StrobeMod) (Strobe_kind) (Desugar)
 module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (TJSEnv) (Desugar)
 module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
-                     with type typ = JQueryImpl.typ
+                        with type typ = JQueryImpl.typ
   with type kind = JQueryImpl.kind
   with type multiplicity = JQueryImpl.multiplicity
   with type sigma = JQueryImpl.sigma
@@ -25,7 +24,7 @@ module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
   with type baseBinding = JQueryImpl.baseBinding) =
   JQuery_subtyping.MakeActions (StrobeSub) (JQueryMod) (JQEnv)
 and StrobeSub : (Strobe_sigs.STROBE_SUBTYPING
-              with type typ = StrobeImpl.typ
+                 with type typ = StrobeImpl.typ
   with type kind = StrobeImpl.kind
   with type binding = StrobeImpl.binding
   with type extTyp = StrobeImpl.extTyp
@@ -36,6 +35,43 @@ and StrobeSub : (Strobe_sigs.STROBE_SUBTYPING
   with type presence = StrobeImpl.presence
   with type env = StrobeImpl.env) =
   Strobe_subtyping.MakeActions (StrobeMod) (JQuerySub) (JQEnv)
+
+module DummySemicfa = struct
+  type env = JQEnv.env
+  type exp = Exp.exp
+  let semicfa _ _ e = e
+end
+module DummyStatic = struct
+  type typ = JQEnv.typ
+  type env = JQEnv.env
+  let static _ _ t = t
+end
+
+module rec StrobeTC : (Strobe_sigs.STROBE_TYPECHECKING
+                with type typ = StrobeImpl.typ
+  with type kind = StrobeImpl.kind
+  with type binding = StrobeImpl.binding
+  with type extTyp = StrobeImpl.extTyp
+  with type extKind = StrobeImpl.extKind
+  with type extBinding = StrobeImpl.extBinding
+  with type pat = StrobeImpl.pat
+  with type obj_typ = StrobeImpl.obj_typ
+  with type presence = StrobeImpl.presence
+  with type env = StrobeImpl.env
+  with type exp = Exp.exp) =
+  Strobe_typechecking.Make (StrobeMod) (Exp) (JQEnv) (StrobeSub) (Strobe_kind) (DummySemicfa) (DummyStatic) (JQueryTC)
+and JQueryTC : (JQuery_sigs.JQUERY_TYPECHECKING
+                       with type typ = JQueryImpl.typ
+  with type kind = JQueryImpl.kind
+  with type multiplicity = JQueryImpl.multiplicity
+  with type sigma = JQueryImpl.sigma
+  with type binding = JQueryImpl.binding
+  with type env = JQueryImpl.env
+  with type baseTyp = JQueryImpl.baseTyp
+  with type baseKind = JQueryImpl.baseKind
+  with type baseBinding = JQueryImpl.baseBinding
+  with type exp = Exp.exp) =
+  JQuery_typechecking.Make (JQueryMod) (Exp) (JQEnv) (JQuerySub) (JQuery_kind) (StrobeTC)
 
 module LJSfromEJS = Typedjs_fromExpr.Make (Exp)
 module WeaveAnnotations = WeaveAnnotations.Make (Exp) (Desugar)
@@ -314,13 +350,13 @@ let action_pretypecheck () : int =
   0
 
 let action_tc () : int = timefn "Typechecking" (fun () ->
-  (* let (env, asserted_js) = actual_data () in *)
-  (* if (!do_print_env) then print_env env; *)
-  (* let _ = typecheck env !default_typ asserted_js in *)
-  (* if TypImpl.get_num_typ_errors () > 0 then *)
-  (*   2 *)
-  (* else *)
-  Printf.printf "Typechecking not yet implemented, darn it!\n";
+  let (env, asserted_js) = actual_data () in
+  if (!do_print_env) then print_env env;
+  let _ = JQueryTC.typecheck env !default_typ asserted_js in
+  if Strobe.get_num_typ_errors () > 0 then
+    2
+  else
+  (* Printf.printf "Typechecking not yet implemented, darn it!\n"; *)
     0
 ) ()
 
