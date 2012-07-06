@@ -40,7 +40,7 @@ struct
       | Strobe.KArrow _ -> false
       | Strobe.KStar -> true
       | Strobe.KEmbed k -> well_formed_kind k) args
-      && well_formed_kind (KStrobe ret)
+      && well_formed_kind (embed_k ret)
 
   let short_string_of_typ t =
     let open Format in
@@ -60,11 +60,19 @@ struct
   and kind_check_typ (env : env) (recIds : id list) (typ : typ) : kind = 
     trace "KindCheckTyp" short_string_of_typ (fun typ -> kind_check_typ' env recIds typ) typ
 
-  and kind_check_typ' (env : env) (recIds : id list) (typ : typ) : kind = match typ with
+  and kind_check_typ' (env : env) (recIds : id list) (typ : typ) : kind = 
+    let bind_kind_id x k env = 
+      let bs = try IdMap.find x env with Not_found -> [] in
+      let bs = List.filter (fun b -> match extract_b b with Strobe.BTyvar _ -> false | _ -> true) bs in
+      IdMap.add x ((embed_b (Strobe.BTyvar (extract_k k)))::bs) env in
+    match typ with
     | TStrobe t -> embed_k (StrobeKind.kind_check env recIds t)
     | TDom (_, t, sel) -> 
       let k = kind_check_typ env recIds t in
       if extract_k k <> Strobe.KStar then kind_mismatch_typ t k (KStrobe Strobe.KStar) else KStrobe Strobe.KStar
+    | TLambda (_, args, t) ->
+      let env' = fold_right (fun (x, k) env -> bind_kind_id x k env) args env in
+      KStrobe (Strobe.KArrow (List.map (fun (_, k) -> extract_k k) args, extract_k (kind_check_typ env' recIds t)))
     | TForall (_, x, s, t) ->
       let k1 = kind_check_sigma env recIds s in
       let env' = match s with 

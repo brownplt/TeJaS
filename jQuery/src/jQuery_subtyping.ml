@@ -48,20 +48,40 @@ struct
 
   (* returns an env containing only the (transitively) free variables in s *)
   let rec project s (env : env) =
-    let union map1 map2 = IdMap.fold IdMap.add map1 map2 in
     let (free_t, free_m) = free_sigma_ids s in
-    let rec helper id bindings acc =
-      if not (IdSet.mem id free_t || IdSet.mem id free_m) then acc
-      else 
-        let trans = List.fold_left (fun acc bind -> match bind with
-          | BStrobe (Strobe.BTermTyp t)
-          | BStrobe (Strobe.BTypBound(t, _))
-          | BStrobe (Strobe.BLabelTyp t) -> project (STyp (embed_t t)) env
-          | BStrobe (Strobe.BEmbed b) -> helper id [b] acc
-          | BStrobe (Strobe.BTyvar _) -> acc
-          | BMultBound(m, _) -> project (SMult m) env) acc bindings in
-        union (IdMap.add id bindings acc) trans in
-    IdMap.fold helper env IdMap.empty
+    let add_id_bindings set map = IdSet.fold (fun id acc -> 
+      try
+        IdMap.add id (IdMap.find id env) acc
+      with Not_found -> (Printf.eprintf "Couldn't find %s\n" id; acc)) set map in
+    let free_ids = add_id_bindings free_t (add_id_bindings free_m IdMap.empty) in
+    let s = match s with
+      | SMult m -> string_of_mult m
+      | STyp t -> string_of_typ t in
+    let rec helper free_ids acc =
+      if IdMap.cardinal free_ids = 0 then acc else
+        let acc' = IdMap.fold IdMap.add free_ids acc in
+        let free_ids' = IdMap.fold (fun id bs acc -> 
+          let free_ids = List.fold_left (fun ids b -> match unwrap_b b with
+            | BStrobe (Strobe.BTermTyp t)
+            | BStrobe (Strobe.BTypBound(t, _))
+            | BStrobe (Strobe.BLabelTyp t) -> 
+              let free_ids = JQ.free_ids (embed_t t) in
+              Printf.eprintf "New free_ids for %s are %s\n" (string_of_typ (embed_t t))
+                (String.concat "," (IdSetExt.to_list free_ids));
+              IdSet.union ids free_ids
+            | BStrobe (Strobe.BEmbed _) -> ids
+            | BStrobe (Strobe.BTyvar _) -> ids
+            | BMultBound(m, _) -> 
+              let (free_t, free_m) = JQ.free_sigma_ids (SMult m) in 
+              let free_ids = IdSet.union free_t free_m in
+              Printf.eprintf "New free_ids for %s are %s\n" (string_of_mult m)
+                (String.concat "," (IdSetExt.to_list free_ids));
+              IdSet.union ids free_ids)
+            IdSet.empty bs in
+          add_id_bindings free_ids acc) free_ids acc' in
+        let free_ids' = IdMap.filter (fun id _ -> IdMap.mem id acc) free_ids' in
+        helper free_ids' acc' in
+    Strobe.trace "Projecting free vars of " s (fun () -> helper free_ids IdMap.empty)
   let project_mult_typ m t (env : env) = IdMap.fold IdMap.add (project (SMult m) env) (project (STyp t) env)
   let project_typs t1 t2 (env : env) = IdMap.fold IdMap.add (project (STyp t1) env) (project (STyp t2) env)
   let project_mults m1 m2 (env : env) = IdMap.fold IdMap.add (project (SMult m1) env) (project (SMult m2) env)

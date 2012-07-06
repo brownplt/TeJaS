@@ -96,9 +96,12 @@ module type TYP_ACTIONS = sig
     val useNames : bool -> unit
     val shouldUseNames : unit -> bool
     val env : env -> FormatExt.printer list
+    val simpl_typ : typ -> string
+    val simpl_kind : kind -> string
   end
   val apply_name : string option -> typ -> typ
   val replace_name : string option -> typ -> typ
+  val typ_subst : string -> typ -> typ -> typ
   val name_of : typ -> string option
   val free_ids : typ -> IdSet.t
   val equivalent_typ : env -> typ -> typ -> bool
@@ -125,6 +128,7 @@ module type EXT_TYP_ACTIONS = sig
   val unwrap_bt : baseTyp -> baseTyp
   val unwrap_bk : baseKind -> baseKind
   val unwrap_bb : baseBinding -> baseBinding
+  val simpl_typ : env -> typ -> typ
 end
 
 module type EXT_TYP_SUBTYPING = sig

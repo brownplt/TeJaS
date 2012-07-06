@@ -113,6 +113,8 @@ module type STROBE_ACTIONS = sig
     val useNames : bool -> unit
     val shouldUseNames : unit -> bool
     val env : env -> FormatExt.printer list
+    val simpl_typ : typ -> string
+    val simpl_kind : kind -> string
   end
   val apply_name : string option -> typ -> typ
   val replace_name : string option -> typ -> typ

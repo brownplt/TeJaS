@@ -242,7 +242,10 @@ struct
     | ELet (_, x, e1, e2) -> 
       check (Env.bind_id x (ExtTC.synth env default_typ e1) env) default_typ e2 typ
     | ECheat (p, t, (EFunc(pf, args, func_info, body) as f)) -> 
-      let simpl_t = expose_simpl_typ env (Ext.extract_t t) in
+      let t = Ext.extract_t t in
+      Printf.eprintf "Cheating to %s\n" (string_of_typ (replace_name None t));
+      let simpl_t = expose_simpl_typ env t in
+      Printf.eprintf "Exposed typ is %s\n" (string_of_typ (replace_name None simpl_t));
       check env default_typ f simpl_t
     | EFunc (p, args, func_info, body) -> 
       let misowned_vars = IdSet.inter !consumed_owned_vars 
@@ -351,9 +354,9 @@ struct
       | _ -> Sub.typ_mismatch p (Sub.Typ((fun t -> sprintf "expected TObject, got %s" (string_of_typ t)), typ))
     end
     | _ -> 
-      (* Printf.eprintf "Check': Synthing type for expression\n"; *)
+      Printf.eprintf "Check': Synthing type for expression\n";
       let synth_typ = expose_simpl_typ env (Ext.extract_t (ExtTC.synth env default_typ exp)) in
-      (* Printf.printf "Checking %s <?: %s\n" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ)); *)
+      Printf.printf "Checking %s <?: %s\n" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ));
       if not (Sub.subtype env synth_typ (expose_simpl_typ env typ)) then begin
         (* Printf.printf "failed.\n"; *)
         Sub.typ_mismatch (Exp.pos exp)
@@ -444,7 +447,11 @@ struct
       | RefCell -> TRef (None, t)
       end
     | EDeref (p, e) -> 
-      let typ = ((check_kind p env (expose_simpl_typ env (synth env default_typ e)))) in
+      let typ = (synth env default_typ e) in
+      Printf.eprintf "In EDeref, synthed type of %s is %s\n" (string_of_exp e) (string_of_typ typ);
+      let typ = expose_simpl_typ env typ in
+      Printf.eprintf "In EDeref, exposed type is %s\n" (string_of_typ typ);
+      let typ = ((check_kind p env typ)) in
       if typ = TPrim "Unsafe" 
       then raise (Sub.Typ_error (p, Sub.FixedString "synth: Cannot dereference an unsafe value"))
       else begin match typ with
@@ -763,7 +770,12 @@ struct
             sprintf "expected forall-type in type application, got:\n%s\ntype argument is:\n%s"
               (string_of_typ t1) (string_of_typ t2)), t, u)))
       end
-    | ECheat (p, t, _) -> expose_simpl_typ env (Ext.extract_t t)
+    | ECheat (p, t, _) -> 
+      let t = Ext.extract_t t in
+      Printf.eprintf "Cheating to %s\n" (string_of_typ (replace_name None t));
+      let simpl_t = Typ.trace "Exposing type" "" (fun () -> expose_simpl_typ env t) in
+      Printf.eprintf "Exposed typ is %s\n" (string_of_typ (replace_name None simpl_t));
+      simpl_t
     | EParen (p, e) -> synth env default_typ e
 
   and synths env default_typ es = map (synth env default_typ) es

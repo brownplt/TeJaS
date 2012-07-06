@@ -75,7 +75,20 @@ struct
     | W.Bot -> (S.TBot)
     | W.Syn x -> (S.TId x)
     | W.TId x -> S.TId x
-    | W.App (t1, t2s) -> JQ.extract_t (JQ.TApp (typ t1, map sigma t2s))
+    | W.App (t1, t2s) -> begin
+      let t = typ t1 in
+      match JQ.extract_t t with
+      | S.TPrim "Constructing"
+      | S.TPrim "Mutable"
+      | S.TPrim "Immutable" -> begin
+        let ss = map sigma t2s in
+        let sts = List.filter_map (fun s -> match s with JQ.STyp t -> Some (JQ.extract_t t) | _ -> None) ss in
+        if (List.length ss = List.length sts)
+        then S.TApp (JQ.extract_t t, sts)
+        else JQ.extract_t (JQ.TApp (t, ss))
+      end
+      | _ -> JQ.extract_t (JQ.TApp (t, map sigma t2s))
+    end
     | W.Forall (x, s, t) -> 
       let s = sigma s in
       let t = typ t in
@@ -85,12 +98,12 @@ struct
       JQ.extract_t (JQ.TForall (None, x, s, t'))
     | W.Rec (x, t) -> (S.TRec (None, x, embed_typ t))
     | W.Lambda (args, t) -> 
-      let args = map id_kind args in
+      let args = map (second2 JQ.embed_k) (map id_kind args) in
       let t = typ t in
-      let t' = List.fold_left (fun t (x, k) -> match JQ.embed_k k with
+      let t' = List.fold_left (fun t (x, k) -> match k with
         | JQ.KMult _ -> JQ.mult_typ_subst x (JQ.MId x) t
         | _ -> t) t args in
-      (S.TLambda (None, args, JQ.extract_t t'))
+      JQ.extract_t (JQ.TLambda (None, args, t'))
     | W.Fix (x, k, t) -> let (x, k) = id_kind (x, k) in (S.TFix (None, x, k, embed_typ t)))
       
   and opt_map f v = match v with None -> None | Some v -> Some (f v)

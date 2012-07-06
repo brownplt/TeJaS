@@ -16,6 +16,7 @@ module Make : JQUERY_TYP = functor (Css : Css.CSS) -> functor (STROBE : TYPS) ->
   type baseTyp = STROBE.typ
   type typ = 
     | TForall of string option * id * sigma * typ
+    | TLambda of string option * (id * kind) list * typ (** type operator *)
     | TApp of typ * sigma list
     | TDom of string option * typ * sel
     | TStrobe of STROBE.typ
@@ -107,18 +108,21 @@ struct
   let rec apply_name n typ = match typ with
     | TStrobe t -> embed_t (Strobe.apply_name n t)
     | TForall(None, x, t, b) -> TForall(n, x, t, b)
+    | TLambda(None, ts, t) -> TLambda(n, ts, t)
     | TDom(None, t, sel) -> TDom(n, t, sel)
     | _ -> typ
 
   and name_of typ =  match typ with
     | TStrobe t -> Strobe.name_of t
     | TForall(name, _, _, _) -> name
+    | TLambda(name, _, _) -> name
     | TDom(name, _, _) -> name
     | _ -> None
 
   and replace_name n typ = match typ with
     | TStrobe t -> embed_t (Strobe.replace_name n t)
     | TForall(_, x, t, b) -> TForall(n, x, t, b)
+    | TLambda(_, ts, t) -> TLambda(n, ts, t)
     | TDom(_, t, sel) -> TDom(n, t, sel)
     | _ -> typ
 
@@ -130,7 +134,7 @@ struct
 
     let useNames, shouldUseNames =
       let _useNames = ref true in
-      let useNames b = _useNames := b in
+      let useNames b = _useNames := b; Strobe.Pretty.useNames b in
       let shouldUseNames () = !_useNames in
       useNames, shouldUseNames
 
@@ -154,9 +158,12 @@ struct
           | STyp t -> horz [text alpha; text "<:"; typ t]
           | SMult m -> horz [text alpha; text "<:"; multiplicity m]
         in
-        namedType name (horzOrVert [horz [text "Forall"; binding; text "."];
+        namedType name (horzOrVert [horz [text "JQForall"; binding; text "."];
                                     typ body])
       end
+      | TLambda (n, args, t) -> 
+        let p (x, k) = horz [ text x; text "::"; kind k ] in
+        namedType n (hvert [horz [text "JQLambda"; horz (map p args); text "."]; typ t ])
       | TApp (t, ts) ->
         (match ts with
         | [] -> horz [typ t; text "<>"]
@@ -198,16 +205,90 @@ struct
           horzOrVert [multiplicity m;
                       horz [text "::"; kind k]]) mult_ids in
       add_sep_between (text ",") (other_print @ [mults])
+
+    let rec simpl_typ typ = match typ with
+      | TStrobe t -> "TSTROBE(" ^ (Strobe.Pretty.simpl_typ t) ^ ")"
+      | TDom(name, _, sel) -> 
+        let desc = match name with Some n -> n | None -> FormatExt.to_string Css.p_css sel in
+        "JQ.TDom " ^ desc
+      | TForall(name, a, _, _) ->
+        let desc = match name with Some n -> n | None -> a ^ "<:**.***" in
+        "JQ.TForall " ^ desc
+      | TLambda(name, yks, _) ->
+        let desc = match name with Some n -> n | None -> "(" ^ (String.concat "," (map fst2 yks)) ^ ")" in
+        "JQ.TLambda " ^ desc
+      | TApp(t, ts) -> Printf.sprintf "JQ.%s<%s>" (simpl_typ t) (String.concat "," (map simpl_sigma ts))
+    and simpl_mult mult = match mult with
+      | MPlain t -> simpl_typ t
+      | MId x -> "`" ^ x
+      | MOne m -> "1<" ^ (simpl_mult m) ^ ">"
+      | MZero m -> "0<" ^ (simpl_mult m) ^ ">"
+      | MZeroOne m -> "01<" ^ (simpl_mult m) ^ ">"
+      | MOnePlus m -> "1+<" ^ (simpl_mult m) ^ ">"
+      | MZeroPlus m -> "0+<" ^ (simpl_mult m) ^ ">"
+      | MSum (m1, m2) -> "Sum<" ^ (simpl_mult m1) ^ "++" ^ (simpl_mult m2) ^ ">"
+    and simpl_sigma sigma = match sigma with
+      | STyp t -> simpl_typ t
+      | SMult m -> simpl_mult m
+    and simpl_kind k = FormatExt.to_string kind k
   end
   let string_of_typ = FormatExt.to_string Pretty.typ
   let string_of_mult = FormatExt.to_string Pretty.multiplicity
   let string_of_kind = FormatExt.to_string Pretty.kind
+  let string_of_sigma s = match s with STyp t -> string_of_typ t | SMult m -> string_of_mult m
 
   (* free type variables *)
+  (* let rec free_sigma_ids s =  *)
+  (*   let rec free_typ_ids t = *)
+  (*   let open IdSet in *)
+  (*   let open IdSetExt in *)
+  (*   match t with *)
+  (*   | TStrobe t -> Strobe.free_typ_ids t *)
+  (*   | TLambda (_, xks, t) -> *)
+  (*     let (ts, ms) = (free_typ_ids t) in *)
+  (*     let (xts, yms) = List.partition (fun (_, k) -> match k with KMult _ -> true | _ -> false) xks in *)
+  (*     let (xs, ys) = (from_list (map fst2 xts), from_list (map fst2 yms)) in *)
+  (*     (diff ts xs, diff ms ys) *)
+  (*   | TApp (t, ss) -> map_pair unions (List.split (free_typ_ids t :: (map free_sigma_ids ss))) *)
+  (*   | TForall (_, alpha, bound, typ) -> *)
+  (*     let (f1t, f1m) = (free_sigma_ids bound) in *)
+  (*     let (f2t, f2m) = (free_typ_ids typ) in *)
+  (*     (match bound with *)
+  (*     | STyp _ -> (remove alpha (union f1t f2t), union f1m f2m) *)
+  (*     | SMult _ -> (union f1t f2t, remove alpha (union f1m f2m))) *)
+  (*   | TDom(_, t, _) -> free_typ_ids t *)
+  (*   and free_mult_ids m = *)
+  (*     let open IdSet in *)
+  (*     let open IdSetExt in *)
+  (*     match m with *)
+  (*     | MPlain t -> free_typ_ids t *)
+  (*     | MId name -> (empty, singleton name) *)
+  (*     | MZero m *)
+  (*     | MOne m *)
+  (*     | MZeroOne m *)
+  (*     | MOnePlus m *)
+  (*     | MZeroPlus m -> free_mult_ids m *)
+  (*     | MSum(m1, m2) -> *)
+  (*       let (f1t, f1m) = (free_mult_ids m1) in *)
+  (*       let (f2t, f2m) = (free_mult_ids m2) in *)
+  (*       (union f1t f2t, union f1m f2m) *)
+  (*   in match s with *)
+  (*   | STyp t -> free_typ_ids t *)
+  (*   | SMult m -> free_mult_ids m *)
+
+
+
+
   let rec free_typ_ids t = match t with
     | TDom(_, t, _) -> free_typ_ids t
     | TForall (_, alpha, bound, typ) ->
-      IdSet.remove alpha (IdSet.union (free_sigma_typ_ids bound) (free_typ_ids typ))
+      let free_t = match bound with
+        | STyp _ -> IdSet.remove alpha (free_typ_ids typ)
+        | SMult _ -> free_typ_ids typ in
+      IdSet.union (free_sigma_typ_ids bound) free_t
+    | TLambda (_, yks, t) ->
+      let nonmults = ListExt.filter_map (fun (y, k) -> match unwrap_k k with KMult _ -> None | _ -> Some y) yks in
+      IdSet.diff (free_typ_ids t) (IdSetExt.from_list nonmults)
     | TApp (t, ss) -> IdSetExt.unions (free_typ_ids t :: (map free_sigma_typ_ids ss))
     | TStrobe t -> Strobe.free_typ_ids t
   and free_sigma_typ_ids s = match s with
@@ -235,7 +316,13 @@ struct
   and free_typ_mult_ids t = match t with
     | TDom(_, t, _) -> free_typ_ids t
     | TForall (_, alpha, bound, typ) ->
-      IdSet.union (free_sigma_mult_ids bound) (free_typ_ids typ)
+      let free_t = match bound with
+        | STyp _ -> IdSet.remove alpha (free_typ_ids typ)
+        | SMult _ -> free_typ_ids typ in
+      IdSet.union (free_sigma_mult_ids bound) free_t
+    | TLambda (_, yks, t) ->
+      let mults = ListExt.filter_map (fun (y, k) -> match unwrap_k k with KMult _ -> Some y | _ -> None) yks in
+      IdSet.diff (free_typ_ids t) (IdSetExt.from_list mults)
     | TApp (t, ss) -> IdSetExt.unions (free_typ_ids t :: (map free_sigma_typ_ids ss))
     | TStrobe t -> Strobe.map_reduce_t free_typ_mult_ids IdSet.union IdSet.empty t
   and free_sigma_mult_ids s = match s with
@@ -270,9 +357,12 @@ struct
     let rec sigma_help sigma : sigma = match sigma with
       | STyp typ -> STyp (typ_help typ)
       | SMult mult -> SMult (mult_help mult)
-    and mult_help mult : multiplicity = match mult with
+    and mult_help mult =
+      Strobe.trace "JQsubst_mult_help" 
+      (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_mult mult ^ "/" ^ x ^ "]") (fun () -> mult_help' mult)
+    and mult_help' mult : multiplicity = match mult with
       | MPlain typ -> plain_help typ
-      | MId y -> if x = y then (Printf.eprintf "got here?\n"; match s with SMult m -> m | STyp _ -> mult) else mult
+      | MId y -> if x = y then (match s with SMult m -> m | STyp _ -> mult) else mult
       | MZero m -> MZero (mult_help m)
       | MOne m -> MOne (mult_help m)
       | MZeroOne m -> MZeroOne (mult_help m)
@@ -287,14 +377,29 @@ struct
         | SMult m -> m
         else MPlain typ
       | _ -> MPlain (typ_help typ)
-    and typ_help typ : typ = match typ with
+    and typ_help typ =
+      Strobe.trace "JQsubst_typ_help" 
+        (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_typ typ ^ "/" ^ x ^ "]") (fun () -> typ_help' typ)
+    and typ_help' typ : typ = match typ with
       | TStrobe tstrobe -> begin
         let subst_t = match s with
           | STyp t -> embed_t (Strobe.subst (Some x) (extract_t t) typ_help tstrobe)
           | SMult m -> embed_t (Strobe.subst None Strobe.TTop typ_help tstrobe)
         in unwrap_t subst_t
       end
-      | TApp(f, args) -> TApp(typ_help f, List.map sigma_help args)
+      | TApp(f, args) -> 
+        Printf.eprintf "Substituting %s->%s in %s\n" x (string_of_sigma s) (string_of_typ typ);
+        TApp(typ_help f, List.map sigma_help args)
+      | TLambda (n, yks, t) ->
+        Printf.eprintf "JQTLambda %s\n" (string_of_typ typ);
+        if List.exists (fun (y, _) -> y = x) yks then typ
+        else
+          let (ys, ks) = List.split yks in
+          let (free_t, free_m) = free_sigma_ids s in
+          let free = IdSet.union free_t free_m in
+          let (new_ys, t') = rename_avoid_capture free ys t in
+          let new_yks = List.combine new_ys ks in
+          TLambda (n, new_yks, typ_help t')
       | TForall (name, alpha, bound, body) -> if x = alpha then typ else
           let (free_t, free_m) = free_sigma_typ_ids s, free_sigma_mult_ids s in
           let (beta, body') = rename_avoid_capture (IdSet.union free_t free_m) [alpha] body in
@@ -302,11 +407,13 @@ struct
       | TDom (name, t, sel) -> TDom(name, typ_help t, sel)
     in sigma_help sigma
 
+  let typ_sig_subst x s typ = match subst x s (STyp typ) with STyp t -> t | _ -> failwith "impossible"
   let typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> t | _ -> failwith "impossible"
   let typ_mult_subst x t m = match subst x (STyp t) (SMult m) with SMult m -> m | _ -> failwith "impossible"
+  let mult_sig_subst x s mult = match subst x s (SMult mult) with SMult m -> m | _ -> failwith "impossible"
   let mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> t | _ -> failwith "impossible"
   let mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> m | _ -> failwith "impossible"
-
+  let typ_subst = typ_typ_subst
 
 
 
@@ -322,15 +429,15 @@ struct
       equivalent_sigma env s1 s2 && (match s1 with
       | SMult _ -> equivalent_typ env t1 (mult_typ_subst beta (MId alpha) t2)
       | STyp _ -> equivalent_typ env t1 (typ_typ_subst beta (embed_t (Strobe.TId alpha)) t2))
-    (* | TLambda(_, args1, ret1), TLambda(_, args2, ret2) -> *)
-    (*   if (List.length args1 <> List.length args2) then false *)
-    (*   else if not (List.for_all2 (fun (_, k1) (_, k2) -> k1 = k2) args1 args2) then false *)
-    (*   else *)
-    (*     let ret2 = List.fold_left2 (fun r (x1,k1) (x2,k2) -> *)
-    (*       match k1 with *)
-    (*       | KMult _ -> mult_typ_subst x2 (MId x1) r *)
-    (*       | _ -> typ_typ_subst x2 (TId x1) r) ret2 args1 args2 *)
-    (*     in equivalent_typ env ret1 ret2 *)
+    | TLambda(_, args1, ret1), TLambda(_, args2, ret2) ->
+      if (List.length args1 <> List.length args2) then false
+      else if not (List.for_all2 (fun (_, k1) (_, k2) -> k1 = k2) args1 args2) then false
+      else
+        let ret2 = List.fold_left2 (fun r (x1,k1) (x2,k2) ->
+          match k1 with
+          | KMult _ -> mult_typ_subst x2 (MId x1) r
+          | _ -> typ_typ_subst x2 (embed_t (Strobe.TId x1)) r) ret2 args1 args2
+        in equivalent_typ env ret1 ret2
     | TApp(t1, args1), TApp(t2, args2) ->
       if (List.length args1 <> List.length args2) then false
       else equivalent_typ env t1 t2 && List.for_all2 (equivalent_sigma env) args1 args2
@@ -420,6 +527,7 @@ struct
       | t -> embed_t t
     end
     | TForall (n, alpha, bound, typ) -> TForall(n, alpha, canonical_sigma bound, c typ)
+    | TLambda(n, ts, t) -> TLambda(n, ts, c t)
     | TDom(n, TDom(_, t, sel1), sel2) -> c (TDom(n, t, Css.intersect sel1 sel2))
     | TDom(n, t, sel) -> TDom(n, c t, sel)
 
@@ -483,15 +591,44 @@ struct
       | _, MId _ -> failwith "impossible"
       | t1, t2 -> MSum (t1, t2)
 
+  let rec simpl_typ env typ = match typ with
+    | TStrobe t -> embed_t (Strobe.simpl_typ env (extract_t typ))
+    | TApp (t, ts) -> begin
+      match embed_t (Strobe.expose env (extract_t (simpl_typ env t))) with
+      | TLambda (n, args, u) -> 
+        let name = match n with
+          | None -> None
+          | Some n ->
+            let names = intersperse ", "
+              (List.map (fun s -> match s with
+              | SMult m -> string_of_mult m 
+              | STyp t -> match name_of t with Some n -> n | None -> string_of_typ t) ts) in
+            Some (n ^ "<" ^ (List.fold_right (^) names ">")) in
+        apply_name name
+          (simpl_typ env
+             (List.fold_right2 (* well-kinded, no need to check *)
+                (fun (x, k) t2 u -> typ_sig_subst x t2 u)
+                args ts u))
+      | func_t ->
+        let msg = sprintf "ill-kinded type application in JQ.simpl_typ. Type is \
+                           \n%s\ntype in function position is\n%s\n"
+          (string_of_typ typ) (string_of_typ func_t) in
+        raise (Invalid_argument msg)
+    end
+    | _ -> typ
 
-  (* exception Typ_error of Pos.t * string *)
-  (* let typ_mismatch p s =  *)
-  (*   if !error_on_mismatch then *)
-  (*     raise (Typ_error (p, s)) *)
-  (*   else begin *)
-  (*     incr num_typ_errors; *)
-  (*     eprintf "type error at %s : %s\n" (Pos.toString p) s *)
-  (*   end *)
+
+  (* REDEFINING THESE TO INCLUDE CANONICALIZATION *)
+  let subst x s sigma = canonical_sigma (subst x s sigma)
+  let typ_sig_subst x s typ = match subst x s (STyp typ) with STyp t -> t | _ -> failwith "impossible"
+  let typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> t | _ -> failwith "impossible"
+  let typ_mult_subst x t m = match subst x (STyp t) (SMult m) with SMult m -> m | _ -> failwith "impossible"
+  let mult_sig_subst x s mult = match subst x s (SMult mult) with SMult m -> m | _ -> failwith "impossible"
+  let mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> t | _ -> failwith "impossible"
+  let mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> m | _ -> failwith "impossible"
+  let typ_subst = typ_typ_subst
+
+
 end
 
 module MakeModule

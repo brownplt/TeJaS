@@ -193,12 +193,12 @@ struct
       let hnestOrHorz n = if horzOnly then horz else (fun ps -> hnest n (squish ps)) in
       let namedType name fmt = 
         if shouldUseNames ()
-        then match name with None -> fmt | Some n -> text n 
-        else match name with None -> horz [text "Unnamed"; fmt] | Some n -> horz [text "Named"; text n; fmt] in
+        then match name with None -> hvert fmt | Some n -> text n 
+        else match name with None -> label "Unnamed " fmt | Some n -> label ("Named " ^ n ^ " ") fmt in
       let namedRef name mut fmt = 
         if shouldUseNames ()
-        then match name with None -> fmt | Some n -> squish [text mut; text n] 
-        else match name with None -> horz [text "Unnamed*"; fmt] | Some n -> horz [text "Named*"; text n; fmt] in
+        then match name with None -> hvert fmt | Some n -> squish [text mut; text n] 
+        else match name with None -> label "Unnamed* " fmt | Some n -> label ("Named* " ^ n ^ " ") fmt in
       match t with
       | TEmbed t -> (if shouldUseNames () then squish else label_angles "EMBED" empty) [Ext.Pretty.typ t]
       | TTop -> text "Any"
@@ -206,9 +206,9 @@ struct
       | TPrim p -> text ("@" ^ p)
       | TLambda (n, args, t) -> 
         let p (x, k) = horz [ text x; text "::"; kind k ] in
-        namedType n (hvert [horz [text "Lambda"; horz (map p args); text "."]; typ t ])
+        namedType n [horz [text "Lambda"; horz (map p args); text "."]; typ t ]
       | TFix (n, x, k, t) -> 
-        namedType n (hvert [horz [text "Fix"; text x; text "::"; kind k; text "."]; typ t ])
+        namedType n [horz [text "Fix"; text x; text "::"; kind k; text "."]; typ t ]
       | TApp (t, ts) ->
         (match ts with
         | [] -> horz [typ t; text "<>"]
@@ -224,16 +224,16 @@ struct
           | _ -> (t, []) in
         let unions = collectUnions t in
         begin match unions with
-        | (t1, [t2]) -> parens [hnestOrHorz 0 [squish [horz [typ t1; text "+"]]; 
-                                            if horzOnly then typ t2 else horz[empty;typ t2]]]
+        | (t1, [t2]) -> [parens [hnestOrHorz 0 [squish [horz [typ t1; text "+"]]; 
+                                                if horzOnly then typ t2 else horz[empty;typ t2]]]]
         | (t, ts) -> 
-          if (List.length ts > 1200) then parens [horz[typ t;
-                                                       squish[text "+ ...(";
-                                                              int (List.length ts);
-                                                              text " total fields)....."]]] else
-            parens [hnest (-1) 
-                      (squish (intersperse print_space 
-                                 ((horz [empty; typ t]) :: List.map (fun t -> horz [text "+"; typ t]) ts)))]
+          if (List.length ts > 1200) then [parens [horz[typ t;
+                                                        squish[text "+ ...(";
+                                                               int (List.length ts);
+                                                               text " total fields)....."]]]] else
+            [parens [hnest (-1) 
+                        (squish (intersperse print_space 
+                                   ((horz [empty; typ t]) :: List.map (fun t -> horz [text "+"; typ t]) ts)))]]
         end)
       | TInter (n, t1, t2) -> (* horz [typ t1; text "&"; typ t2] *)
         namedType n (
@@ -245,16 +245,16 @@ struct
           | _ -> (t, []) in
         let intersections = collectIntersections t in
         begin match intersections with
-        | (t1, [t2]) -> parens [hnest 0 (squish [squish [horz [typ t1; text "&"]]; 
-                                                 if horzOnly then typ t2 else horz[empty;typ t2]])]
+        | (t1, [t2]) -> [parens [hnest 0 (squish [squish [horz [typ t1; text "&"]]; 
+                                                  if horzOnly then typ t2 else horz[empty;typ t2]])]]
         | (t, ts) -> 
-          if (List.length ts > 1200) then parens [horz[typ t;
-                                                       squish[text "& ...(";
-                                                              int (List.length ts);
-                                                              text " total fields)....."]]] else
-            parens [hnest (-1) 
-                      (squish (intersperse print_space 
-                                 ((horz [empty; typ t]) :: List.map (fun t -> horz [text "&"; typ t]) ts)))]
+          if (List.length ts > 1200) then [parens [horz[typ t;
+                                                        squish[text "& ...(";
+                                                               int (List.length ts);
+                                                               text " total fields)....."]]]] else
+            [parens [hnest (-1) 
+                        (squish (intersperse print_space 
+                                   ((horz [empty; typ t]) :: List.map (fun t -> horz [text "&"; typ t]) ts)))]]
         end)
       | TThis t -> label_parens "this" empty [typ t]
       | TArrow (tt::arg_typs, varargs, r_typ) ->
@@ -322,13 +322,13 @@ struct
         let abs = horz [ text (Pat.pretty flds.absent_pat); text ": _" ] in
         braces [hnestOrHorz 0 (typ t :: text " with" :: print_space :: 
                                  intersperse print_space (map pat (flds.fields) @ [abs]))]
-      | TRef (n, s) -> namedRef n "rw:" (horz [ text "Ref"; parens [typ s] ])
-      | TSource (n, s) -> namedRef n "r:" (horz [ text "Src"; parens [typ s] ])
-      | TSink (n, s) -> namedRef n "w:" (horz [ text "Snk"; parens [typ s] ])
+      | TRef (n, s) -> namedRef n "rw:" [label "Ref " [parens [typ s]]]
+      | TSource (n, s) -> namedRef n "r:" [label "Src " [parens [typ s]]]
+      | TSink (n, s) -> namedRef n "w:" [label "Snk " [parens [typ s]]]
       | TForall (n, x, s, t) -> 
-        namedType n (hvert [ horz [text "forall"; text x; text "<:"; typ s; text "."]; typ t ])
+        namedType n [ horz [text "forall"; text x; text "<:"; typ s; text "."]; typ t ]
       | TId x -> text x
-      | TRec (n, x, t) -> namedType n (horz [ text "rec"; text x; text "."; typ t ])
+      | TRec (n, x, t) -> namedType n [ text "rec"; text x; text "."; typ t ]
       | TUninit t -> match !t with
         | None -> text "???"
         | Some t -> squish[text "?"; typ t; text "?"]
@@ -339,6 +339,30 @@ struct
             | Maybe -> text "?"
             | Inherited -> text "^" in
           horz [ text (Pat.pretty k); squish [text ":"; pretty_pres]; typ p; text "," ]
+
+    let rec simpl_typ typ = match typ with
+      | TPrim s -> "@" ^ s
+      | TUnion _ -> "Union..."
+      | TInter _ -> "Inter..."
+      | TArrow _ -> "_ -> _"
+      | TThis _ -> "TThis"
+      | TObject _ -> "TObject"
+      | TWith _ -> "TWith(_, _)"
+      | TRegex p -> Pat.pretty p
+      | TRef (n, t) -> (match n with Some n -> n | None -> "Ref " ^ simpl_typ t)
+      | TSource (n, t) -> (match n with Some n -> n | None -> "Src " ^ simpl_typ t)
+      | TSink (n, t) -> (match n with Some n -> n | None -> "Snk " ^ simpl_typ t)
+      | TTop -> "Top"
+      | TBot -> "Bot"
+      | TForall (n, a, _, _) -> (match n with Some n -> n | None -> "Forall " ^ a ^ "...")
+      | TId x -> x
+      | TRec (n, x, t) -> (match n with Some n -> n | None -> "Rec " ^ x ^ "...")
+      | TLambda (n, _, _) -> (match n with Some n -> n | None -> "Lam ...")
+      | TApp (t, ts) -> Printf.sprintf "STROBE.%s<%s>" (simpl_typ t) (String.concat "," (map simpl_typ ts))
+      | TFix (n, x, _, _) -> (match n with Some n -> n | None -> "Fix " ^ x ^ "...")
+      | TUninit _ -> "Uninit"
+      | TEmbed t -> Ext.Pretty.simpl_typ t
+    and simpl_kind k = FormatExt.to_string kind k
 
     let env (env : env) =
       if IdMap.cardinal env = 0 then [text "Empty environment"] else
@@ -507,7 +531,8 @@ struct
     | TObject o -> unions (L.map (fun (_, _, t) -> free_typ_ids t) o.fields)
     | TWith(t, flds) -> union (free_typ_ids t) (free_typ_ids (TObject flds))
     | TFix (_, x, _, t)
-    | TRec (_, x, t) -> remove x (free_typ_ids t)
+    | TRec (_, x, t) -> let free_ids = free_typ_ids t in
+                        let ret = remove x free_ids in ret
     | TForall (_, x, s, t) -> union (free_typ_ids s) (remove x (free_typ_ids t))
     | TLambda (_, xks, t) -> diff (free_typ_ids t) (from_list (map fst2 xks))
     | TUninit t -> match !t with 
@@ -516,7 +541,11 @@ struct
 
   let free_ids t = free_typ_ids t
 
-  let rec typ_subst x s outer typ = match typ with
+  let rec typ_subst x s outer typ = 
+    trace "STROBEtyp_subst" 
+      (Pretty.simpl_typ typ ^ "[" ^ Pretty.simpl_typ (replace_name None s) ^ "/" ^ (match x with Some x -> x | None -> "<none>") ^ "]")
+      (fun () -> typ_subst' x s outer typ)
+  and typ_subst' x s outer typ = match typ with
     | TEmbed t -> Ext.extract_t (outer t)
     | TPrim _ -> typ
     | TRegex _ -> typ
@@ -532,14 +561,16 @@ struct
                               mk_obj_typ (map (fun (n, p, t) -> (n, p, typ_subst x s outer t)) flds.fields)
                                 flds.absent_pat)
     | TObject o ->
-        TObject (mk_obj_typ (map (third3 (typ_subst x s outer)) o.fields) 
-                            o.absent_pat)
+      (* Printf.eprintf "STROBEtyp_subst %s->%s in %s\n" (match x with Some x -> x | None -> "<none>") (string_of_typ s) (string_of_typ typ); *)
+      TObject (mk_obj_typ (map (third3 (typ_subst x s outer)) o.fields) 
+                 o.absent_pat)
     | TRef (n, t) -> TRef (n, typ_subst x s outer t)
     | TSource (n, t) -> TSource (n, typ_subst x s outer t)
     | TSink (n, t) -> TSink (n, typ_subst x s outer t)
     | TTop -> TTop
     | TBot -> TBot
     | TLambda (n, yks, t) ->
+      Printf.eprintf "STROBEtyp_subst %s->%s in %s\n" (match x with Some x -> x | None -> "<none>") (string_of_typ s) (string_of_typ typ);
       if List.exists (fun (y, _) -> Some y = x) yks then typ
       else
         let (ys, ks) = List.split yks in
@@ -587,12 +618,13 @@ struct
           (x::new_ys, IdMap.add y (TId x) substs))
         ([], IdMap.empty) ys in
     let new_ys = List.rev rev_new_ys in
-    let t' = IdMap.fold (fun x s t -> typ_subst (Some x) s (fun x -> x) t) substs t in
+    let t' = IdMap.fold typ_subst_help substs t in
     (new_ys, t')
+  and typ_subst_help x s t = typ_subst (Some x) s (Ext.typ_subst x (Ext.embed_t s)) t
 
   let subst = typ_subst
 
-  let typ_subst x s t = typ_subst (Some x) s (fun x -> x) t
+  let typ_subst x s t = typ_subst_help x s t
 
 
   (** Decides if two types are syntactically equal. This helps subtyping. *)
@@ -694,7 +726,7 @@ struct
         | t1, TEmbed t2 -> Ext.extract_t (Ext.canonical_type (Ext.embed_t (TInter(n, t1, Ext.extract_t t2))))
         | (TForall(_, alpha, bound1, typ1) as t1), (TForall(_, beta, bound2, typ2) as t2) ->
           if equivalent_typ IdMap.empty bound1 bound2
-          then TForall(n, alpha, bound1, c (TInter (None, typ1, subst (Some beta) (TId alpha) (fun x -> x) typ2)))
+          then TForall(n, alpha, bound1, c (TInter (None, typ1, typ_subst beta (TId alpha) typ2)))
           else TInter(n, t1, t2)
         | t1, t2 -> if t1 = t2 then t1 else TInter(n, t1, t2)
     end
@@ -764,8 +796,8 @@ struct
     | TThis t -> TThis (expose_twith t)
     | _ -> typ
 
-  and simpl_typ typenv typ = let typ = Ext.unwrap_bt typ in match typ with
-    | TEmbed _ -> typ
+  and simpl_typ typenv typ = match typ with
+    | TEmbed t -> Ext.extract_t (Ext.simpl_typ typenv t)
     | TPrim _ 
     | TUnion _
     | TInter _
@@ -782,8 +814,12 @@ struct
     | TThis _
     | TForall _ -> typ
     | TWith(t, flds) -> expose_twith typenv typ
-    | TFix (n, x, k, t) -> apply_name n (simpl_typ typenv (subst (Some x) typ (fun x -> x) t))
-    | TRec (n, x, t) -> apply_name n (simpl_typ typenv (subst (Some x) typ (fun x -> x) t))
+    | TFix (n, x, k, t) -> 
+      (* Printf.eprintf "Substituting %s[%s/%s]\n" (string_of_typ t) (string_of_typ typ) x; *)
+      let ret = apply_name n (simpl_typ typenv (typ_subst x typ t)) in
+      (* Printf.eprintf "STROBETFix: simpl_typ (%s) = %s\n" (string_of_typ typ) (string_of_typ ret); *)
+      ret
+    | TRec (n, x, t) -> apply_name n (simpl_typ typenv (typ_subst x typ t))
     | TApp (t1, ts) -> 
       begin match expose typenv (simpl_typ typenv t1) with
       | TPrim "Constructing" -> List.hd ts
@@ -808,6 +844,7 @@ struct
         | _ ->  raise (Invalid_argument "Expected one argument to Mutable<T>")
       end
       | TLambda (n, args, u) -> 
+        (* Printf.eprintf "STROBETLambda %s\n" (string_of_typ typ); *)
         let name = match n with
           | None -> None
           | Some n ->
@@ -817,7 +854,7 @@ struct
         apply_name name
           (simpl_typ typenv
              (List.fold_right2 (* well-kinded, no need to check *)
-                (fun (x, k) t2 u -> subst (Some x) t2 (fun x -> x) u)
+                (fun (x, k) t2 u -> typ_subst x t2 u)
                 args ts u))
       | func_t ->
         let msg = sprintf "ill-kinded type application in simpl_typ. Type is \

@@ -242,6 +242,7 @@ let squash env t =
     let open JQ in
     match t with
     | TStrobe t -> JQueryMod.embed_t (squash_s t)
+    | TLambda (n, args, t) -> TLambda(n, args, squash_t t)
     | TForall(n, id, s, t) -> TForall(n, id, squash_sig s, squash_t t)
     | TApp(t, ss) -> TApp(squash_t t, List.map squash_sig ss)
     | TDom(n, t, s) -> TDom(n, squash_t t, s)

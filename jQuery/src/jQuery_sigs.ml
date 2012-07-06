@@ -8,8 +8,13 @@ open Strobe_typ
 module type JQUERY_TYPS = sig
   type sel
   type baseTyp
+
+  type baseKind
+  type kind = KMult of kind | KStrobe of baseKind
+
   type typ = 
     | TForall of string option * id * sigma * typ (* replacement for TForall with only typ bounds *)
+    | TLambda of string option * (id * kind) list * typ (** type operator *)
     | TApp of typ * sigma list (* replacement for TApp with only typ arguments *)
     | TDom of string option * typ * sel
     | TStrobe of baseTyp
@@ -24,9 +29,6 @@ module type JQUERY_TYPS = sig
     | MZeroPlus of multiplicity
     | MSum of multiplicity * multiplicity
   and sigma = STyp of typ | SMult of multiplicity
-
-  type baseKind
-  type kind = KMult of kind | KStrobe of baseKind
 
   type baseBinding
   type binding = BStrobe of baseBinding | BMultBound of multiplicity * kind
@@ -50,6 +52,9 @@ module type JQUERY_ACTIONS = sig
     val env : env -> FormatExt.printer list
     val useNames : bool -> unit
     val shouldUseNames : unit -> bool
+    val simpl_typ : typ -> string
+    val simpl_kind : kind -> string
+    val simpl_mult : multiplicity -> string
   end
   val extract_t : typ -> baseTyp
   val extract_k : kind -> baseKind
@@ -81,9 +86,11 @@ module type JQUERY_ACTIONS = sig
   val mult_typ_subst : id -> multiplicity -> typ -> typ
   val typ_mult_subst : id -> typ -> multiplicity -> multiplicity
   val typ_typ_subst : id -> typ -> typ -> typ
+  val typ_subst : id -> typ -> typ -> typ
   val string_of_typ : typ -> string
   val string_of_mult : multiplicity -> string
   val string_of_kind : kind -> string
+  val simpl_typ : env -> typ -> typ
 end
 
 module type JQUERY_MODULE = sig

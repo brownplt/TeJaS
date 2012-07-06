@@ -102,7 +102,7 @@ struct
         with Not_found ->
           if (not (List.mem x recIds)) then
             let envText = FormatExt.to_string (fun e -> FormatExt.braces (Strobe.Pretty.env e)) env in
-            let s = (sprintf "type variable %s is unbound in env %s" x envText) in
+            let s = (sprintf "STROBE type variable %s is unbound in env %s" x envText) in
             Printf.eprintf "%s" s; 
             raise (Kind_error s)
           else KStar
@@ -122,6 +122,7 @@ struct
       let env' = fold_right (fun (x, k) env -> bind_kind_id x k env) args env in
       KArrow (List.map snd2 args, kind_check env' recIds t)
     | TFix (_, x, k, t) ->
+      Printf.eprintf "Binding %s to %s for TFix\n" x (string_of_kind k);
       let k' = kind_check (bind_kind_id x k env) recIds t in
       if  k' = k then k
       else kind_mismatch typ k' k
