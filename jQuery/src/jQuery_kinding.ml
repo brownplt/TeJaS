@@ -50,15 +50,15 @@ struct
     pp_set_max_boxes str_formatter max;
     s
 
-  let trace (msg : string) print (thunk : 'a -> 'b) (arg : 'a) = (* thunk arg *)
-    Strobe.trace msg (print arg) (fun () -> thunk arg)
+  let trace (msg : string) print success (thunk : 'a -> 'b) (arg : 'a) = (* thunk arg *)
+    Strobe.trace msg (print arg) success (fun () -> thunk arg)
 
   let rec kind_check_sigma (env : env) (recIds : id list) (s : sigma) : kind = match s with
     | STyp t -> kind_check_typ env recIds t
     | SMult m -> kind_check_mult env recIds m
 
   and kind_check_typ (env : env) (recIds : id list) (typ : typ) : kind = 
-    trace "KindCheckTyp" short_string_of_typ (fun typ -> kind_check_typ' env recIds typ) typ
+    trace "KindCheckTyp" short_string_of_typ (fun _ -> true) (fun typ -> kind_check_typ' env recIds typ) typ
 
   and kind_check_typ' (env : env) (recIds : id list) (typ : typ) : kind = 
     let bind_kind_id x k env = 
@@ -96,35 +96,26 @@ struct
             Printf.eprintf "Failing here";
             kind_mismatch s_arg k_actual (embed_k k_arg)
           end in
-        match t_op with
-        (* | TPrim ("Constructing" as p) *)
-        (* | TPrim ("Mutable" as p)  *)
-        (* | TPrim ("Immutable" as p) -> *)
-        (*   begin  *)
-        (*     try List.iter2 check [KStar] s_args *)
-        (*     with Invalid_argument _ -> raise (Kind_error (p ^ "<> expects one argument")) *)
-        (*   end; *)
-        (*   KStar *)
-        | _ -> match extract_k (kind_check_typ env recIds t_op) with
-          | Strobe.KArrow (k_args, k_result) ->
-            begin 
-              try
-                List.iter2 check k_args s_args;
-                embed_k k_result
-              with Invalid_argument _ ->
-                raise (Strobe.Kind_error
-                         (sprintf "operator expects %d args, given %d"
-                            (List.length k_args) (List.length s_args)))
-            end
-          | Strobe.KEmbed (KMult _)
-          | Strobe.KStar ->
-            raise (Strobe.Kind_error 
-                     (sprintf "not a type operator:\n%s" (string_of_typ t_op)))
-          | Strobe.KEmbed (KStrobe _) -> failwith "impossible: extract_k should've removed these wrappers"
+        match extract_k (kind_check_typ env recIds t_op) with
+        | Strobe.KArrow (k_args, k_result) ->
+          begin 
+            try
+              List.iter2 check k_args s_args;
+              embed_k k_result
+            with Invalid_argument _ ->
+              raise (Strobe.Kind_error
+                       (sprintf "operator expects %d args, given %d"
+                          (List.length k_args) (List.length s_args)))
+          end
+        | Strobe.KEmbed (KMult _)
+        | Strobe.KStar ->
+          raise (Strobe.Kind_error 
+                   (sprintf "not a type operator:\n%s" (string_of_typ t_op)))
+        | Strobe.KEmbed (KStrobe _) -> failwith "impossible: extract_k should've removed these wrappers"
       end
 
   and kind_check_mult (env : env) (recIds : id list) (mult : multiplicity) : kind = 
-    trace "KindCheckMult" string_of_mult (fun mult -> kind_check_mult' env recIds mult) mult
+    trace "KindCheckMult" string_of_mult (fun _ -> true) (fun mult -> kind_check_mult' env recIds mult) mult
 
   and kind_check_mult' env recIds (mult : multiplicity) = match mult with
     | MId x -> 

@@ -221,11 +221,11 @@ struct
     | ECheat (p, t, e) -> usesThis e
     | EParen (p, e) -> usesThis e
 
-  let trace (msg : string) (thunk : exp -> 'a) (exp : exp) = (* thunk exp *)
-    Typ.trace msg (simpl_print exp) (fun () -> thunk exp)
+  let trace (msg : string) (success : 'a -> bool) (thunk : exp -> 'a) (exp : exp) = (* thunk exp *)
+    Typ.trace msg (simpl_print exp) success (fun () -> thunk exp)
 
   let rec check (env : env) (default_typ : Typ.extTyp option) (exp : exp) (typ : Typ.typ) : unit =
-    try trace "Check" (fun exp -> check' env default_typ exp typ) exp
+    try trace "Check" (fun _ -> true) (fun exp -> check' env default_typ exp typ) exp
     (* typ_mismatch normally records the error and proceeds. If we're in a
        [with_typ_exns] context, it will re-raise the error. *)
     with Sub.Typ_error (p, s) -> Sub.typ_mismatch p s
@@ -355,8 +355,9 @@ struct
     end
     | _ -> 
       Printf.eprintf "Check': Synthing type for expression\n";
-      let synth_typ = expose_simpl_typ env (Ext.extract_t (ExtTC.synth env default_typ exp)) in
-      Printf.printf "Checking %s <?: %s\n" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ));
+      let synthed = Ext.extract_t (ExtTC.synth env default_typ exp) in
+      let synth_typ = expose_simpl_typ env synthed in
+      Printf.eprintf "Check': Checking %s <?: %s\n" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ));
       if not (Sub.subtype env synth_typ (expose_simpl_typ env typ)) then begin
         (* Printf.printf "failed.\n"; *)
         Sub.typ_mismatch (Exp.pos exp)
@@ -365,7 +366,7 @@ struct
   (* Printf.printf "Checking finished.\n" *)
 
   and synth (env : env) (default_typ : Typ.extTyp option) (exp : exp) : Typ.typ = 
-    trace "Synth" (synth' env default_typ) exp
+    trace "Synth" (fun _ -> true) (synth' env default_typ) exp
   and synth' env (default_typ : Typ.extTyp option) exp : Typ.typ =
     (* Printf.eprintf "*Synthing type for %s\n" (string_of_exp exp); *)
     match exp with
@@ -773,7 +774,7 @@ struct
     | ECheat (p, t, _) -> 
       let t = Ext.extract_t t in
       Printf.eprintf "Cheating to %s\n" (string_of_typ (replace_name None t));
-      let simpl_t = Typ.trace "Exposing type" "" (fun () -> expose_simpl_typ env t) in
+      let simpl_t = Typ.trace "Exposing type" "" (fun _ -> true) (fun () -> expose_simpl_typ env t) in
       Printf.eprintf "Exposed typ is %s\n" (string_of_typ (replace_name None simpl_t));
       simpl_t
     | EParen (p, e) -> synth env default_typ e

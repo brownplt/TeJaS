@@ -143,5 +143,5 @@ module type JQUERY_TYPECHECKING = sig
   val disable_flows : unit -> unit
   val bind_forall_vars : env -> typ -> env * typ
   val typecheck : env -> typ option -> exp -> unit
-  val trace : string -> (exp -> 'a) -> exp -> 'a
+  val trace : string -> ('a -> bool) -> (exp -> 'a) -> exp -> 'a
 end

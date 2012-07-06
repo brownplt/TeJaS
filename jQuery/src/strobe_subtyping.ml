@@ -216,7 +216,9 @@ struct
       end
     with Invalid_parent msg -> raise (Typ_error (p, FixedString msg))
 
-  and subt (env : env) (cache : bool TPMap.t) s t : bool TPMap.t * bool = 
+  and subt env cache s t =
+    trace "STROBE_subt" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subt' env cache s t)
+  and subt' (env : env) (cache : bool TPMap.t) s t : bool TPMap.t * bool = 
     let open TypPair in
     let (|||) c thunk = if (snd c) then c else thunk (fst c) in
     let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
@@ -225,12 +227,19 @@ struct
     try incr cache_hits; (cache, TPMap.find ((* project_typs s t  *)env, (s, t)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if s = t then (cache, true)
       else if equivalent_typ env s t then cache, true
-      else
+      else match s, t with
+      | TApp(sf, sargs), TApp(tf, targs) ->
+        (cache, sf = tf) &&& (fun c -> List.fold_left2 subtype_typ_list (c, true) sargs targs)
+      | TEmbed s, TEmbed t -> cache, ExtSub.subtype env s t
+      | _ ->
+        let _ = Printf.eprintf "Not equivalent, so simplfying.\n" in
         let simpl_s = expose env (simpl_typ env s) in
         let simpl_t = expose env (simpl_typ env t) in
+        Printf.eprintf "Is %s <?: %s?\n" (string_of_typ simpl_s) (string_of_typ simpl_t);
         try (cache, TPMap.find ((* project_type simpl_s simpl_t *) env, (simpl_s, simpl_t)) cache)
         with Not_found ->
           (* Printf.printf "Checking %s against %s\n" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
+          let cache = TPMap.add (env, (s, t)) true cache in
           match simpl_s, simpl_t with
           | TUninit t', t2 -> begin match !t' with
             | None -> subt env cache (TPrim "Undef") t2
@@ -243,7 +252,10 @@ struct
           | TEmbed t1, t2 -> cache, ExtSub.subtype env t1 (Ext.embed_t t2)
           | t1, TEmbed t2 -> cache, ExtSub.subtype env (Ext.embed_t t1) t2
           | TRegex pat1, TRegex pat2 ->
-            (cache, Pat.is_subset (pat_env env) pat1 pat2)
+            Printf.eprintf "TREGEX: Is %s <?: %s?   " (Pat.pretty pat1) (Pat.pretty pat2);
+            let ret = Pat.is_subset (pat_env env) pat1 pat2 in
+            Printf.eprintf "%b\n" ret;
+            (cache, ret)
           | TUnion(_, t11, t12), t2 -> (* order matters -- left side must be split first! *)
             subt env cache t11 t2 &&& (fun c -> subt env c t12 t2)
           | t1, TUnion(_, t21, t22) ->
@@ -296,9 +308,11 @@ struct
             else 
               let args1' = L.fill (List.length args2 - List.length args1) var1 args1 in
               (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
-          | TId n1, t2 when t2 = TId n1 -> cache, true (* SA-Refl-TVar *)
+          | TId n1, t2 when t2 = TId n1 ->                Printf.eprintf "In TId1\n";
+cache, true (* SA-Refl-TVar *)
           | TId n1, _ -> (* SA-Trans-TVar *)
             (try
+               Printf.eprintf "In TId2\n";
                let (s, _) = lookup_typ env n1 in subt env cache s t
              with Not_found -> cache, false)
           (* NOT SOUND? *)
@@ -343,6 +357,8 @@ struct
     | _, _ -> false
 
   and subtype_object env cache obj1 obj2 : bool TPMap.t * bool =
+    trace "STROBE_subtype_OBJECT" "" snd2 (fun () -> subtype_object' env cache obj1 obj2)
+  and subtype_object' env cache obj1 obj2 : bool TPMap.t * bool =
     let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
     let subtype_typ_list f c x = c &&& (fun c -> f c x) in
     let lhs_absent = absent_pat obj1 in
@@ -358,9 +374,19 @@ struct
       else
         cache, true in
     let check_pat_containment () =
-      (not (Pat.is_subset (pat_env env) (possible_field_cover_pat obj2) 
-                           (cover_pat obj1))) &&
-        (Pat.is_subset (pat_env env) rhs_absent lhs_absent) in
+      try
+        (if not (Pat.is_subset (pat_env env) (possible_field_cover_pat obj2) 
+                   (cover_pat obj1)) then
+            match Pat.example (Pat.subtract (possible_field_cover_pat obj2)
+                               (cover_pat obj1)) with
+            | Some ex -> failwith ("fields on the RHS that are not on the LHS, e.g. " ^ ex ^ 
+                                      "; cover_pat obj1 = " ^ (Pat.pretty (cover_pat obj1)) ^
+                                      "; possible_pat obj1 = " ^ (Pat.pretty (possible_field_cover_pat obj1)))
+            | None -> failwith "error building counterexample for (2)");
+        (if not (Pat.is_subset (pat_env env) rhs_absent lhs_absent); 
+         then failwith "subtype_object: violated 2-2");
+        true
+      with _ -> false in
     let check_lhs_absent_overlap cache (rhs_pat, rhs_pres, rhs_prop) = 
       cache, if Pat.is_overlapped rhs_pat lhs_absent then
         match rhs_pres with

@@ -359,7 +359,8 @@ struct
       | SMult mult -> SMult (mult_help mult)
     and mult_help mult =
       Strobe.trace "JQsubst_mult_help" 
-      (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_mult mult ^ "/" ^ x ^ "]") (fun () -> mult_help' mult)
+        (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_mult mult ^ "/" ^ x ^ "]") 
+        (fun _ -> true) (fun () -> mult_help' mult)
     and mult_help' mult : multiplicity = match mult with
       | MPlain typ -> plain_help typ
       | MId y -> if x = y then (match s with SMult m -> m | STyp _ -> mult) else mult
@@ -379,7 +380,8 @@ struct
       | _ -> MPlain (typ_help typ)
     and typ_help typ =
       Strobe.trace "JQsubst_typ_help" 
-        (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_typ typ ^ "/" ^ x ^ "]") (fun () -> typ_help' typ)
+        (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_typ typ ^ "/" ^ x ^ "]")
+        (fun _ -> true) (fun () -> typ_help' typ)
     and typ_help' typ : typ = match typ with
       | TStrobe tstrobe -> begin
         let subst_t = match s with
@@ -616,19 +618,6 @@ struct
         raise (Invalid_argument msg)
     end
     | _ -> typ
-
-
-  (* REDEFINING THESE TO INCLUDE CANONICALIZATION *)
-  let subst x s sigma = canonical_sigma (subst x s sigma)
-  let typ_sig_subst x s typ = match subst x s (STyp typ) with STyp t -> t | _ -> failwith "impossible"
-  let typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> t | _ -> failwith "impossible"
-  let typ_mult_subst x t m = match subst x (STyp t) (SMult m) with SMult m -> m | _ -> failwith "impossible"
-  let mult_sig_subst x s mult = match subst x s (SMult mult) with SMult m -> m | _ -> failwith "impossible"
-  let mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> t | _ -> failwith "impossible"
-  let mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> m | _ -> failwith "impossible"
-  let typ_subst = typ_typ_subst
-
-
 end
 
 module MakeModule

@@ -81,7 +81,7 @@ struct
           add_id_bindings free_ids acc) free_ids acc' in
         let free_ids' = IdMap.filter (fun id _ -> IdMap.mem id acc) free_ids' in
         helper free_ids' acc' in
-    Strobe.trace "Projecting free vars of " s (fun () -> helper free_ids IdMap.empty)
+    Strobe.trace "Projecting free vars of " s (fun _ -> true) (fun () -> helper free_ids IdMap.empty)
   let project_mult_typ m t (env : env) = IdMap.fold IdMap.add (project (SMult m) env) (project (STyp t) env)
   let project_typs t1 t2 (env : env) = IdMap.fold IdMap.add (project (STyp t1) env) (project (STyp t2) env)
   let project_mults m1 m2 (env : env) = IdMap.fold IdMap.add (project (SMult m1) env) (project (SMult m2) env)
@@ -105,14 +105,16 @@ struct
     (* ************************** *)
     | _ -> (cache, false)
 
-  and subtype_typ lax (env : env) cache t1 t2 : (bool SPMap.t * bool) =
+  and subtype_typ lax env cache s t =
+    Strobe.trace "JQUERY_subtype_typ" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subtype_typ' lax env cache s t)
+  and subtype_typ' lax (env : env) cache t1 t2 : (bool SPMap.t * bool) =
     let subtype_sigma = subtype_sigma lax in
     let subtype_typ = subtype_typ lax in
     let open SigmaPair in
     let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
     let subtype_sigma_list c t1 t2 = c &&& (fun c -> subtype_sigma env c t1 t2) in
-    let addToCache (cache, ret) = (SPMap.add (project_typs t1 t2 env, STyps (t1, t2)) ret cache, ret) in
-    try incr cache_hits; (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
+    let addToCache (cache, ret) = (SPMap.add ((* project_typs t1 t2 *) env, STyps (t1, t2)) ret cache, ret) in
+    try incr cache_hits; (cache, SPMap.find ((* project_typs t1 t2 *) env, STyps (t1, t2)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
       else match t1, t2 with
       | TStrobe t1, TStrobe t2 -> cache, StrobeSub.subtype env t1 t2

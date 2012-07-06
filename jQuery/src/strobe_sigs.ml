@@ -141,7 +141,7 @@ module type STROBE_ACTIONS = sig
 
   val typ_assoc : env -> typ -> typ -> typ IdMap.t
 
-  val trace : string -> string -> (unit -> 'a) -> 'a
+  val trace : string -> string -> ('a -> bool) -> (unit -> 'a) -> 'a
 
   (* val merge : typ -> obj_typ -> typ *)
 
@@ -188,5 +188,5 @@ module type STROBE_TYPECHECKING = sig
   val disable_flows : unit -> unit
   val bind_forall_vars : env -> typ -> env * typ
   val typecheck : env -> extTyp option -> exp -> unit
-  val trace : string -> (exp -> 'a) -> exp -> 'a
+  val trace : string -> ('a -> bool) -> (exp -> 'a) -> exp -> 'a
 end

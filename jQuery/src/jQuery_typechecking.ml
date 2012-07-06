@@ -43,7 +43,7 @@ struct
   open JQ
 
 
-  let trace msg thunk exp = StrobeTC.trace msg thunk exp
+  let trace msg success thunk exp = StrobeTC.trace msg success thunk exp
     
   let bind_sigma x s e = match s with
     | STyp t -> Env.bind_typ_id x t e
@@ -58,7 +58,7 @@ struct
   (* need () because otherwise this is a value, not a function, and ML gets angry at that *)
 
   let rec check (env : env) (default_typ : typ option) (exp : exp) (typ : typ) : unit =
-    try trace "Check" (fun exp -> check' env default_typ exp typ) exp
+    try trace "Check" (fun _ -> true) (fun exp -> check' env default_typ exp typ) exp
     (* typ_mismatch normally records the error and proceeds. If we're in a
        [with_typ_exns] context, it will re-raise the error. *)
     with Strobe.Typ_error (p, s) -> Strobe.typ_mismatch p s
@@ -69,7 +69,7 @@ struct
     | _ -> Strobe.typ_mismatch (Exp.pos exp) (Strobe.FixedString "JQuery.check NYI")
 
   and synth (env : env) (default_typ : typ option) (exp : exp) : typ = 
-    trace "Synth" (synth' env default_typ) exp
+    trace "Synth" (fun _ -> true) (synth' env default_typ) exp
   and synth' env default_typ exp : typ =
     embed_t (StrobeTC.synth env default_typ exp)
 

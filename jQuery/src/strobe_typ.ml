@@ -463,13 +463,13 @@ struct
   exception Kind_error of string
 
   let depth = ref 0
-  let trace (prompt : string) (msg : string) (thunk : unit -> 'a) = (* thunk () *)
+  let trace (prompt : string) (msg : string) (success : 'a -> bool) (thunk : unit -> 'a) = (* thunk () *)
   Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg;
   depth := !depth + 1;
   try
     let ret = thunk () in
     depth := !depth - 1;
-    Printf.eprintf "%s<--%s %s\n" (String.make (!depth) ' ') prompt msg;
+    Printf.eprintf "%s<%s-%s %s\n" (String.make (!depth) ' ') (if success ret then "-" else "X") prompt msg;
     ret
   with e ->
     depth := !depth - 1;
@@ -544,6 +544,7 @@ struct
   let rec typ_subst x s outer typ = 
     trace "STROBEtyp_subst" 
       (Pretty.simpl_typ typ ^ "[" ^ Pretty.simpl_typ (replace_name None s) ^ "/" ^ (match x with Some x -> x | None -> "<none>") ^ "]")
+      (fun _ -> true)
       (fun () -> typ_subst' x s outer typ)
   and typ_subst' x s outer typ = match typ with
     | TEmbed t -> Ext.extract_t (outer t)

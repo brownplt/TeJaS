@@ -9,6 +9,71 @@ module JQ = JQueryImpl
 module S = StrobeImpl
 
 
+module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
+module TJSEnv = Typedjs_env.Make (StrobeMod) (Strobe_kind) (Desugar)
+module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (TJSEnv) (Desugar)
+module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
+                        with type typ = JQueryImpl.typ
+  with type kind = JQueryImpl.kind
+  with type multiplicity = JQueryImpl.multiplicity
+  with type sigma = JQueryImpl.sigma
+  with type binding = JQueryImpl.binding
+  with type env = JQueryImpl.env
+  with type baseTyp = JQueryImpl.baseTyp
+  with type baseKind = JQueryImpl.baseKind
+  with type baseBinding = JQueryImpl.baseBinding) =
+  JQuery_subtyping.MakeActions (StrobeSub) (JQueryMod) (JQEnv)
+and StrobeSub : (Strobe_sigs.STROBE_SUBTYPING
+                 with type typ = StrobeImpl.typ
+  with type kind = StrobeImpl.kind
+  with type binding = StrobeImpl.binding
+  with type extTyp = StrobeImpl.extTyp
+  with type extKind = StrobeImpl.extKind
+  with type extBinding = StrobeImpl.extBinding
+  with type pat = StrobeImpl.pat
+  with type obj_typ = StrobeImpl.obj_typ
+  with type presence = StrobeImpl.presence
+  with type env = StrobeImpl.env) =
+  Strobe_subtyping.MakeActions (StrobeMod) (JQuerySub) (JQEnv)
+
+module DummySemicfa = struct
+  type env = JQEnv.env
+  type exp = Exp.exp
+  let semicfa _ _ e = e
+end
+module DummyStatic = struct
+  type typ = JQEnv.typ
+  type env = JQEnv.env
+  let static _ _ t = t
+end
+
+module rec StrobeTC : (Strobe_sigs.STROBE_TYPECHECKING
+                with type typ = StrobeImpl.typ
+  with type kind = StrobeImpl.kind
+  with type binding = StrobeImpl.binding
+  with type extTyp = StrobeImpl.extTyp
+  with type extKind = StrobeImpl.extKind
+  with type extBinding = StrobeImpl.extBinding
+  with type pat = StrobeImpl.pat
+  with type obj_typ = StrobeImpl.obj_typ
+  with type presence = StrobeImpl.presence
+  with type env = StrobeImpl.env
+  with type exp = Exp.exp) =
+  Strobe_typechecking.Make (StrobeMod) (Exp) (JQEnv) (StrobeSub) (JQuery_kind) (DummySemicfa) (DummyStatic) (JQueryTC)
+and JQueryTC : (JQuery_sigs.JQUERY_TYPECHECKING
+                       with type typ = JQueryImpl.typ
+  with type kind = JQueryImpl.kind
+  with type multiplicity = JQueryImpl.multiplicity
+  with type sigma = JQueryImpl.sigma
+  with type binding = JQueryImpl.binding
+  with type env = JQueryImpl.env
+  with type baseTyp = JQueryImpl.baseTyp
+  with type baseKind = JQueryImpl.baseKind
+  with type baseBinding = JQueryImpl.baseBinding
+  with type exp = Exp.exp) =
+  JQuery_typechecking.Make (JQueryMod) (Exp) (JQEnv) (JQuerySub) (JQuery_kind) (StrobeTC)
+
+
 
 type arith = 
   | Var of int
@@ -265,15 +330,53 @@ let test6 n =
     Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels n);
   in test_harness (fun _ -> test6 n)
 
+let test7 () =
+  let helper () =
+    let types = ":: type MyDOM = #{ name : Str }; 
+type aDom = #{ name : /a/ }; 
+
+type jQ =
+  typrec jq :: M<*> => * .
+    typlambda m :: M<*> .
+      #{ here : 'jq<1+<'m>> };
+
+type x = jQ<1<aDom>>;
+type y = 'jQ<1+<MyDOM>>;
+" in
+    let decls = ReadTyps.new_decls [Pos.dummy, types] in
+    let open Typedjs_writtyp.WritTyp in
+    let env = IdMap.empty in
+    let rec helper recIds env d = match d with
+      | EnvType(p, x, t) -> 
+        let t' = Desugar.desugar_typ p t in
+        (* let t'' = squash env t' in *)
+        (JQEnv.bind_rec_typ_id x recIds (JQuery.STyp (JQueryMod.replace_name (Some x) t')) env)
+      | ObjectTrio _ -> JQEnv.extend_global_env env [d]
+      | RecBind binds ->
+        let ids = List.concat (List.map (fun b -> match b with
+          | EnvBind (_, x, _) -> [x]
+          | EnvType (_, x, _) -> [x]
+          | ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
+          | EnvPrim _
+          | RecBind _ -> []) binds) in
+        List.fold_left (helper ids) env binds
+      | _ -> env in
+    let env = List.fold_left (helper []) env decls in
+    Printf.eprintf "%s\n" (FormatExt.to_string JQEnv.print_env env);
+    Printf.eprintf "Subtyping success: %b\n" 
+      (JQuerySub.subtype env (JQ.TStrobe (S.TId "x")) (JQ.TStrobe (S.TId "y")))
+  in test_harness helper
+
 let run_tests () =
   try
-    Random.self_init();
-    test1 500;
-    test2 500;
-    test3 100;
-    (* test4 (); *)
-    test5 ();
-    test6 1000;
+    (* Random.self_init(); *)
+    (* test1 500; *)
+    (* test2 500; *)
+    (* test3 100; *)
+    (* (\* test4 (); *\) *)
+    (* test5 (); *)
+    (* test6 1000; *)
+    test7 ();
     0
   with _ -> 2
 ;;
