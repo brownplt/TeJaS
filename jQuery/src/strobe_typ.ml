@@ -464,17 +464,17 @@ struct
 
   let depth = ref 0
   let trace (prompt : string) (msg : string) (success : 'a -> bool) (thunk : unit -> 'a) = (* thunk () *)
-  Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg;
-  depth := !depth + 1;
-  try
-    let ret = thunk () in
-    depth := !depth - 1;
-    Printf.eprintf "%s<%s-%s %s\n" (String.make (!depth) ' ') (if success ret then "-" else "X") prompt msg;
-    ret
-  with e ->
-    depth := !depth - 1;
-    Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') prompt msg;
-    raise e
+    Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg;
+    depth := !depth + 1;
+    try
+      let ret = thunk () in
+      depth := !depth - 1;
+      Printf.eprintf "%s<%s-%s %s\n" (String.make (!depth) ' ') (if success ret then "-" else "X") prompt msg;
+      ret
+    with e ->
+      depth := !depth - 1;
+      Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') prompt msg;
+      raise e
 
 
 
@@ -571,7 +571,7 @@ struct
     | TTop -> TTop
     | TBot -> TBot
     | TLambda (n, yks, t) ->
-      Printf.eprintf "STROBEtyp_subst %s->%s in %s\n" (match x with Some x -> x | None -> "<none>") (string_of_typ s) (string_of_typ typ);
+      (* Printf.eprintf "STROBEtyp_subst %s->%s in %s\n" (match x with Some x -> x | None -> "<none>") (string_of_typ s) (string_of_typ typ); *)
       if List.exists (fun (y, _) -> Some y = x) yks then typ
       else
         let (ys, ks) = List.split yks in

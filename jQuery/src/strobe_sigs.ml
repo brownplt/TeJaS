@@ -158,6 +158,9 @@ module type STROBE_SUBTYPING = sig
   val typ_union : env -> typ -> typ -> typ
   val typ_intersect : env -> typ -> typ -> typ
 
+  val num_cache_hits : unit -> int
+  val num_cache_misses : unit -> int
+  val print_cache : string -> FormatExt.printer
 end
 
 module type STROBE_MODULE = sig

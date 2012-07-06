@@ -66,16 +66,16 @@ struct
             | BStrobe (Strobe.BTypBound(t, _))
             | BStrobe (Strobe.BLabelTyp t) -> 
               let free_ids = JQ.free_ids (embed_t t) in
-              Printf.eprintf "New free_ids for %s are %s\n" (string_of_typ (embed_t t))
-                (String.concat "," (IdSetExt.to_list free_ids));
+              (* Printf.eprintf "New free_ids for %s are %s\n" (string_of_typ (embed_t t)) *)
+              (*   (String.concat "," (IdSetExt.to_list free_ids)); *)
               IdSet.union ids free_ids
             | BStrobe (Strobe.BEmbed _) -> ids
             | BStrobe (Strobe.BTyvar _) -> ids
             | BMultBound(m, _) -> 
               let (free_t, free_m) = JQ.free_sigma_ids (SMult m) in 
               let free_ids = IdSet.union free_t free_m in
-              Printf.eprintf "New free_ids for %s are %s\n" (string_of_mult m)
-                (String.concat "," (IdSetExt.to_list free_ids));
+              (* Printf.eprintf "New free_ids for %s are %s\n" (string_of_mult m) *)
+              (*   (String.concat "," (IdSetExt.to_list free_ids)); *)
               IdSet.union ids free_ids)
             IdSet.empty bs in
           add_id_bindings free_ids acc) free_ids acc' in
@@ -89,6 +89,8 @@ struct
 
   let cache_hits = ref 0
   let cache_misses = ref 0
+  let num_cache_hits () = !cache_hits
+  let num_cache_misses () = !cache_misses
 
   let rec subtype_sigma lax (env : env) cache s1 s2 = 
     let open SigmaPair in
@@ -113,8 +115,8 @@ struct
     let open SigmaPair in
     let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
     let subtype_sigma_list c t1 t2 = c &&& (fun c -> subtype_sigma env c t1 t2) in
-    let addToCache (cache, ret) = (SPMap.add ((* project_typs t1 t2 *) env, STyps (t1, t2)) ret cache, ret) in
-    try incr cache_hits; (cache, SPMap.find ((* project_typs t1 t2 *) env, STyps (t1, t2)) cache)
+    let addToCache (cache, ret) = (SPMap.add (project_typs t1 t2 env, STyps (t1, t2)) ret cache, ret) in
+    try incr cache_hits; (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
       else match t1, t2 with
       | TStrobe t1, TStrobe t2 -> cache, StrobeSub.subtype env t1 t2
@@ -182,7 +184,7 @@ struct
 
   and cache : bool SPMap.t ref = ref SPMap.empty
 
-  let print_cache lbl print_env =
+  let print_cache lbl =
     let open SigmaPair in
     let open Format in
     let open FormatExt in
@@ -191,15 +193,15 @@ struct
       (fun (env, sp) -> match sp with
       | STyps (t1, t2) -> 
         pair
-          (label_braces "Env: " cut (print_env env))
+          (label_braces "Env: " cut [Env.print_env env])
           (label_pair "STyps" (JQ.Pretty.typ t1) (JQ.Pretty.typ t2))
       | SMults (m1, m2) -> 
         pair
-          (label_braces "Env: " cut (print_env env))
+          (label_braces "Env: " cut [Env.print_env env])
           (label_pair "SMults" (JQ.Pretty.multiplicity m1) (JQ.Pretty.multiplicity m2))
       | SMultTyp (m1, t2) -> 
         pair
-          (label_braces "Env: " cut (print_env env))
+          (label_braces "Env: " cut [Env.print_env env])
           (label_pair "SMultTyp" (JQ.Pretty.multiplicity m1) (JQ.Pretty.typ t2)))
       (fun b -> text (string_of_bool b))
       !cache

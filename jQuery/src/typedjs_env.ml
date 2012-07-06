@@ -201,50 +201,11 @@ struct
           | W.ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
           | W.EnvPrim _
           | W.RecBind _ -> []) binds) in
-        Printf.eprintf "Recursively including ids: ";
-        List.iter (fun x -> Printf.eprintf "%s " x) ids;
+        (* Printf.eprintf "Recursively including ids: "; *)
+        (* List.iter (fun x -> Printf.eprintf "%s " x) ids; *)
         List.fold_left (add ids) env binds
     in List.fold_left (add []) env lst
 
   let extend_global_env env lst = failwith "STROBE: Extend_global_env Not implemented"
   let set_global_object env cname = failwith "STROBE: Set_global_object Not implemented"
-
-(* let apply_subst subst typ = IdMap.fold typ_subst subst typ *)
-
-
-(* let tid_env env = env.typ_ids *)
-
-(* let typid_env env = IdMap.map (fun (t, _) -> t) env.typ_ids *)
-
-
-(* let extend_env (trm_vars : typ IdMap.t) (typ_vars : (typ * kind) IdMap.t) env = *)
-(*   let merge_fn toStr x left right = match (left, right) with *)
-(*     | Some t1, Some t2 -> failwith (sprintf "rebinding %s in the environment: currently has type %s and trying to add type %s" x (toStr t1) (toStr t2)) *)
-(*     | None, Some t *)
-(*     | Some t, None -> Some t *)
-(*     | None, None -> failwith "impossible case in extend_env" in *)
-(*   { env with id_typs = IdMap.merge (merge_fn string_of_typ) env.id_typs trm_vars; *)
-(*     typ_ids = IdMap.merge (merge_fn (fun (t, _) -> string_of_typ t)) env.typ_ids typ_vars } *)
-
-(* let verify_env env : unit = *)
-(*   let errors = ref false in *)
-(*   let kinding_env = IdMap.map (fun (_, k) -> k) env.typ_ids in *)
-(*   let f x (t, k) = *)
-(*     let k' = Sb_kinding.kind_check kinding_env [] t in *)
-(*     if k = k' then *)
-(*       () *)
-(*     else *)
-(*       begin *)
-(*         printf "%s declared kind is %s, but calculated kind is %s.\n\ *)
-(*                 Type of %s is:\n%s\n" *)
-(*           x (string_of_kind k) (string_of_kind k') x (string_of_typ t); *)
-(*         errors := true *)
-(*       end in *)
-(*   IdMap.iter f env.typ_ids *)
-(* (\*  *)
-(*      if !errors then *)
-(*      raise (Invalid_argument "ill-formed environment") *)
-(*   *\) *)
-
-(* let kind_check env (typ : typ) : kind  =  kind_check env [] typ *)
 end

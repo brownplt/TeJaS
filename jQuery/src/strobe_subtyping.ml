@@ -157,6 +157,8 @@ struct
 
   let cache_hits = ref 0
   let cache_misses = ref 0
+  let num_cache_hits () = !cache_hits
+  let num_cache_misses () = !cache_misses
 
   let rec simpl_lookup p (env : env) (t : typ) (pat : pat) : typ =
     (* TODO: it's okay to overlap with a maybe, but not a hidden field;
@@ -232,10 +234,10 @@ struct
         (cache, sf = tf) &&& (fun c -> List.fold_left2 subtype_typ_list (c, true) sargs targs)
       | TEmbed s, TEmbed t -> cache, ExtSub.subtype env s t
       | _ ->
-        let _ = Printf.eprintf "Not equivalent, so simplfying.\n" in
+        (* let _ = Printf.eprintf "Not equivalent, so simplfying.\n" in *)
         let simpl_s = expose env (simpl_typ env s) in
         let simpl_t = expose env (simpl_typ env t) in
-        Printf.eprintf "Is %s <?: %s?\n" (string_of_typ simpl_s) (string_of_typ simpl_t);
+        (* Printf.eprintf "Is %s <?: %s?\n" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
         try (cache, TPMap.find ((* project_type simpl_s simpl_t *) env, (simpl_s, simpl_t)) cache)
         with Not_found ->
           (* Printf.printf "Checking %s against %s\n" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
@@ -252,9 +254,9 @@ struct
           | TEmbed t1, t2 -> cache, ExtSub.subtype env t1 (Ext.embed_t t2)
           | t1, TEmbed t2 -> cache, ExtSub.subtype env (Ext.embed_t t1) t2
           | TRegex pat1, TRegex pat2 ->
-            Printf.eprintf "TREGEX: Is %s <?: %s?   " (Pat.pretty pat1) (Pat.pretty pat2);
+            (* Printf.eprintf "TREGEX: Is %s <?: %s?   " (Pat.pretty pat1) (Pat.pretty pat2); *)
             let ret = Pat.is_subset (pat_env env) pat1 pat2 in
-            Printf.eprintf "%b\n" ret;
+            (* Printf.eprintf "%b\n" ret; *)
             (cache, ret)
           | TUnion(_, t11, t12), t2 -> (* order matters -- left side must be split first! *)
             subt env cache t11 t2 &&& (fun c -> subt env c t12 t2)
@@ -308,11 +310,9 @@ struct
             else 
               let args1' = L.fill (List.length args2 - List.length args1) var1 args1 in
               (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
-          | TId n1, t2 when t2 = TId n1 ->                Printf.eprintf "In TId1\n";
-cache, true (* SA-Refl-TVar *)
+          | TId n1, t2 when t2 = TId n1 -> cache, true (* SA-Refl-TVar *)
           | TId n1, _ -> (* SA-Trans-TVar *)
             (try
-               Printf.eprintf "In TId2\n";
                let (s, _) = lookup_typ env n1 in subt env cache s t
              with Not_found -> cache, false)
           (* NOT SOUND? *)
@@ -415,6 +415,19 @@ cache, true (* SA-Refl-TVar *)
       | Invalid_argument _ -> false (* unequal lengths *)
 
   and cache : bool TPMap.t ref = ref TPMap.empty 
+  and print_cache lbl =
+    let open TypPair in
+    let open Format in
+    let open FormatExt in
+    let cut fmt = Format.pp_print_cut fmt () in
+    TPMapExt.p_map lbl cut
+      (fun (env, (t1, t2)) -> 
+        pair
+          (label_braces "Env: " cut [Env.print_env env])
+          (pair (Pretty.typ t1) (Pretty.typ t2)))
+      (fun b -> text (string_of_bool b))
+      !cache
+
   and subtype env s t = 
     let (c, r) = subt env !cache s t in
     cache := c;

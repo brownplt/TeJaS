@@ -390,10 +390,10 @@ struct
         in unwrap_t subst_t
       end
       | TApp(f, args) -> 
-        Printf.eprintf "Substituting %s->%s in %s\n" x (string_of_sigma s) (string_of_typ typ);
+        (* Printf.eprintf "Substituting %s->%s in %s\n" x (string_of_sigma s) (string_of_typ typ); *)
         TApp(typ_help f, List.map sigma_help args)
       | TLambda (n, yks, t) ->
-        Printf.eprintf "JQTLambda %s\n" (string_of_typ typ);
+        (* Printf.eprintf "JQTLambda %s\n" (string_of_typ typ); *)
         if List.exists (fun (y, _) -> y = x) yks then typ
         else
           let (ys, ks) = List.split yks in
@@ -409,19 +409,19 @@ struct
       | TDom (name, t, sel) -> TDom(name, typ_help t, sel)
     in sigma_help sigma
 
-  let typ_sig_subst x s typ = match subst x s (STyp typ) with STyp t -> t | _ -> failwith "impossible"
-  let typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> t | _ -> failwith "impossible"
-  let typ_mult_subst x t m = match subst x (STyp t) (SMult m) with SMult m -> m | _ -> failwith "impossible"
-  let mult_sig_subst x s mult = match subst x s (SMult mult) with SMult m -> m | _ -> failwith "impossible"
-  let mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> t | _ -> failwith "impossible"
-  let mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> m | _ -> failwith "impossible"
-  let typ_subst = typ_typ_subst
+  and typ_sig_subst x s typ = match subst x s (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible"
+  and typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible"
+  and typ_mult_subst x t m = match subst x (STyp t) (SMult m) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible"
+  and mult_sig_subst x s mult = match subst x s (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible"
+  and mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> canonical_type t | _ -> failwith "impossible"
+  and mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible"
+  and typ_subst x t typ = typ_typ_subst x t typ
 
 
 
   (* simple structural equivalence -- e.g. up to permutation of parts of Union or Inter or Sum
    * and can be extended to objects later... *)
-  let rec equivalent_sigma (env : env) s1 s2 =
+  and equivalent_sigma (env : env) s1 s2 =
     match s1, s2 with
     | STyp t1, STyp t2 -> equivalent_typ env t1 t2
     | SMult m1, SMult m2 -> equivalent_multiplicity env m1 m2
@@ -472,7 +472,7 @@ struct
     | _ -> false
 
   (* canonical forms *)
-  let rec canonical_sigma s = match s with
+  and canonical_sigma s = match s with
     | STyp t -> STyp (canonical_type t)
     | SMult m -> SMult (canonical_multiplicity m)
 

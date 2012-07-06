@@ -334,6 +334,8 @@ let test7 () =
   let helper () =
     let types = ":: type MyDOM = #{ name : Str }; 
 type aDom = #{ name : /a/ }; 
+type bDom = #{ name : /b/ }; 
+type abDom = #{ name : /a|b/ }; 
 
 type jQ =
   typrec jq :: M<*> => * .
@@ -341,7 +343,7 @@ type jQ =
       #{ here : 'jq<1+<'m>> };
 
 type x = jQ<1<aDom>>;
-type y = 'jQ<1+<MyDOM>>;
+type y = jQ<1+<abDom>>;
 " in
     let decls = ReadTyps.new_decls [Pos.dummy, types] in
     let open Typedjs_writtyp.WritTyp in

@@ -93,7 +93,6 @@ struct
           if k_arg = extract_k k_actual then
             ()
           else begin
-            Printf.eprintf "Failing here";
             kind_mismatch s_arg k_actual (embed_k k_arg)
           end in
         match extract_k (kind_check_typ env recIds t_op) with

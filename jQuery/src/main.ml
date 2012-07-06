@@ -350,15 +350,29 @@ let action_pretypecheck () : int =
   Exp.Pretty.exp typedjs std_formatter;
   0
 
+let do_show_cache = ref false
+
+let show_cache () = do_show_cache := true
+
 let action_tc () : int = timefn "Typechecking" (fun () ->
   let (env, asserted_js) = actual_data () in
   if (!do_print_env) then print_env env;
-  let _ = JQueryTC.typecheck env !default_typ asserted_js in
-  if Strobe.get_num_typ_errors () > 0 then
+  JQueryTC.typecheck env !default_typ asserted_js;
+  if !do_show_cache then begin
+    Pervasives.flush stdout;
+    Pervasives.flush stderr;
+    Printf.printf "Cache hits:   %d, %d\n" (JQuerySub.num_cache_hits ()) (StrobeSub.num_cache_hits ());
+    Printf.printf "Cache misses: %d, %d\n" (JQuerySub.num_cache_misses ()) (StrobeSub.num_cache_misses ());
+    JQuerySub.print_cache "JQuery Cache is: " Format.std_formatter; Format.print_newline();
+    StrobeSub.print_cache "Strobe Cache is: " Format.std_formatter; Format.print_newline()
+  end;
+  if Strobe.get_num_typ_errors () > 0 then begin
+    Printf.eprintf "Typechecking failed\n";
     2
-  else
-  (* Printf.printf "Typechecking not yet implemented, darn it!\n"; *)
+  end else begin
+    Printf.eprintf "Typechecking succeeded\n";
     0
+  end
 ) ()
 
 
@@ -394,6 +408,8 @@ let main () : unit =
   Arg.parse
     [ ("-tc", Arg.Unit (set_action action_tc),
        "type-check the source program (default when no options are given)");
+      ("-print-cache", Arg.Unit show_cache,
+       "Print cache results after typechecking");
       ("-stdin", Arg.Unit (fun () -> set_cin stdin "<stdin>"),
        "read from stdin instead of a file");
       ("-env", Arg.String (fun s -> load_env s),

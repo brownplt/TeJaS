@@ -112,6 +112,9 @@ module type JQUERY_SUBTYPING = sig
   val subtype_typ : bool -> env -> typ -> typ -> bool
   val subtype_mult : bool -> env -> multiplicity -> multiplicity -> bool
   val subtype : env -> typ -> typ -> bool
+  val num_cache_hits : unit -> int
+  val num_cache_misses : unit -> int
+  val print_cache : string -> FormatExt.printer
 end
 
 module type JQUERY_KINDING = sig

@@ -232,8 +232,8 @@ struct
           | ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
           | EnvPrim _
           | RecBind _ -> []) binds) in
-        Printf.eprintf "Recursively including ids: ";
-        List.iter (fun x -> Printf.eprintf "%s " x) ids;
+        (* Printf.eprintf "Recursively including ids: "; *)
+        (* List.iter (fun x -> Printf.eprintf "%s " x) ids; *)
         List.fold_left (add ids) env binds
     in List.fold_left (add []) env lst
 
