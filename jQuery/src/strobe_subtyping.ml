@@ -229,10 +229,13 @@ struct
     try incr cache_hits; (cache, TPMap.find ((* project_typs s t  *)env, (s, t)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if s = t then (cache, true)
       else if equivalent_typ env s t then cache, true
-      else match s, t with
-      | TApp(sf, sargs), TApp(tf, targs) ->
-        (cache, sf = tf) &&& (fun c -> List.fold_left2 subtype_typ_list (c, true) sargs targs)
-      | TEmbed s, TEmbed t -> cache, ExtSub.subtype env s t
+      else match Ext.unwrap_bt s, Ext.unwrap_bt t with
+      | TApp(sf, sargs), TApp(tf, targs) when Ext.unwrap_bt sf = Ext.unwrap_bt tf ->
+        (* if the two types are type applications of the same type constructor,
+           check if all arguments are covariantly subtyped. *)
+        List.fold_left2 subtype_typ_list (cache, true) sargs targs
+      | TEmbed s, t -> cache, ExtSub.subtype env s (Ext.embed_t t)
+      | s, TEmbed t -> cache, ExtSub.subtype env (Ext.embed_t s) t
       | _ ->
         (* let _ = Printf.eprintf "Not equivalent, so simplfying.\n" in *)
         let simpl_s = expose env (simpl_typ env s) in
