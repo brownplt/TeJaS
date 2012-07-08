@@ -10,8 +10,8 @@ module S = StrobeImpl
 module SimpleTests = Simple_tests
 
 module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
-module TJSEnv = Typedjs_env.Make (StrobeMod) (Strobe_kind) (Desugar)
-module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (TJSEnv) (Desugar)
+module SEnv = Strobe_env.Make (StrobeMod) (Strobe_kind) (Desugar)
+module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (SEnv) (Desugar)
 module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
                         with type typ = JQueryImpl.typ
   with type kind = JQueryImpl.kind
