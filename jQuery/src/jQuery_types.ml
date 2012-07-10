@@ -92,6 +92,55 @@ struct
   let rec unwrap_b b =
     match b with BStrobe (Strobe.BEmbed b) -> unwrap_b b | _ -> b
 
+
+  let rec wf_jtyp (t : typ) : bool = match (unwrap_t t) with
+    | TForall (_, id, s, t) -> wf_sigma s && wf_jtyp t
+    | TLambda (_, _, t) -> wf_jtyp t
+    | TApp (t, sl) -> wf_jtyp t && List.for_all wf_sigma sl
+    | TDom (_, t, _) -> wf_jtyp t
+    | TStrobe b -> wf_bt b
+  and wf_mult (m : multiplicity) : bool = match m with
+    | MPlain t -> wf_jtyp t
+    | MId _ -> true
+    | MZero m
+    | MOne m
+    | MZeroOne m
+    | MOnePlus m
+    | MZeroPlus m -> wf_mult m
+    | MSum (m1, m2) -> wf_mult m1 && wf_mult m2
+  and wf_sigma (s : sigma) : bool = match s with
+    | STyp t -> wf_jtyp t
+    | SMult m -> wf_mult m
+  and wf_bt (b : baseTyp) : bool = match (unwrap_bt b) with
+    | Strobe.TPrim _ -> true
+    | Strobe.TUnion (_, b1, b2)
+    | Strobe.TInter (_, b1, b2) -> wf_bt b1 && wf_bt b2
+    | Strobe.TArrow (bl, None, b) -> List.for_all wf_bt bl && wf_bt b
+    | Strobe.TArrow (bl, Some bopt, b) -> List.for_all wf_bt bl && wf_bt bopt && wf_bt b
+    | Strobe.TThis bt -> wf_bt bt
+    | Strobe.TObject objt -> wf_obj_typ objt
+    | Strobe.TWith (bt, objt) -> wf_bt bt && wf_obj_typ objt
+    | Strobe.TRegex _ -> true
+    | Strobe.TRef (_, bt)
+    | Strobe.TSource (_, bt)
+    | Strobe.TSink (_, bt) -> wf_bt bt
+    | Strobe.TTop
+    | Strobe.TBot -> true
+    | Strobe.TForall (_, _, bt1, bt2) -> wf_bt bt1 && wf_bt bt2
+    | Strobe.TId _ -> true
+    | Strobe.TRec (_, _, bt) -> wf_bt bt
+    | Strobe.TLambda (_, _, bt) -> wf_bt bt
+    | Strobe.TApp (bt, bts) -> wf_bt bt && List.for_all wf_bt bts
+    | Strobe.TFix (_, _, _, bt) -> wf_bt bt
+    | Strobe.TUninit r -> (match !r with None -> true | Some bt -> wf_bt bt)
+    | Strobe.TEmbed _ -> false
+  and wf_obj_typ (objt : Strobe.obj_typ) : bool = 
+    let typs = List.map thd3 (Strobe.fields objt) in
+    List.for_all wf_bt typs
+    
+
+  let well_formed = wf_jtyp
+
   let num_typ_errors = ref 0
 
   let error_on_mismatch = ref false

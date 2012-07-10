@@ -5,7 +5,7 @@ open Prelude
 open SetExt
 module TestRealCSS = Css.TestRealCSS
 open JQuery_syntax
-module JQ = JQueryImpl
+module JQ = JQuery
 module S = StrobeImpl
 
 
@@ -369,6 +369,50 @@ type y = jQ<1+<abDom>>;
       (JQuerySub.subtype env (JQ.TStrobe (S.TId "x")) (JQ.TStrobe (S.TId "y")))
   in test_harness helper
 
+let well_formed_test () =
+  let check_well_formed t b = match (JQ.well_formed t, b) with
+    | (true, true)
+    | (false, false) -> Printf.eprintf "well-form checking passed\n"
+    | (true, false) -> 
+      Printf.eprintf "well-form checking FAILED: ";
+      (JQ.Pretty.typ t Format.std_formatter);
+      Printf.eprintf "expected to be NON-well-formed\n" 
+    | (false, true) -> Printf.eprintf "well-form checking FAILED: ";
+      (JQ.Pretty.typ t Format.std_formatter);
+      Printf.eprintf " expected to be well-formed\n" in
+  let s2j s = JQ.TStrobe s in
+  let j2s j = Strobe.TEmbed j in
+  let top = s2j (Strobe.TTop) in
+  let prim = s2j (Strobe.TPrim "jq") in
+  let t1 = s2j (j2s top) in
+  let t2 = s2j (j2s t1) in
+  let t3 = s2j (Strobe.TUnion (None, Strobe.TTop, j2s t1)) in
+  let t4 = s2j (Strobe.TThis Strobe.TTop) in
+  let t5 = JQ.TApp (prim, [JQ.SMult (JQ.MSum (JQ.MOne (JQ.MPlain (s2j Strobe.TBot)), JQ.MZeroPlus (JQ.MPlain (s2j Strobe.TTop))))]) in
+  let t6 = JQ.TApp (prim, [JQ.SMult (JQ.MSum (JQ.MOne (JQ.MPlain (s2j Strobe.TBot)), JQ.MZeroPlus (JQ.MPlain (s2j Strobe.TTop)))); JQ.STyp (s2j (j2s (s2j (Strobe.TId "abc"))))]) in
+  let t7 = JQ.TForall (None, "test",
+		       (JQ.SMult (JQ.MPlain (top))), 
+		       (JQ.TLambda (None, [], 
+				    s2j (Strobe.TApp 
+					   (Strobe.TPrim "blah",
+					    [Strobe.TId "a";
+					     Strobe.TSink (None, Strobe.TBot);
+					     Strobe.TThis (j2s top)]))))) in
+  let t8 = s2j (Strobe.TApp (Strobe.TPrim "jq", [j2s t5])) in
+  begin
+    Printf.eprintf "\n";
+    check_well_formed top true;
+    check_well_formed prim true;
+    check_well_formed t1 true;
+    check_well_formed t2 true;
+    check_well_formed t3 true;
+    check_well_formed t4 true;
+    check_well_formed t5 true;
+    check_well_formed t6 true;
+    check_well_formed t7 true;
+    check_well_formed t8 false
+  end
+
 let run_tests () =
   try
     (* Random.self_init(); *)
@@ -378,7 +422,8 @@ let run_tests () =
     (* (\* test4 (); *\) *)
     (* test5 (); *)
     (* test6 1000; *)
-    test7 ();
+    (* test7 (); *)
+    well_formed_test ();
     0
   with _ -> 2
 ;;

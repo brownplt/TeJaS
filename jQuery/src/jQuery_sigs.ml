@@ -68,6 +68,7 @@ module type JQUERY_ACTIONS = sig
   val unwrap_bt : baseTyp -> baseTyp
   val unwrap_bk : baseKind -> baseKind
   val unwrap_bb : baseBinding -> baseBinding
+  val well_formed : typ -> bool
   val apply_name : string option -> typ -> typ
   val replace_name : string option -> typ -> typ
   val name_of : typ -> string option
