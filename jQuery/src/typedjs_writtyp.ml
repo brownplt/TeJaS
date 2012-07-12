@@ -27,7 +27,7 @@ module WritTyp = struct
     | Lambda of (id * k) list * t
     | Fix of id * k * t
     | App of t * s list
-       
+
   and m =
     | Plain of t
     | MId of id
@@ -120,6 +120,14 @@ module WritTyp = struct
       | EnvPrim of Pos.t * id
       | RecBind of env_decl list
       | ObjectTrio of Pos.t * (id * t) * (id * t) * (id * t)
+      | Decl of Pos.t * declComp
+    and declComp = string * string option * string * attribs * dcContent list       
+    and attribs = string list * string list * string list
+    and dcContent =
+      | DPlaceholder
+      | DNested of declComp
+      | DId of string
+    (* and declSyntax = declComp list    TODO: actually remove*)
 
     type annotation =
       | ATyp of t
@@ -129,5 +137,44 @@ module WritTyp = struct
       | ATypApp of t list
       | AAssertTyp of t
       | ACheat of t
+
+  open Format
+  open FormatExt
+  let cut fmt = pp_print_cut fmt ()
+  let rec p_decl (name, desc, tyname, (reqClasses, optClasses, ids), content) =
+    let titleline = label (name ^ " : ") (match desc with
+      | None -> [text tyname]
+      | Some desc -> 
+        [text tyname; 
+         (enclose 3 "" empty (text "\"\"\"") (text "\"\"\"") [text (String.escaped desc)])]) in
+    let attribs = 
+      (horzOrVert
+         (add_sep_between (text ",")
+            [label "required classes (any): "
+                [brackets [inter (fun fmt -> text "," fmt; pp_print_space fmt ())
+                              (List.map text reqClasses)]];
+             label "optional classes (any): " 
+               [brackets [inter (fun fmt -> text "," fmt; pp_print_space fmt ())
+                             (List.map text optClasses)]];
+             label "ids (any): " 
+               [brackets [inter (fun fmt -> text "," fmt; pp_print_space fmt ())
+                             (List.map text ids)]]])) in
+    let body = 
+      if content = [] 
+      then [titleline; attribs] 
+      else [titleline; attribs; vert (List.map p_content content)] in
+    parens [vert body]
+  and p_content c = match c with
+    | DPlaceholder -> text "..."
+    | DNested d -> p_decl d
+    | DId d -> angles [text d]
+
+  let rec print_env_decl d = match d with
+    | EnvBind (_,id,t) -> horz ([text (id ^ " = "); print_typ t;])
+    | EnvType (_,id,t) -> horz ([text (id ^ " = "); print_typ t;])
+    | EnvPrim (_,id) -> text id;
+    | RecBind eds -> horz (List.map print_env_decl eds)
+    | Decl (_,d) -> p_decl d
+    | _ -> text "Don't care"
 
 end

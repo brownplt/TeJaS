@@ -117,6 +117,7 @@ struct
 
   let extend_global_env env lst =
     let rec add recIds env decl = match decl with
+      | W.Decl _ -> env
       | W.EnvBind (p, x, typ) ->
         (try
            ignore (lookup_id x env);
@@ -199,6 +200,7 @@ struct
           | W.EnvBind (_, x, _) -> [x]
           | W.EnvType (_, x, _) -> [x]
           | W.ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
+          | W.Decl _
           | W.EnvPrim _
           | W.RecBind _ -> []) binds) in
         (* Printf.eprintf "Recursively including ids: "; *)

@@ -7,6 +7,7 @@ module type CSS = sig
   type combinator = Css_syntax.combinator
   val concat_selectors : t -> combinator -> t -> t
   val p_css : t -> FormatExt.printer
+  val targets : t -> Css_syntax.SimpleSelSet.t
 end
 
 module Map2Sets (Src : Set.S) (Dst : Set.S) = struct
@@ -125,10 +126,10 @@ module RealCSS = struct
     let noDelims = R.negate (R.range (List.map (fun r -> (r, r)) ['['; '{'; '}'; ']'; '"']))
     let comb2regex c = 
       let comb = match c with
-      | Desc -> alt (R.singleton ">") (R.singleton "_")
-      | Kid -> R.singleton ">"
-      | Sib -> alt (R.singleton "+") (R.singleton "~")
-      | Adj -> R.singleton "+" in
+        | Desc -> alt (R.singleton ">") (R.singleton "_")
+        | Kid -> R.singleton ">"
+        | Sib -> alt (R.singleton "+") (R.singleton "~")
+        | Adj -> R.singleton "+" in
       surround "{{" "}}" comb
     let simple2regex (a, ss) = 
       let ra = match a with
@@ -357,19 +358,36 @@ module RealCSS = struct
       match rs with
       | [] -> failwith "impossible13"
       | (c, s)::css ->
-      let parens = enclose 1 "" empty (text "(") (text ")") in
-      horzOrVert (List.fold_left 
-                     (fun p (c, s) -> 
-                       [squish [parens p; 
-                                text (match c with
-                                | Adj -> " +" | Sib -> " ~" 
-                                | Kid -> " >" | Desc -> "")];
-                        pretty_simple s])
-                     [pretty_simple s] css)
+        let parens = enclose 1 "" empty (text "(") (text ")") in
+        horzOrVert (List.fold_left 
+                      (fun p (c, s) -> 
+                        [squish [parens p; 
+                                 text (match c with
+                                 | Adj -> " +" | Sib -> " ~" 
+                                 | Kid -> " >" | Desc -> "")];
+                         pretty_simple s])
+                      [pretty_simple s] css)
+
   end
 
 
 
+    
+  let targets (sels : SelSet.t) : SimpleSelSet.t = 
+    let adj_help a =  match a with
+      | AS s
+      | A(_,s) -> s in
+    let sib_help s = match s with
+      | SA a
+      | S(_,a) -> adj_help a in
+    let kid_help k = match k with
+      | KS s
+      | K(_,s) -> sib_help s in
+    let desc_help s = match s with
+      | DK k
+      | D(_, k) -> kid_help k in
+    SelSet.fold (fun sel acc -> SimpleSelSet.add (desc_help sel) acc)
+      sels SimpleSelSet.empty
 
 
   module Specificity = struct
@@ -632,15 +650,15 @@ module RealCSS = struct
     let rec simple_inter s1 s2 = canonical s1 s2
     and adj_inter a1 a2 = 
       if a1 = a2 then AdjSet.singleton a1 else
-      let module Simple2Adj = Map2Sets(SimpleSet)(AdjSet) in 
-      match a1, a2 with
-      | A (a1a, a1s), AS a2s -> 
-        Simple2Adj.map (fun s -> A(a1a, s)) (simple_inter a1s a2s)
-      | A (a1a, a1s), A (a2a, a2s) -> 
-        let module AdjSimplCross = Cross2Sets (AdjSet)(SimpleSet)(AdjSet) in
-        AdjSimplCross.cross (fun a s -> A(a, s)) (adj_inter a1a a2a) (simple_inter a1s a2s)
-      | AS s1, AS s2 -> Simple2Adj.map (fun s -> AS s) (simple_inter s1 s2)
-      | _ -> adj_inter a2 a1
+        let module Simple2Adj = Map2Sets(SimpleSet)(AdjSet) in 
+        match a1, a2 with
+        | A (a1a, a1s), AS a2s -> 
+          Simple2Adj.map (fun s -> A(a1a, s)) (simple_inter a1s a2s)
+        | A (a1a, a1s), A (a2a, a2s) -> 
+          let module AdjSimplCross = Cross2Sets (AdjSet)(SimpleSet)(AdjSet) in
+          AdjSimplCross.cross (fun a s -> A(a, s)) (adj_inter a1a a2a) (simple_inter a1s a2s)
+        | AS s1, AS s2 -> Simple2Adj.map (fun s -> AS s) (simple_inter s1 s2)
+        | _ -> adj_inter a2 a1
     and sib_inter s1 s2 = 
       if s1 = s2 then SibSet.singleton s1 else
         let module PairingsSibAdj = Pairings (SibSelector) (AdjSelector) in
@@ -700,20 +718,20 @@ module RealCSS = struct
   let var _ = SelSet.empty
   let is_subset (_ : 'a IdMap.t) s1 s2 =
     Specificity.is_morespecific s1 s2 (* || begin *)
-    (*   let make_regex s = *)
-    (*     R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s)) in *)
-    (*   if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else *)
-    (*       (\* remove any obvious overlap *\) *)
-    (*       let (s1, s2) = (SelSet.diff s1 s2, SelSet.diff s2 s1) in *)
-    (*       if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else *)
-    (*           let r1 = make_regex s1 in *)
-    (*           let r2 = make_regex s2 in *)
-    (*           let open FormatExt in *)
-    (*           horzOrVert [text (R.pretty r1); text "<="; text (R.pretty r2)] Format.std_formatter; *)
-    (*           Format.print_newline(); *)
-    (*           R.is_subset r1 r2 *)
-    (* end *)
-    
+  (*   let make_regex s = *)
+  (*     R.unions (List.map AsRegex.sel2regex (SelSetExt.to_list s)) in *)
+  (*   if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else *)
+  (*       (\* remove any obvious overlap *\) *)
+  (*       let (s1, s2) = (SelSet.diff s1 s2, SelSet.diff s2 s1) in *)
+  (*       if SelSet.is_empty s1 then true else if SelSet.is_empty s2 then false else *)
+  (*           let r1 = make_regex s1 in *)
+  (*           let r2 = make_regex s2 in *)
+  (*           let open FormatExt in *)
+  (*           horzOrVert [text (R.pretty r1); text "<="; text (R.pretty r2)] Format.std_formatter; *)
+  (*           Format.print_newline(); *)
+  (*           R.is_subset r1 r2 *)
+  (* end *)
+      
   let pretty_sel s = Pretty.pretty_sel s
   let p_css t =
     if SelSet.cardinal t = 1
@@ -800,11 +818,11 @@ module TestRealCSS = struct
                                       label "sInter:" [p_css sInter]]] Format.std_formatter;
         Format.print_newline (); false
       end else true &&
-      if not (is_subset IdMap.empty sInter s2) then begin
-        label "sInter <!= s2:" [vert [label "s2:    " [p_css s2];
-                                      label "sInter:" [p_css sInter]]] Format.std_formatter;
-        Format.print_newline (); false
-      end else true in
+        if not (is_subset IdMap.empty sInter s2) then begin
+          label "sInter <!= s2:" [vert [label "s2:    " [p_css s2];
+                                        label "sInter:" [p_css sInter]]] Format.std_formatter;
+          Format.print_newline (); false
+        end else true in
     let singleTest () =
       begin
         (* let s1 = SelSet.choose (singleton "e.x1 ~ d.x1 ~ c.x1 > b.x1") in *)

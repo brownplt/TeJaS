@@ -4,6 +4,8 @@ open Prelude
 open JQuery_syntax
 module W = Typedjs_writtyp.WritTyp
 
+let concat (r1, o1, i1) (r2, o2, i2) = (r1 @ r2, o1 @ o2, i1 @ i2)
+
 let rec remove_this op = match op with
   | W.Arrow (_, aa, v, r) -> W.Arrow (None, aa, v, r)
   | W.Inter (t1, t2) -> W.Inter (remove_this t1, remove_this t2)
@@ -46,7 +48,7 @@ let rec pushIntersectFunction typ = match typ with
   | _ -> typ
 %}
 
-%token <string> ID TID STRING REGEX PRIM
+%token <string> ID TID STRING REGEX PRIM DOCSTRING
 %token ARROW LPAREN RPAREN ANY STAR COLON EOF UNION STR AND 
        MULT ZERO ONE ZEROONE ZEROPLUS ONEPLUS SUM
        BOOL LBRACE RBRACE COMMA VAL LBRACK RBRACK DOT OPERATOR SEMI
@@ -54,7 +56,7 @@ let rec pushIntersectFunction typ = match typ with
        CHEAT REC INTERSECTION UNDERSCORE BAD WITH THIS
        HASHBRACE EQUALS TYPE QUES BANG TYPREC TYPLAMBDA THICKARROW
        COLONCOLON CARET LLBRACE RRBRACE REF PRIMITIVE DOTS
-       CONSTRUCTOR PROTOTYPE INSTANCE
+       CONSTRUCTOR PROTOTYPE INSTANCE IDS CLASSES OPTIONAL
 
 %right UNION INTERSECTION THICKARROW REF
 %left LANGLE
@@ -196,6 +198,9 @@ typ_ann :
 any_id :
   | ID { $1 }
   | PRIM { $1 }
+  | IDS { "ids" }
+  | CLASSES { "classes" }
+  | OPTIONAL { "optional" }
   | MULT { "M" }
   | SUM { "Sum "}
   | STR { "Str" }
@@ -224,6 +229,26 @@ env_decl :
   | OPERATOR STRING COLON typ 
       { W.EnvBind (Pos.real ($startpos, $endpos), $2, remove_this $4) }
   | PRIMITIVE PRIM { W.EnvPrim (Pos.real ($startpos, $endpos), $2) }
+  | decl { W.Decl (Pos.real ($startpos, $endpos), $1) }
+
+decl :
+  | LPAREN declname=ID COLON desc=DOCSTRING? tyname=ID attribs=attribs body=list(body_item) RPAREN
+    { (declname, desc, tyname, attribs, body) }
+
+attribs :
+| attribs=nonempty_list(attrib) { List.fold_left concat ([], [], []) attribs }
+
+attrib :
+| CLASSES EQUALS LBRACK cs=separated_nonempty_list(COMMA, ID) RBRACK { (cs, [], []) }
+| OPTIONAL CLASSES EQUALS LBRACK cs=separated_nonempty_list(COMMA, ID) RBRACK { ([], cs, []) }
+| IDS EQUALS LBRACK ids=separated_nonempty_list(COMMA, ID) RBRACK { ([], [], ids) }
+
+body_item :
+| DOTS { W.DPlaceholder }
+| LANGLE id=ID RANGLE { W.DId id }
+| d=decl { W.DNested d }
+
+
 
 rec_env_decl : 
   | env_decl { $1 }

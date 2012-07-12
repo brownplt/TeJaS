@@ -3,28 +3,73 @@ open Prelude
 module W = Typedjs_writtyp.WritTyp
 module List = ListExt
 module Pat = JQuery_syntax.Pat
+module StringMap = Map.Make (String)
+module StringMapExt = MapExt.Make (String) (StringMap)
 
 module type DESUGAR = sig
   type typ
   type kind
+  type multiplicity
+  type clauseMap = multiplicity IdMap.t
+  type backformMap = id list StringMap.t
+  type backformEnv = { classes : backformMap;
+                       optClasses : backformMap;
+                       ids :  backformMap }
+
+  type clauseEnv = { children : clauseMap; 
+                     parent : clauseMap; 
+                     prev : clauseMap;
+                     next : clauseMap }
+  type structureEnv = (backformEnv * clauseEnv)
   exception Typ_stx_error of string
   val desugar_typ : Pos.t -> W.t -> typ
+  val desugar_structure : Pos.t -> structureEnv ->  W.declComp -> (typ IdMap.t * structureEnv) 
+  val empty_structureEnv : structureEnv
 end
 
 module Make
   (S : Strobe_sigs.STROBE_TYPS with type pat = Pat.t)
-  (JQ : JQuery_sigs.JQUERY_ACTIONS
+  (JQ : JQuery_sigs.JQUERY_MODULE
    with type baseTyp = S.typ
   with type baseKind = S.kind
   with type typ = S.extTyp
   with type kind = S.extKind)
   : (DESUGAR 
      with type typ = JQ.typ
-  with type kind = JQ.kind) =
+  with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity) =
 struct
   type typ = JQ.typ
   type kind = JQ.kind
+  type multiplicity = JQ.multiplicity
+  module Css = JQ.Css
+
   exception Typ_stx_error of string
+
+  (* Local Structure types *)
+  type preClauseMap = id list IdMap.t
+  type clauseMap = multiplicity IdMap.t
+  type backformMap = id list StringMap.t
+
+  type backformEnv = { classes : backformMap;
+                       optClasses : backformMap;
+                       ids :  backformMap }
+
+  type clauseEnv = { children : clauseMap; 
+                     parent : clauseMap; 
+                     prev : clauseMap;
+                     next : clauseMap }
+  type preClauseEnv = { pce_children:  preClauseMap;
+                        pce_parent: preClauseMap;
+                        pce_prev: preClauseMap;
+                        pce_next: preClauseMap }
+
+  type preStructureEnv = backformEnv * preClauseEnv
+
+  type structureEnv = backformEnv * clauseEnv  (* Exposed *)
+
+  (* END Local Structure types *)
+
   let error msg = 
     raise (Typ_stx_error msg)
 
@@ -161,7 +206,7 @@ struct
         | None -> (others, Pat.union star_pat absent_pat)
         | Some t -> ((W.Maybe (star_pat, t)) :: others, absent_pat)
         end
-     | _ -> error "multiple stars (*) in an object type" in
+      | _ -> error "multiple stars (*) in an object type" in
     (* TODO(arjun): Why is this overlap check here? Can we do it at the top
        of the function? *)
     List.iter_pairs assert_overlap
@@ -171,9 +216,204 @@ struct
     S.TObject (S.mk_obj_typ (map fld flds_no_skulls_stars) absent_pat)
 
 
+  let empty_structureEnv = 
+    ({classes = StringMap.empty;
+      optClasses = StringMap.empty;
+      ids = StringMap.empty;},
+     {children = IdMap.empty;
+      parent = IdMap.empty;
+      prev = IdMap.empty;
+      next = IdMap.empty})
+      
 
   let desugar_typ (p : Pos.t) (wt : W.t) : JQ.typ =
     try JQ.embed_t (JQ.extract_t (typ wt))
     with Typ_stx_error msg ->
       raise (Typ_stx_error (Pos.toString p ^ msg))
+
+
+  let desugar_structure (p : Pos.t) (senv : structureEnv) (dc : W.declComp) : 
+      (typ IdMap.t * structureEnv) = 
+    
+    (* Generate TDom bindings *)
+    let gen_bindings (dc : W.declComp) : typ IdMap.t =
+      let generateSels ((classes, optClasses, ids) : W.attribs) : Css.t =
+        let clsel = "." ^ (String.concat "." classes) in
+        (* TODO: Account for ids and optional classes
+           let optclsels = clsel :: (List.map ((^) (clsel ^ ".")) optClasses) in
+           let idsels = List.flatten 
+           (List.map (fun id -> List.map ((^) ("#" ^ id)) optclsels) ids) in *)
+        Css.singleton clsel in
+      let rec compileComp (ids : typ IdMap.t) (dc : W.declComp) = 
+        let (name,_,nodeType,attribs, content) = dc in
+        let new_ids = 
+          IdMap.add 
+            name 
+            (JQ.TDom (None,JQ.TStrobe (S.TId nodeType), generateSels attribs)) 
+            ids in
+        
+        List.fold_left (fun ids dcc -> 
+          match dcc with
+          | W.DNested dc -> compileComp ids dc
+          | _ -> ids ) new_ids content in
+      compileComp IdMap.empty dc in
+
+
+    (*     compileContents new_ids content *)
+    (*   and compileContents ids dcc = List.fold_left (fun ids dcc ->  *)
+    (*     match dcc with *)
+    (*     | W.DNested dc -> compileComp ids dc *)
+    (*     | _ -> ids ) ids dccs  in *)
+    (*   compileComp IdMap.empty dc                                                     *)
+        
+    (* in  *)
+
+    (* Compile structure *)
+    let compile (senv : structureEnv) (dc : W.declComp)  : structureEnv = 
+
+      let enforcePresence (id : id) (pcenv : preClauseEnv) : preClauseEnv =
+        let helper (pcm : preClauseMap) =
+          if (IdMap.mem id pcm) then pcm else (IdMap.add id [] pcm) in
+        {pce_children = (helper pcenv.pce_children);
+         pce_parent =  (helper pcenv.pce_parent);
+         pce_prev = (helper pcenv.pce_prev);
+         pce_next = (helper pcenv.pce_next) } in
+
+      (* compileComp *)
+      let rec compileComp (psenv : (preStructureEnv)) (dc : W.declComp)
+          : preStructureEnv =
+
+        let (benv, pcenv) = psenv in
+
+        (* parts of dc, which is the 'parent' *)
+        let (pname, _, nodeType, (classes, optClasses, ids), pcontents) = dc in
+        (*** Helper functions *)
+        let add2backformMap (id : id) (strs : string list) (bm : backformMap) 
+            : backformMap =
+          List.fold_left (fun bm s ->
+            let toAdd = 
+              if StringMap.mem s bm then (id::(StringMap.find s bm)) else [id] in
+            StringMap.add s toAdd bm) bm strs in
+
+        let update (source : id) (target : id) (pcm : preClauseMap) 
+            : preClauseMap =
+          if (IdMap.mem source pcm) then 
+            (IdMap.add source (target::(IdMap.find source pcm)) pcm)
+          else failwith ("Id: " ^source ^"  not yet in preClauseMap") in
+
+        let rec compPreClauses (pcenv : preClauseEnv) (dccs : W.dcContent list) : preClauseEnv = 
+          let { pce_parent = parent; pce_children = children; pce_prev = prev; pce_next = next} = pcenv in
+          match dccs with
+          | []
+          | W.DPlaceholder :: [] -> 
+            {pce_children = (update pname "ElementAny" children);
+             pce_parent = parent;
+             pce_prev = prev; 
+             pce_next = next }
+          | W.DNested  (name,_,_,_,_) :: []
+          | W.DId name::[] -> 
+            {pce_children = (update pname name children);
+             pce_parent = (update name pname parent);
+             pce_prev = prev; 
+             pce_next = next }
+          | c1 :: ((c2 :: rest) as tail) -> (match c1, c2 with
+            | W.DPlaceholder, W.DPlaceholder -> compPreClauses pcenv tail
+            | W.DPlaceholder, W.DNested (name, _, _, _, _)
+            | W.DPlaceholder, W.DId name -> compPreClauses 
+              {pce_children = (update pname "ElementAny" children);
+               pce_parent = parent;
+               pce_prev = (update name "ElementAny" prev);
+               pce_next = next; } tail
+            | W.DNested (name, _, _, _, _), W.DPlaceholder
+            | W.DId name, W.DPlaceholder -> compPreClauses 
+              {pce_children = (update pname name children);
+               pce_parent = (update name pname parent);
+               pce_prev = prev;
+               pce_next = (update name "ElementAny" next); } tail
+            | W.DNested (name1, _, _, _, _), W.DNested (name2, _, _, _, _)
+            | W.DNested (name1, _, _, _, _), W.DId name2
+            | W.DId name1, W.DNested (name2, _, _, _, _)
+            | W.DId name1, W.DId name2 -> compPreClauses 
+              {pce_children = (update pname name1 children);
+               pce_parent = (update name1 pname parent);
+               pce_prev = (update name2 name1 prev);
+               pce_next = (update name1 name2 next)} tail) in
+
+        
+        (* backformEnv updated for this W.declComp *)
+        let newBackformEnv = 
+          {classes = (add2backformMap pname classes benv.classes);
+           optClasses = (add2backformMap pname optClasses benv.optClasses);
+           ids = (add2backformMap pname ids benv.ids) } in
+
+        (* Enforce everything in the W.declComp *)
+        let enforcedPreClauseEnv = List.fold_left (fun pcenv dcc -> match dcc with
+          | W.DNested (name,_,_,_,_)
+          | W.DId name -> enforcePresence name pcenv
+          | _ -> pcenv)
+          (enforcePresence pname pcenv) pcontents in
+
+        (*  preClauseEnv updated for this W.declComp *)
+        let newPreClauseEnv =  compPreClauses enforcedPreClauseEnv pcontents in
+
+        (* Now compile the contents  *)
+        List.fold_left (fun psenv dcc -> 
+          match dcc with
+          | W.DNested dc -> compileComp psenv dc
+          | _ -> psenv)
+          (newBackformEnv, newPreClauseEnv)
+          pcontents in
+
+      (** Body of compile **)
+
+      (* start with empty preStructureEnv *)
+      let empty_psenv =
+        ({classes = StringMap.empty;
+          optClasses = StringMap.empty;
+          ids = StringMap.empty;},
+         {pce_children = IdMap.empty;
+          pce_parent = IdMap.empty;
+          pce_prev = IdMap.empty;
+          pce_next = IdMap.empty}) in
+
+      let (benv_complete, pcenv) = compileComp empty_psenv dc in
+
+      (* transform preClauseMap -> clauseMap *)
+      let transformPCM (pcm : preClauseMap) (f : int -> typ -> multiplicity) = 
+        IdMap.fold 
+          (fun id ids (cm : clauseMap) -> match ListExt.remove_dups ids with
+          | [] -> IdMap.add id (f 0 (JQ.TStrobe S.TTop)) cm
+          | hd::tl ->
+            let size = List.length tl + 1 in
+            let typ = JQ.TStrobe (List.fold_left (fun acc id -> 
+              S.TUnion (None,acc, (S.TId id))) 
+                                 (S.TId hd) tl) in
+            IdMap.add id (f size typ) cm)
+          pcm IdMap.empty in
+      
+      let childFun s t = let open JQ in match s with
+        | 0 -> MZeroPlus (MPlain (TStrobe (S.TId "ElementAny")))
+        | 1 -> MOne (MPlain t)
+        | _ -> MOnePlus (MPlain t) in
+
+      let parFun s t = let open JQ in match s with 
+        | 0 -> MZeroOne (MPlain (TStrobe (S.TId "ElementAny")))
+        | 1 -> MOne (MPlain t)
+        | _ -> MOne (MPlain t) in
+      
+      let prevNextFun s t = let open JQ in match s with 
+        | 0 -> MZero (MPlain t)
+        | 1 -> MOne (MPlain t)
+        | _ -> MOne (MPlain t) in
+      
+      (* return final structureEnv *)
+      (benv_complete, {children = (transformPCM pcenv.pce_children childFun);
+                       parent = (transformPCM pcenv.pce_parent parFun);
+                       prev = (transformPCM pcenv.pce_prev prevNextFun);
+                       next = (transformPCM pcenv.pce_next prevNextFun)}) in
+
+    (* Body of desugar_structure *)
+    (gen_bindings dc, compile senv dc)
+
+
 end

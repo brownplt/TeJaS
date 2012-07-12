@@ -14,6 +14,7 @@ module MakeExt :
   with type baseTyp = JQuery.baseTyp
   with type baseKind = JQuery.baseKind
   with type baseBinding = JQuery.baseBinding
+  with type sel = JQuery.sel
   with type env = JQuery.env) ->
       functor (Env : TYP_ENV
                with type typ = JQuery.typ
@@ -23,7 +24,8 @@ module MakeExt :
   with type env_decl = Typedjs_writtyp.WritTyp.env_decl) ->
         functor (Desugar : Typedjs_desugar.DESUGAR
                  with type typ = JQuery.typ
-  with type kind = JQuery.kind) ->
+  with type kind = JQuery.kind
+  with type multiplicity = JQuery.multiplicity) ->
         (JQUERY_TYP_ENV
          with type typ = Env.typ
   with type kind = Env.kind

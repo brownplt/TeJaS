@@ -95,22 +95,35 @@ struct
           else begin
             kind_mismatch s_arg k_actual (embed_k k_arg)
           end in
-        match extract_k (kind_check_typ env recIds t_op) with
-        | Strobe.KArrow (k_args, k_result) ->
-          begin 
-            try
-              List.iter2 check k_args s_args;
-              embed_k k_result
-            with Invalid_argument _ ->
-              raise (Strobe.Kind_error
-                       (sprintf "operator expects %d args, given %d"
-                          (List.length k_args) (List.length s_args)))
-          end
-        | Strobe.KEmbed (KMult _)
-        | Strobe.KStar ->
-          raise (Strobe.Kind_error 
-                   (sprintf "not a type operator:\n%s" (string_of_typ t_op)))
-        | Strobe.KEmbed (KStrobe _) -> failwith "impossible: extract_k should've removed these wrappers"
+        match extract_t t_op with
+        | Strobe.TPrim ("childrenOf" as p)
+        | Strobe.TPrim ("parent" as p)
+        | Strobe.TPrim ("next" as p)
+        | Strobe.TPrim ("prev" as p) ->
+          begin
+            try List.iter2 check [Strobe.KStar] s_args
+            with Invalid_argument _ -> 
+              raise (Strobe.Kind_error 
+                       (sprintf "%s<> expects one argument, got %d" 
+                          p (List.length s_args)))
+          end;
+          KMult (KStrobe Strobe.KStar)
+        | _ -> match extract_k (kind_check_typ env recIds t_op) with
+          | Strobe.KArrow (k_args, k_result) ->
+            begin 
+              try
+                List.iter2 check k_args s_args;
+                embed_k k_result
+              with Invalid_argument _ ->
+                raise (Strobe.Kind_error
+                         (sprintf "operator expects %d args, given %d"
+                            (List.length k_args) (List.length s_args)))
+            end
+          | Strobe.KEmbed (KMult _)
+          | Strobe.KStar ->
+            raise (Strobe.Kind_error 
+                     (sprintf "not a type operator:\n%s" (string_of_typ t_op)))
+          | Strobe.KEmbed (KStrobe _) -> failwith "impossible: extract_k should've removed these wrappers"
       end
 
   and kind_check_mult (env : env) (recIds : id list) (mult : multiplicity) : kind = 

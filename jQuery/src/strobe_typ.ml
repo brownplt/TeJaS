@@ -463,18 +463,18 @@ struct
   exception Kind_error of string
 
   let depth = ref 0
-  let trace (prompt : string) (msg : string) (success : 'a -> bool) (thunk : unit -> 'a) = (* thunk () *)
-    Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg;
-    depth := !depth + 1;
-    try
-      let ret = thunk () in
-      depth := !depth - 1;
-      Printf.eprintf "%s<%s-%s %s\n" (String.make (!depth) ' ') (if success ret then "-" else "X") prompt msg;
-      ret
-    with e ->
-      depth := !depth - 1;
-      Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') prompt msg;
-      raise e
+  let trace (prompt : string) (msg : string) (success : 'a -> bool) (thunk : unit -> 'a) = thunk ()
+    (* Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg; *)
+    (* depth := !depth + 1; *)
+    (* try *)
+    (*   let ret = thunk () in *)
+    (*   depth := !depth - 1; *)
+    (*   Printf.eprintf "%s<%s-%s %s\n" (String.make (!depth) ' ') (if success ret then "-" else "X") prompt msg; *)
+    (*   ret *)
+    (* with e -> *)
+    (*   depth := !depth - 1; *)
+    (*   Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') prompt msg; *)
+    (*   raise e *)
 
 
 

@@ -17,6 +17,7 @@ module MakeExt
   with type baseTyp = JQuery.baseTyp
   with type baseKind = JQuery.baseKind
   with type baseBinding = JQuery.baseBinding
+  with type sel = JQuery.sel
   with type env = JQuery.env) 
   (Env : TYP_ENV
    with type typ = JQuery.typ
@@ -26,7 +27,8 @@ module MakeExt
   with type env_decl = Typedjs_writtyp.WritTyp.env_decl)
   (Desugar : Typedjs_desugar.DESUGAR
    with type typ = JQuery.typ
-  with type kind = JQuery.kind)
+  with type kind = JQuery.kind
+  with type multiplicity = JQuery.multiplicity)
   : (JQUERY_TYP_ENV
      with type typ = JQuery.typ
   with type kind = JQuery.kind
@@ -45,9 +47,136 @@ struct
   type env_decl = Env.env_decl
   open Env
   open JQueryKinding
+  module Css = JQuery.Css
+  open Css_syntax
+
   module Strobe = JQuery.Strobe
 
-  let print_env = Env.print_env
+  type structureEnv = Desugar.structureEnv
+
+  let (senv : structureEnv ref) = ref Desugar.empty_structureEnv
+
+  let rec expose_tdoms (env : env) (t : typ) : typ = match t with
+    | TDom (s, (TDom (_,t,sel2)), sel1) ->
+      expose_tdoms env (TDom (s, t, Css.intersect sel2 sel1))
+    | TDom (s, (TStrobe (Strobe.TId id)), sel) ->
+      expose_tdoms env (TDom (s, fst (lookup_typ_id id env), sel))
+    | _ -> t
+
+  let backform (benv : Desugar.backformEnv) (sels : sel) : IdSet.t = (* IdSet.singleton "test" *)
+    let open Typedjs_desugar in let open Desugar in 
+    let rec list2lsidset l = (match l with
+      | [] -> IdSet.empty
+      | h::t -> IdSet.add h (list2lsidset t)) in
+    let simples = Css.targets sels in
+    let classes = SimpleSelSet.fold (fun (a,specs) (acc : string list)->
+      (acc @ (List.fold_left (fun acc s -> match s with
+      | SpClass s -> s::acc
+      | _ -> acc) [] specs))) simples [] in
+    let classMap = benv.classes in
+    let classMatches = match classes with
+      | [] -> IdSet.empty
+      | hd::tl -> List.fold_left (fun acc c ->
+        try IdSet.inter acc (list2lsidset (StringMap.find c classMap))
+        with Not_found -> IdSet.empty)
+        (try (list2lsidset (StringMap.find
+                              hd
+                              classMap))
+         with Not_found -> IdSet.empty)
+        tl in
+    classMatches
+
+  (* let children_of (senv : structureEnv) (t : typ) : multiplicity =  *)
+  (*   let ClauseEnv (childMap, _, _, _) = (snd senv) in  *)
+  (*   let rec get_children_of t =  *)
+  (*     match t with *)
+  (*     | TDom (s,t,sels) -> *)
+  (*       let lsidSet = backform (fst senv) sels in *)
+  (*       (IdSet.fold (fun lsid acc -> *)
+  (*         (try MSum (acc, IdMap.find lsid childMap) *)
+  (*          with Not_found -> failwith "impossible") (\* Backform has ALL lsids *\)) *)
+  (*          lsidSet  *)
+  (*          (MZero (MPlain (TDom (None, TId "ElementAny", Css.singleton "*"))))) *)
+  (*     | TId id -> IdMap.find (Id id) childMap (\* TODO: is this ok? *\)  *)
+  (*     | TUnion (_, t1, t2) ->  *)
+  (*     (\* TODO: is it ok to reduce TUnions to MSums? *\) *)
+  (*       MSum (get_children_of t1, get_children_of t2) *)
+  (*     | _ -> failwith "impossible" in *)
+  (* (\* build children and canonicalize result *\) *)
+  (*   get_children_of t *)
+
+  let rec x_of (benv : Desugar.backformEnv) (cm : Desugar.clauseMap) (t : typ) : multiplicity = 
+    let open JQuery in
+    match t with
+    | TDom (s,t,sels) ->
+      let lsidSet = backform benv sels in
+      (IdSet.fold (fun lsid acc ->
+        (try MSum (acc, IdMap.find lsid cm)
+         with Not_found -> failwith "impossible") (* Backform has ALL lsids *))
+         lsidSet
+         (MZero (MPlain (TStrobe Strobe.TTop)))) (* This will disappear anyway *)
+    | TStrobe (Strobe.TId id) -> IdMap.find id cm (* TODO: is this ok? *)
+    | TStrobe (Strobe.TUnion (_, t1, t2)) ->
+    (* TODO: is it ok to reduce TUnions to MSums? *)
+      MSum (x_of benv cm (TStrobe t1), x_of benv cm (TStrobe t2))
+    | _ -> failwith "impossible: x_of can only be called on TDom, TId, TUnion"
+
+
+  let children_of (senv : structureEnv) (t : typ) : multiplicity =
+    let (_,cenv) = senv in
+    x_of (fst senv) cenv.Desugar.children t
+
+
+  let parent_of (senv : structureEnv) (t : typ) : multiplicity =
+    let (_,cenv) = senv in
+    x_of (fst senv) cenv.Desugar.parent t
+
+
+  let prevsib_of (senv : structureEnv) (t : typ) : multiplicity =
+    let (_,cenv) = senv in
+    x_of (fst senv) cenv.Desugar.prev t
+
+  let nextsib_of (senv : structureEnv) (t : typ) : multiplicity =
+    let (_,cenv) = senv in
+    x_of (fst senv) cenv.Desugar.next t
+
+
+  (**** End Local Structure ***)
+
+
+  let print_structureEnv (senv : structureEnv) = 
+    let open FormatExt in
+    let open Desugar in
+    let (benv, cenv) = senv in
+    let print_id id= text id in
+    let print_benv_key = text in
+    let print_benv_val ids = 
+      horzOrVert (List.fold_left (fun a id -> (print_id id)::a) [] ids) in
+    let print_cenv_key = print_id in
+    let print_cenv_val = JQuery.Pretty.multiplicity in
+    vert [text "Backform Environment";
+          (Typedjs_desugar.StringMapExt.p_map "Classes" empty 
+             print_benv_key print_benv_val benv.classes);
+          (Typedjs_desugar.StringMapExt.p_map "Optional Classes" 
+             empty print_benv_key print_benv_val benv.optClasses);
+          (Typedjs_desugar.StringMapExt.p_map "Ids" 
+             empty print_benv_key print_benv_val benv.ids);
+          text "Clause Environment";
+          (IdMapExt.p_map "Children Clause" 
+             empty print_cenv_key print_cenv_val cenv.children);
+          (IdMapExt.p_map "Parent Clause" 
+             empty print_cenv_key print_cenv_val cenv.parent);
+          (IdMapExt.p_map "Prev Sib Clause" 
+             empty print_cenv_key print_cenv_val cenv.prev);
+          (IdMapExt.p_map "Next Sib Clause" 
+             empty print_cenv_key print_cenv_val cenv.next)]
+
+
+  let print_env env fmt = 
+    let _ = Env.print_env env fmt in
+    let _ = print_structureEnv !senv fmt in
+    (Format.pp_print_flush fmt ())
+
   let parse_env_buf = Env.parse_env_buf
   let parse_env = Env.parse_env
   let parse_env_file = Env.parse_env_file
@@ -131,6 +260,10 @@ struct
     let desugar_typ p t = JQuery.extract_t (Desugar.desugar_typ p t) in
     let open Typedjs_writtyp.WritTyp in
     let rec add recIds env decl = match decl with
+      | Decl (p, dc) -> 
+        let (tdoms, structure) = Desugar.desugar_structure p !senv dc in
+        senv := structure;
+        IdMap.fold bind_typ_id tdoms env
       | EnvBind (p, x, typ) ->
         (try 
            ignore (lookup_id x env);
@@ -144,10 +277,11 @@ struct
            ignore (lookup_typ_id x env);
            raise (Not_wf_typ (sprintf "the type %s is already defined" x))
          with Not_found ->
-           let t = Strobe.expose_twith env (desugar_typ p writ_typ) in
+           let t' = Desugar.desugar_typ p writ_typ in
+           let t'' = JQuery.squash env t' in
            (* Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t)); *)
-           let k = kind_check env recIds (STyp (embed_t t)) in
-           raw_bind_typ_id x (extract_t (apply_name (Some x) (embed_t t))) (extract_k k) env)
+           let k = kind_check env recIds (STyp t'') in
+           raw_bind_typ_id x (extract_t (apply_name (Some x) t'')) (extract_k k) env)
       | EnvPrim (p, s) ->
         JQueryKinding.new_prim_typ s;
         env
@@ -230,11 +364,13 @@ struct
           | EnvBind (_, x, _) -> [x]
           | EnvType (_, x, _) -> [x]
           | ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
+          | Decl _
           | EnvPrim _
           | RecBind _ -> []) binds) in
         (* Printf.eprintf "Recursively including ids: "; *)
         (* List.iter (fun x -> Printf.eprintf "%s " x) ids; *)
         List.fold_left (add ids) env binds
+ 
     in List.fold_left (add []) env lst
 
   (* let rec bind_typ env typ : env * typ = match typ with *)

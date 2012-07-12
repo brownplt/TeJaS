@@ -66,7 +66,6 @@ struct
   open JQ
   open ListExt
 
-
   let rec embed_t t =
     match t with Strobe.TEmbed (TStrobe t) -> embed_t t | Strobe.TEmbed t -> t | t -> TStrobe t
   let rec embed_k k =
@@ -667,6 +666,58 @@ struct
         raise (Invalid_argument msg)
     end
     | _ -> typ
+
+
+
+  let squash env t = 
+    let rec optsquash t = match t with None -> None | Some t -> Some (squash_s t)
+    and squash_s t =
+      let open Strobe in
+      match t with
+      | TWith _ -> Strobe.simpl_typ env t
+      | TRef (n, t) -> TRef (n, squash_s t)
+      | TSource (n, t) -> TSource (n, squash_s t)
+      | TSink (n, t) -> TSink (n, squash_s t)
+      | TUnion (n, t1, t2) -> TUnion(n, squash_s t1, squash_s t2)
+      | TInter(n, t1, t2) -> TInter(n, squash_s t1, squash_s t2)
+      | TArrow(args, vararg, ret) -> TArrow(map squash_s args, optsquash vararg, squash_s ret)
+      | TObject ot -> TObject (mk_obj_typ (map (third3 squash_s) (fields ot)) (absent_pat ot))
+      | TTop
+      | TBot -> t
+      | TForall(n, id, t, b) -> TForall(n, id, squash_s t, squash_s b)
+      | TId _ 
+      | TRegex _
+      | TPrim _ -> t
+      | TThis t -> TThis (squash_s t)
+      | TRec(n, id, t) -> TRec(n, id, squash_s t)
+      | TLambda (n, args, t) -> TLambda(n, args, squash_s t)
+      | TApp(t, ts) -> TApp(squash_s t, map squash_s ts)
+      | TFix(n, id, k, t) -> TFix(n, id, k, squash_s t)
+      | TUninit ty -> ty := optsquash !ty; t
+      | TEmbed t -> extract_t (squash_t t)
+    and squash_t t =
+      match t with
+      | TStrobe t -> embed_t (squash_s t)
+      | TLambda (n, args, t) -> TLambda(n, args, squash_t t)
+      | TForall(n, id, s, t) -> TForall(n, id, squash_sig s, squash_t t)
+      | TApp(t, ss) -> TApp(squash_t t, List.map squash_sig ss)
+      | TDom(n, t, s) -> TDom(n, squash_t t, s)
+    and squash_sig s =
+      match s with
+      | SMult m -> SMult (squash_m m)
+      | STyp t -> STyp (squash_t t)
+    and squash_m m =
+      match m with
+      | MPlain t -> MPlain (squash_t t)
+      | MId _ -> m
+      | MZero m -> MZero (squash_m m)
+      | MOne m -> MOne (squash_m m)
+      | MOnePlus m -> MOnePlus (squash_m m)
+      | MZeroOne m -> MZeroOne (squash_m m)
+      | MZeroPlus m -> MZeroPlus (squash_m m)
+      | MSum (m1, m2) -> MSum (squash_m m1, squash_m m2)
+    in 
+    squash_t t
 end
 
 module MakeModule

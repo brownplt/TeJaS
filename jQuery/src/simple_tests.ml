@@ -308,22 +308,23 @@ let test3 n =
 (*   end in *)
 (*   test_harness test4 *)
 
-let test5 () =
-  let test5 () = begin
-    let text = "(Tweet : \"\"\"A structure for tweets\"\"\"
-                   DivElement
-                   optional classes = [first, last]
-                   classes = [tweet]
-                   /* ignore this! */
-                   (Author : DivElement classes = [author] ...)
-                   (Time : DivElement classes = [time] )
-                   (Content : DivElement classes = [content] ... <Other> ...)
-                   ...
-               )" in
-    let decls = LS.parseLocalStructure text in
-    List.iter (fun d -> LS.Pretty.p_decl d Format.std_formatter; Format.print_newline()) decls
-  end in
-  test_harness test5
+let test5 () = ()
+  (* TODO: rewrite this test *)
+  (* let test5 () = begin *)
+  (*   let text = "(Tweet : \"\"\"A structure for tweets\"\"\" *)
+  (*                  DivElement *)
+  (*                  optional classes = [first, last] *)
+  (*                  classes = [tweet] *)
+  (*                  /* ignore this! */ *)
+  (*                  (Author : DivElement classes = [author] ...) *)
+  (*                  (Time : DivElement classes = [time] ) *)
+  (*                  (Content : DivElement classes = [content] ... <Other> ...) *)
+  (*                  ... *)
+  (*              )" in *)
+  (*   let decls = LS.parseLocalStructure text in *)
+  (*   List.iter (fun d -> LS.Pretty.p_decl d Format.std_formatter; Format.print_newline()) decls *)
+  (* end in *)
+  (* test_harness test5 *)
 
 let test6 n =
   let test6 n =
@@ -359,6 +360,7 @@ type y = jQ<1+<abDom>>;
           | EnvBind (_, x, _) -> [x]
           | EnvType (_, x, _) -> [x]
           | ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
+          | Decl _
           | EnvPrim _
           | RecBind _ -> []) binds) in
         List.fold_left (helper ids) env binds

@@ -92,6 +92,7 @@ module type JQUERY_ACTIONS = sig
   val string_of_mult : multiplicity -> string
   val string_of_kind : kind -> string
   val simpl_typ : env -> typ -> typ
+  val squash : env -> typ -> typ
 end
 
 module type JQUERY_MODULE = sig
@@ -132,11 +133,16 @@ module type JQUERY_TYP_ENV = sig
   include TYP_ENV
   type sigma
   type multiplicity
+  type structureEnv
   val bind_mult_id : id -> multiplicity -> env -> env
   val bind_rec_typ_id : id -> id list -> sigma -> env -> env
-  val lookup_id : id -> env -> typ
-  val lookup_typ_id : id -> env -> typ * kind
   val lookup_mult_id : id -> env -> multiplicity
+  val children_of : structureEnv -> typ -> multiplicity
+  val parent_of : structureEnv -> typ -> multiplicity
+  val prevsib_of : structureEnv -> typ -> multiplicity
+  val nextsib_of : structureEnv -> typ -> multiplicity
+  val expose_tdoms : env -> typ -> typ
+  val senv : structureEnv ref
 end
 
 module type JQUERY_TYPECHECKING = sig

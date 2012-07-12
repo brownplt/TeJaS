@@ -37,7 +37,6 @@ struct
   open JQ
   open ListExt
 
-
   module SigmaPair = struct
     type s = STyps of typ * typ | SMults of multiplicity * multiplicity | SMultTyp of multiplicity * typ
     type t = env * s
@@ -206,13 +205,122 @@ struct
       (fun b -> text (string_of_bool b))
       !cache
 
+      
+  let rec resolve_special_functions (env : env) (senv : Env.structureEnv) (t : typ) =
+    let rec extract_mult m = match m with
+      | MPlain t -> (t, fun m -> m)
+      | MOne m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MOne (m t))
+      | MZero m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MZero (m t))
+      | MOnePlus m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MOnePlus (m t))
+      | MZeroOne m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MZeroOne (m t))
+      | MZeroPlus m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MZeroPlus (m t))
+      | MId m -> 
+        failwith ("can't handle MId(" ^ m ^ ") here")
+      | MSum _ -> failwith "can't handle MSums here" in
+    let rec resolve_sigma s = match s with
+      | STyp t -> STyp (rjq t)
+      | SMult m -> SMult (resolve_mult m) 
+    and resolve_mult m =
+      let rm = resolve_mult in
+      match m with
+      | MPlain t -> MPlain (rjq t)
+      | MId _ -> m
+      | MZero m-> MZero (rm m)
+      | MOne m -> MOne (rm m)
+      | MZeroOne m -> MZeroOne (rm m)
+      | MOnePlus m -> MOnePlus (rm m)
+      | MZeroPlus m -> MZeroPlus (rm m)
+      | MSum (m1, m2) -> MSum (rm m1, rm m2)
+    and  rjq t = match t with
+      | TForall (s,id,sigma,t) -> TForall(s,id,resolve_sigma sigma, rjq t)
+      | TLambda (s,iks,t) -> TLambda(s,iks,rjq t)
+      | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]) ->
+        failwith "childrenOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]) ->
+        failwith "parentOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "prevsibOf"), [STyp t]) ->
+        failwith "prevsibOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "nextsibOf"), [STyp t]) ->
+        failwith "nextsibOf at outermost level"
+      | TApp(t, args) ->
+        TApp(rjq t, List.map (fun s -> match s with
+        | SMult m -> begin match extract_mult m with
+          | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]), m ->
+            SMult (canonical_multiplicity (m (Env.children_of senv (rjq t))))
+          | TApp(TStrobe (Strobe.TPrim "childrenOf"), _), _ ->
+            failwith "childrenOf not called with a single type argument"
+          | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]), m ->
+            SMult (canonical_multiplicity (m (Env.parent_of senv (rjq t))))
+          | TApp(TStrobe (Strobe.TPrim "parentOf"), _), _ ->
+            failwith "parentOf not called with a single type argument"
+          | TApp(TStrobe (Strobe.TPrim "prevsibOf"), [STyp t]), m ->
+            SMult (canonical_multiplicity (m (Env.prevsib_of senv (rjq t))))
+          | TApp(TStrobe (Strobe.TPrim "prevsibOf"), _), _ ->
+            failwith "prevsibOf not called with a single type argument"
+          | TApp(TStrobe (Strobe.TPrim "nextsibOf"), [STyp t]), m ->
+            SMult (canonical_multiplicity (m (Env.nextsib_of senv (rjq t))))
+          | TApp(TStrobe (Strobe.TPrim "nextsibOf"), _), _ ->
+            failwith "nextsibOf not called with a single type argument"
+          | _, _ -> SMult m
+        end
+        | STyp _ -> s) args)
+      | TDom (s, t, sel) -> TDom (s, rjq t, sel)
+      | TStrobe t -> TStrobe (rs t)
+    and rs t = 
+      let rs_obj o = Strobe.mk_obj_typ 
+        (List.map (third3 rs) (Strobe.fields o)) 
+        (Strobe.absent_pat o) in
+      match t with 
+      | Strobe.TPrim s -> t
+      | Strobe.TUnion (s,t1,t2) -> Strobe.TUnion(s, rs t1, rs t2)
+      | Strobe.TInter (s,t1,t2) -> Strobe.TInter(s, rs t1, rs t2)
+      | Strobe.TArrow (ts,t1,t2) ->
+        Strobe.TArrow(List.map rs ts,
+                      (match t1 with None -> None | Some t -> Some (rs t)),
+                      rs t2)
+      | Strobe.TThis t -> Strobe.TThis (rs t)
+      | Strobe.TObject o -> Strobe.TObject (rs_obj o)
+      | Strobe.TWith (t, o) -> Strobe.TWith (rs t, rs_obj o)
+      | Strobe.TRegex _ -> t
+      | Strobe.TRef (s, t) -> Strobe.TRef (s, rs t)
+      | Strobe.TSource (s, t) -> Strobe.TSource (s, rs t)
+      | Strobe.TSink (s, t) -> Strobe.TSink (s, rs t)
+      | Strobe.TTop -> Strobe.TTop
+      | Strobe.TBot -> Strobe.TBot
+      | Strobe.TForall (s,id,t1,t2) -> Strobe.TForall(s,id,rs t1, rs t2)
+      | Strobe.TId id -> t
+      | Strobe.TRec (s,id,t) -> Strobe.TRec (s, id, rs t)
+      | Strobe.TLambda (s, iks, t) -> Strobe.TLambda (s, iks, rs t)
+      | Strobe.TApp (t, ts) -> Strobe.TApp (rs t, (List.map rs ts))
+      | Strobe.TFix (s, id, k, t) -> Strobe.TFix (s, id, k, rs t)
+      | Strobe.TUninit tor -> 
+        Strobe.TUninit (match !tor with Some t -> ref (Some (rs t)) | _ -> tor)
+      | Strobe.TEmbed t -> Strobe.TEmbed (rjq t) in
+    rjq t
+      
+
   (* SUBTYPING ONLY WORKS ON CANONICAL FORMS *)
   let subtype_sigma lax env s1 s2 =
     (let (c, r) = (subtype_sigma lax env !cache (canonical_sigma s1) (canonical_sigma s2))
      in cache := c; r)
   let subtype_typ lax env t1 t2 =
-    (let (c, r) = (subtype_typ lax env !cache (canonical_type t1) (canonical_type t2))
-     in cache := c; r)
+    let (c, r) = 
+       (subtype_typ lax env !cache
+          (resolve_special_functions env !Env.senv 
+             (Env.expose_tdoms env (canonical_type t1)))
+          (resolve_special_functions env !Env.senv 
+             (Env.expose_tdoms env (canonical_type t2))))
+     in cache := c; r
   let subtype_mult lax env m1 m2 =
     (let (c, r) = (subtype_mult lax env !cache (canonical_multiplicity m1) (canonical_multiplicity m2))
      in cache := c; r)

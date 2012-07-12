@@ -12,6 +12,17 @@
 
 }
 
+(* Adapted from http://www.w3.org/TR/selectors/ *) 
+let nonascii = [^'\000'-'\177']
+let hex_ch = ['0'-'9' 'a'-'f' 'A'-'F']
+let unicode =  '\\'hex_ch hex_ch? hex_ch? hex_ch? hex_ch? hex_ch?
+let escape = unicode | '\\'[^'\n' '\r' '\x0C' '0'-'9' 'a'-'f' 'A'-'F']
+let nmstart =  ['_' 'a'-'z' 'A'-'Z'] | nonascii | escape
+let nmchar = ['_' 'a'-'z' 'A'-'Z' '0'-'9' '-'] | nonascii | escape
+let sel_ident = ['-']? nmstart (nmchar)*
+let nl = "\n"| "\r\n" | "\r" | "\x0C"
+let string1 = ([^'\n' '\r' '\x0C' '\\' '\"']|'\\' nl | nonascii | escape )*
+
 let ident = ['a'-'z' 'A'-'Z' '$' '_' '%']([ 'a'-'z' 'A'-'Z' '0'-'9' '$' '_']*)
 
 let blank = [ ' ' '\t' '\r' ]
@@ -98,6 +109,10 @@ rule token = parse
    | "rec" { REC }
    | "primitive" { PRIMITIVE }
    | "with" { WITH }
+   | "\"\"\"" (string1 as x) "\"\"\"" { DOCSTRING x }
+   | "optional" { OPTIONAL }
+   | "classes" { CLASSES }
+   | "ids" { IDS }
    | eof { EOF }
    | ident as x { ID x }
    | '"' (double_quoted_string_char* as x) '"' { STRING x }

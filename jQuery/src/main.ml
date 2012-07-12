@@ -212,63 +212,11 @@ let weave_assertions typedjs =
   | Some typ -> WeaveAnnotations.assert_typ typ typedjs
 
 
-let squash env t = 
-  let rec optsquash t = match t with None -> None | Some t -> Some (squash_s t)
-  and squash_s t =
-    let open S in
-    match t with
-    | TWith _ -> StrobeMod.simpl_typ env t
-    | TRef (n, t) -> TRef (n, squash_s t)
-    | TSource (n, t) -> TSource (n, squash_s t)
-    | TSink (n, t) -> TSink (n, squash_s t)
-    | TUnion (n, t1, t2) -> TUnion(n, squash_s t1, squash_s t2)
-    | TInter(n, t1, t2) -> TInter(n, squash_s t1, squash_s t2)
-    | TArrow(args, vararg, ret) -> TArrow(map squash_s args, optsquash vararg, squash_s ret)
-    | TObject ot -> TObject (mk_obj_typ (map (third3 squash_s) (fields ot)) (absent_pat ot))
-    | TTop
-    | TBot -> t
-    | TForall(n, id, t, b) -> TForall(n, id, squash_s t, squash_s b)
-    | TId _ 
-    | TRegex _
-    | TPrim _ -> t
-    | TThis t -> TThis (squash_s t)
-    | TRec(n, id, t) -> TRec(n, id, squash_s t)
-    | TLambda (n, args, t) -> TLambda(n, args, squash_s t)
-    | TApp(t, ts) -> TApp(squash_s t, map squash_s ts)
-    | TFix(n, id, k, t) -> TFix(n, id, k, squash_s t)
-    | TUninit ty -> ty := optsquash !ty; t
-    | TEmbed t -> JQueryMod.extract_t (squash_t t)
-  and squash_t t =
-    let open JQ in
-    match t with
-    | TStrobe t -> JQueryMod.embed_t (squash_s t)
-    | TLambda (n, args, t) -> TLambda(n, args, squash_t t)
-    | TForall(n, id, s, t) -> TForall(n, id, squash_sig s, squash_t t)
-    | TApp(t, ss) -> TApp(squash_t t, List.map squash_sig ss)
-    | TDom(n, t, s) -> TDom(n, squash_t t, s)
-  and squash_sig s =
-    let open JQ in
-    match s with
-    | SMult m -> SMult (squash_m m)
-    | STyp t -> STyp (squash_t t)
-  and squash_m m =
-    let open JQ in
-    match m with
-    | MPlain t -> MPlain (squash_t t)
-    | MId _ -> m
-    | MZero m -> MZero (squash_m m)
-    | MOne m -> MOne (squash_m m)
-    | MOnePlus m -> MOnePlus (squash_m m)
-    | MZeroOne m -> MZeroOne (squash_m m)
-    | MZeroPlus m -> MZeroPlus (squash_m m)
-    | MSum (m1, m2) -> MSum (squash_m m1, squash_m m2)
-  in 
-  squash_t t
 
 let rec elim_twith env exp = 
   let open Exp in
   let elim = elim_twith env in match exp with
-  | EAssertTyp(p, t, e) -> EAssertTyp(p, squash env t, elim e)
+  | EAssertTyp(p, t, e) -> EAssertTyp(p, JQuery.squash env t, elim e)
   | EArray(p, es) -> EArray(p, map elim es)
   | EObject (p, props) -> EObject (p, map (second2 elim) props)
   | EId _ -> exp
@@ -295,14 +243,23 @@ let rec elim_twith env exp =
   | EDeref (p, e) -> EDeref (p, elim e)
   | ESetRef (p, e1, e2) -> ESetRef (p, elim e1, elim e2)
   | EParen (p, e) -> EParen (p, elim e)
-  | ESubsumption (p, t, e) -> ESubsumption (p, squash env t, elim e)
-  | EDowncast (p, t, e) -> EDowncast (p, squash env t, elim e)
-  | ETypAbs (p, x, t, e) -> ETypAbs (p, x, squash env t, elim e)
-  | ETypApp (p, e, t) -> ETypApp (p, elim e, squash env t)
-  | ECheat (p, t, e) -> ECheat (p, squash env t, elim e)
+  | ESubsumption (p, t, e) -> ESubsumption (p, JQuery.squash env t, elim e)
+  | EDowncast (p, t, e) -> EDowncast (p, JQuery.squash env t, elim e)
+  | ETypAbs (p, x, t, e) -> ETypAbs (p, x, JQuery.squash env t, elim e)
+  | ETypApp (p, e, t) -> ETypApp (p, elim e, JQuery.squash env t)
+  | ECheat (p, t, e) -> ECheat (p, JQuery.squash env t, elim e)
   | EBot _
   | EConst _ -> exp
 
+
+let do_print_env = ref false
+
+let print_env env : unit =
+  JQEnv.print_env env std_formatter;
+  Format.print_newline ()
+
+let set_print_env () : unit =
+ do_print_env := true
 
 let actual_data () =
   let open Typedjs_writtyp.WritTyp in
@@ -314,35 +271,11 @@ let actual_data () =
     (*   (get_global_object ()) in *)
   let typedjs = get_typedjs () in
   let new_decls = ReadTyps.new_decls (List.rev !JavaScript_lexer.comments) in
-  let rec helper recIds env d = match d with
-    | EnvType(p, x, t) -> 
-      let t' = Desugar.desugar_typ p t in
-      let t'' = squash env t' in
-      (JQEnv.bind_rec_typ_id x recIds (JQuery.STyp (JQueryMod.replace_name (Some x) t'')) env)
-    | ObjectTrio _ -> JQEnv.extend_global_env env [d]
-    | RecBind binds ->
-      let ids = List.concat (List.map (fun b -> match b with
-        | EnvBind (_, x, _) -> [x]
-        | EnvType (_, x, _) -> [x]
-        | ObjectTrio(_, (c, _), (p, _), (i, _)) -> [c;p;i]
-        | EnvPrim _
-        | RecBind _ -> []) binds) in
-      List.fold_left (helper ids) env binds
-    | _ -> env in
-  let env = List.fold_left (helper []) env new_decls in
+  let env = JQEnv.extend_global_env env new_decls in
   set_env env;
   let annot_js = elim_twith env (weave_annotations typedjs) in
   let asserted_js = weave_assertions annot_js in
   (env, asserted_js)
-
-let do_print_env = ref false
-
-let print_env env : unit =
-  JQEnv.print_env env std_formatter;
-  Format.print_newline ()
-
-let set_print_env () : unit =
- do_print_env := true
 
 let action_pretypecheck () : int =
   let (env, typedjs) = actual_data () in
