@@ -463,18 +463,21 @@ struct
   exception Kind_error of string
 
   let depth = ref 0
-  let trace (prompt : string) (msg : string) (success : 'a -> bool) (thunk : unit -> 'a) = thunk ()
-    (* Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg; *)
-    (* depth := !depth + 1; *)
-    (* try *)
-    (*   let ret = thunk () in *)
-    (*   depth := !depth - 1; *)
-    (*   Printf.eprintf "%s<%s-%s %s\n" (String.make (!depth) ' ') (if success ret then "-" else "X") prompt msg; *)
-    (*   ret *)
-    (* with e -> *)
-    (*   depth := !depth - 1; *)
-    (*   Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') prompt msg; *)
-    (*   raise e *)
+  let trace (prompt : string) (msg : string) (success : 'a -> bool) (thunk : unit -> 'a) = 
+
+    (* thunk () *)
+
+    Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg;
+    depth := !depth + 1;
+    try
+      let ret = thunk () in
+      depth := !depth - 1;
+      Printf.eprintf "%s<%s-%s %s\n" (String.make (!depth) ' ') (if success ret then "-" else "X") prompt msg;
+      ret
+    with e ->
+      depth := !depth - 1;
+      Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') prompt msg;
+      raise e
 
 
 
@@ -542,7 +545,7 @@ struct
   let free_ids t = free_typ_ids t
 
   let rec typ_subst x s outer typ = 
-    trace "STROBEtyp_subst" 
+    trace "STROBEtyp_subst"
       (Pretty.simpl_typ typ ^ "[" ^ Pretty.simpl_typ (replace_name None s) ^ "/" ^ (match x with Some x -> x | None -> "<none>") ^ "]")
       (fun _ -> true)
       (fun () -> typ_subst' x s outer typ)
@@ -876,7 +879,7 @@ struct
     | _ -> typ
 
 
-(* Quick hack to infer types; it often works. Sometimes it does not. *)
+  (* Quick hack to infer types; it often works. Sometimes it does not. *)
   let assoc_merge = IdMap.merge (fun x opt_s opt_t -> match opt_s, opt_t with
     | Some (TId y), Some (TId z) ->
       if x = y then opt_t else opt_s
@@ -888,8 +891,23 @@ struct
     | None, None -> None)
 
 
-  let rec typ_assoc (env : env) (typ1 : typ) (typ2 : typ) =
+  let rec typ_assoc env t1 t2 =
+    trace "STROBEtyp_assoc" 
+      (Pretty.simpl_typ t1 ^ " & " ^ Pretty.simpl_typ t2)
+      (fun _ -> true) (fun () -> typ_assoc' env t1 t2)
+  and typ_assoc' (env : env) (typ1 : typ) (typ2 : typ) =
     match (typ1, typ2) with
+    | TUninit t1, t2 -> begin match !t1 with
+      | None -> IdMap.empty
+      | Some t1 -> typ_assoc env t1 t2
+    end 
+    | t1, TUninit t2 -> begin match !t2 with
+      | None -> IdMap.empty
+      | Some t2 -> typ_assoc env t1 t2
+    end 
+    | TEmbed s, t
+    | t, TEmbed s ->
+      IdMap.map (fun t -> Ext.extract_t t) (Ext.typ_assoc env (Ext.embed_t t) s)
     | TId x, _ -> IdMap.singleton x typ2
     | TApp (s1, [s2]), TApp (t1, [t2])
     | TInter (_, s1, s2), TInter (_, t1, t2)
@@ -923,6 +941,7 @@ struct
     | TForall (_, x, s1, s2), TForall (_, y, t1, t2) ->
       (* also here *)
       assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
+
     | _ -> IdMap.empty
 
   and fld_assoc env (_, _, s) (_, _, t) = typ_assoc env s t

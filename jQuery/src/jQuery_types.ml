@@ -49,6 +49,7 @@ module MakeActions
   with type kind = Strobe.extKind
   with type binding = Strobe.extBinding
   with type env = Strobe.env)
+  (Pat : SET with type t = Strobe.pat)
   (Css : Css.CSS with type t = JQ.sel)
   : (JQUERY_ACTIONS 
      with type typ = JQ.typ
@@ -718,6 +719,76 @@ struct
       | MSum (m1, m2) -> MSum (squash_m m1, squash_m m2)
     in 
     squash_t t
+
+
+  (* Quick hack to infer types; it often works. Sometimes it does not. *)
+  let assoc_merge = IdMap.merge (fun x opt_s opt_t -> match opt_s, opt_t with
+    | Some (TStrobe (Strobe.TId y)), Some (TStrobe (Strobe.TId z)) ->
+      if x = y then opt_t else opt_s
+    | Some (TStrobe (Strobe.TId _)), Some t
+    | Some t, Some (TStrobe (Strobe.TId _)) -> Some t
+    | Some t, _
+    | _, Some t ->
+      Some t
+    | None, None -> None)
+
+  let rec typ_assoc env t1 t2 =
+    Strobe.trace "JQtyp_assoc" 
+      (Pretty.simpl_typ t1 ^ " & " ^ Pretty.simpl_typ t2) 
+      (fun _ -> true) (fun () -> typ_assoc' env t1 t2)
+  and typ_assoc' env t1 t2 =
+    match t1, t2 with
+    | TStrobe s, TStrobe t ->
+      IdMap.map (fun t -> embed_t t) (Strobe.typ_assoc env s t)
+    
+    | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]),
+      TStrobe (Strobe.TSource (_, Strobe.TObject o)) ->
+      Printf.eprintf "GOT HERE5\n";
+      let ofields = Strobe.fields o in
+      let (_, _, thisTyp) = List.find (fun (p, _, _) ->
+        Pat.is_equal p (Pat.singleton "__this__")) ofields in
+      begin
+        match embed_t thisTyp with
+        | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
+          mult_assoc env s m
+        | _ -> IdMap.empty
+      end
+    | TApp (s1, s2), TApp(t1, t2) ->
+      if List.length s2 <> List.length t2 then IdMap.empty else
+      List.fold_left2 (fun acc t1 t2 -> 
+        match t1, t2 with
+        | STyp t1, STyp t2 -> assoc_merge acc (typ_assoc env t1 t2)
+        | SMult t1, SMult t2 -> assoc_merge acc (mult_assoc env t1 t2)
+        | _ -> IdMap.empty)
+        (typ_assoc env s1 t1)
+        s2 t2
+    | TApp (s1, s2), t
+    | t, TApp (s1, s2) ->
+      typ_assoc env (simpl_typ env (TApp (s1, s2))) t
+
+
+    | TForall (_, x, STyp s1, s2), TForall (_, y, STyp t1, t2) ->
+      assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
+    | TForall (_, x, SMult s1, s2), TForall (_, y, SMult t1, t2) ->
+      assoc_merge (mult_assoc env s1 t1) (typ_assoc env s2 t2)
+
+    | TDom(_, s1, _), TDom(_, s2, _) ->
+      typ_assoc env s1 s2
+
+    | _ -> IdMap.empty
+  and mult_assoc env m1 m2 =
+    match m1, m2 with
+    | MId m, _ -> IdMap.empty
+    | MPlain t1, MPlain t2 -> typ_assoc env t1 t2
+    | MOne m1, MOne m2
+    | MZero m1, MZero m2
+    | MZeroOne m1, MZeroOne m2
+    | MOnePlus m1, MOnePlus m2
+    | MZeroPlus m1, MZeroPlus m2 -> mult_assoc env m1 m2
+    | MSum(m11, m12), MSum(m21, m22) ->
+      assoc_merge (mult_assoc env m11 m21) (mult_assoc env m12 m22)
+    | _ -> IdMap.empty
+
 end
 
 module MakeModule

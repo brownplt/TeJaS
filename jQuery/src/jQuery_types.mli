@@ -16,7 +16,8 @@ module MakeActions :
   with type kind = Strobe.extKind
   with type binding = Strobe.extBinding
   with type env = Strobe.env) ->
-      functor (Css : Css.CSS with type t = JQ.sel) ->
+      functor (Pat : SET with type t = Strobe.pat) ->
+        functor (Css : Css.CSS with type t = JQ.sel) ->
           (JQUERY_ACTIONS
            with type typ = JQ.typ
   with type kind = JQ.kind

@@ -43,7 +43,7 @@ struct
   open JQ
 
 
-  let trace msg success thunk exp = StrobeTC.trace msg success thunk exp
+  let trace msg success thunk exp = (* thunk exp *) StrobeTC.trace msg success thunk exp
     
   let bind_sigma x s e = match s with
     | STyp t -> Env.bind_typ_id x t e
@@ -56,6 +56,18 @@ struct
 
   let disable_flows () = StrobeTC.disable_flows () 
   (* need () because otherwise this is a value, not a function, and ML gets angry at that *)
+
+  let rec forall_arrow (typ : typ) : (id list * typ) option = match typ with
+    | TStrobe s -> begin
+      match StrobeTC.forall_arrow s with
+      | None -> None
+      | Some (ids, t) -> Some (ids, embed_t t)
+    end
+    | TForall (_, x, _, typ') -> begin match forall_arrow typ' with
+      | None -> None
+      | Some (xs, t) -> Some (x :: xs, t)
+    end
+    | _ -> None
 
   let rec check (env : env) (default_typ : typ option) (exp : exp) (typ : typ) : unit =
     try trace "Check" (fun _ -> true) (fun exp -> check' env default_typ exp typ) exp
@@ -70,8 +82,32 @@ struct
 
   and synth (env : env) (default_typ : typ option) (exp : exp) : typ = 
     trace "Synth" (fun _ -> true) (synth' env default_typ) exp
-  and synth' env default_typ exp : typ =
-    embed_t (StrobeTC.synth env default_typ exp)
+  and synth' env default_typ exp : typ = match exp with
+    | ETypApp (p, e, u) ->
+      begin match embed_t (Strobe.expose env (extract_t (simpl_typ env (synth env default_typ e)))) with
+      | TForall (n, x, STyp s, t) ->
+        if Sub.subtype env u s then
+          apply_name n (typ_subst x u t)
+        else 
+          begin
+            Strobe.typ_mismatch p
+              (Strobe.TypTyp((fun t1 t2 -> sprintf "type-argument %s is not a subtype of the bound %s"
+                (string_of_typ (embed_t t1)) (string_of_typ (embed_t t2))), 
+                             (extract_t u), (extract_t s)));
+            typ_subst x s t (* Warning: produces possibily spurious errors *)
+          end
+      | TStrobe t ->
+        embed_t (StrobeTC.synth env default_typ exp)
+      | t ->
+        Printf.eprintf "In ETypApp, and things went badly wrong with %s\n" (string_of_typ t);
+        raise
+          (Strobe.Typ_error (p, Strobe.TypTyp((fun t1 t2 -> 
+            sprintf "expected forall-type in type application, got:\n%s\ntype argument is:\n%s"
+              (string_of_typ (embed_t t1)) (string_of_typ (embed_t t2))), 
+                                              (extract_t t), (extract_t u))))
+      end      
+    | _ ->
+      embed_t (StrobeTC.synth env default_typ exp)
 
   let typecheck env default_typ exp =
     let _ = synth env default_typ exp in

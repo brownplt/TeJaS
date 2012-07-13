@@ -324,7 +324,7 @@ let test5 () =
                    (Author : DivElement classes = [author] ...)
                    (Time : DivElement classes = [time] )
                     ...
-                   (Content : DivElement classes = [content] ... <Other> ...)
+                   (Content : DivElement classes = [content] ... <Tweet> ...)
                    ...
                )" in
     let decls = (JQEnv.parse_env text "dummy") in

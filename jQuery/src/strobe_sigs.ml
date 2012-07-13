@@ -192,4 +192,5 @@ module type STROBE_TYPECHECKING = sig
   val bind_forall_vars : env -> typ -> env * typ
   val typecheck : env -> extTyp option -> exp -> unit
   val trace : string -> ('a -> bool) -> (exp -> 'a) -> exp -> 'a
+  val forall_arrow : typ -> (id list * typ) option
 end

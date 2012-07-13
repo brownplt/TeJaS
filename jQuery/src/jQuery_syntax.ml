@@ -25,7 +25,7 @@ module rec JQuery : (JQuery_sigs.JQUERY_ACTIONS
   with type baseKind = JQueryImpl.baseKind
   with type baseBinding = JQueryImpl.baseBinding
   with type sel = JQueryImpl.sel) =
-  JQuery_types.MakeActions (Strobe) (JQueryImpl) (Css)
+  JQuery_types.MakeActions (Strobe) (JQueryImpl) (Pat) (Css)
 and Strobe : (Strobe_sigs.STROBE_ACTIONS
               with type typ = StrobeImpl.typ
   with type kind = StrobeImpl.kind

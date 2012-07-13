@@ -93,6 +93,7 @@ module type JQUERY_ACTIONS = sig
   val string_of_kind : kind -> string
   val simpl_typ : env -> typ -> typ
   val squash : env -> typ -> typ
+  val typ_assoc : env -> typ -> typ -> typ IdMap.t
 end
 
 module type JQUERY_MODULE = sig
@@ -154,4 +155,5 @@ module type JQUERY_TYPECHECKING = sig
   val bind_forall_vars : env -> typ -> env * typ
   val typecheck : env -> typ option -> exp -> unit
   val trace : string -> ('a -> bool) -> (exp -> 'a) -> exp -> 'a
+  val forall_arrow : typ -> (id list * typ) option
 end

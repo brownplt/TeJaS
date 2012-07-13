@@ -109,6 +109,7 @@ module type TYP_ACTIONS = sig
   val canonical_type : typ -> typ
   val string_of_typ : typ -> string
   val string_of_kind : kind -> string
+  val typ_assoc : env -> typ -> typ -> typ IdMap.t
 end
 
 module type EXT_TYP_ACTIONS = sig
@@ -157,6 +158,7 @@ module type TYPECHECKING = sig
   val disable_flows : unit -> unit
   val bind_forall_vars : env -> typ -> env * typ
   val typecheck : env -> typ option -> exp -> unit
+  val forall_arrow : typ -> (id list * typ) option
 end
 
 module type EXT_TYPECHECKING = sig
@@ -167,6 +169,7 @@ module type EXT_TYPECHECKING = sig
   val disable_flows : unit -> unit
   val typecheck : env -> typ option -> exp -> unit
   val bind_forall_vars : env -> typ -> env * typ
+  val forall_arrow : typ -> (id list * typ) option
 end
 
 module type TYP_ENV = sig

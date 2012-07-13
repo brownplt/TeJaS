@@ -148,6 +148,12 @@ struct
         | Some r1, Some r2 -> Some (TInter(n, r1, r2))
         | _ -> None) 
       | TForall _ -> Some t (* BSL : This seems incomplete; extract_arrow won't descend under a Forall *)
+      | TEmbed t' -> begin
+        Printf.eprintf "Got here\n";
+        match ExtTC.forall_arrow t' with
+        | Some _ -> Some t
+        | None -> Printf.eprintf "nope.\n"; None
+      end
       | _ -> None in
     match helper t with
     | Some t -> t
@@ -220,6 +226,23 @@ struct
     | ETypApp (p, e, t) -> usesThis e
     | ECheat (p, t, e) -> usesThis e
     | EParen (p, e) -> usesThis e
+
+
+
+  let rec forall_arrow (typ : typ) : (id list * typ) option = match typ with
+    | TEmbed t -> begin
+      match ExtTC.forall_arrow t with
+      | None -> None
+      | Some (ids, t) -> Some (ids, Ext.extract_t t)
+    end
+    | TArrow _ -> Some ([], typ)
+    | TForall (_, x, _, typ') -> begin match forall_arrow typ' with
+      | None -> None
+      | Some (xs, t) -> Some (x :: xs, t)
+    end
+    | TRec (_, x, t) -> forall_arrow (typ_subst x typ t)
+    | _ -> None
+
 
   let trace (msg : string) (success : 'a -> bool) (thunk : exp -> 'a) (exp : exp) = (* thunk exp *)
     Typ.trace msg (simpl_print exp) success (fun () -> thunk exp)
@@ -449,10 +472,12 @@ struct
       end
     | EDeref (p, e) -> 
       let typ = (synth env default_typ e) in
-      (* Printf.eprintf "In EDeref, synthed type of %s is %s\n" (string_of_exp e) (string_of_typ typ); *)
+      Printf.eprintf "In EDeref, synthed type of %s is %s\n" (string_of_exp e) (string_of_typ typ);
       let typ = expose_simpl_typ env typ in
-      (* Printf.eprintf "In EDeref, exposed type is %s\n" (string_of_typ typ); *)
-      let typ = ((check_kind p env typ)) in
+      Printf.eprintf "In EDeref, exposed type is %s\n" (string_of_typ typ);
+      let typ = 
+        try ((check_kind p env typ)) 
+        with _ -> Printf.eprintf "Bad kind!\n"; typ in
       if typ = TPrim "Unsafe" 
       then raise (Sub.Typ_error (p, Sub.FixedString "synth: Cannot dereference an unsafe value"))
       else begin match typ with
@@ -576,7 +601,8 @@ struct
       | TRegex pat -> begin
         match synth env default_typ obj with
         | TRegex _ -> Sub.inherits p env (TId "String") pat
-        | obj_typ -> Sub.inherits p env (un_null obj_typ) pat
+        | obj_typ -> 
+          Sub.inherits p env (un_null obj_typ) pat
       end
       | idx_typ -> 
         raise (Sub.Typ_error
@@ -624,7 +650,7 @@ struct
     | EInfixOp (p, op, e1, e2) -> synth env default_typ (EApp (p, EId (p, op), [e1; e2]))
     | EApp (p, f, args) -> 
       let rec check_app tfun =
-        (* Printf.eprintf "Checking EApp@%s with function type %s\n" (Pos.toString p) (string_of_typ tfun); *)
+        Printf.eprintf "Checking EApp@%s with function type %s\n" (Pos.toString p) (string_of_typ tfun);
         begin match expose_simpl_typ env tfun with 
         | TArrow (expected_typs, None, result_typ) -> 
           let args = fill (List.length expected_typs - List.length args) 
@@ -674,16 +700,9 @@ struct
           (match r1, r2 with
           | Some r, None
           | None, Some r -> apply_name n r
-          | _ -> raise (Sub.Typ_error (p, Sub.FixedString "synth: Ambiguous union of functions")))
-        | (TForall _) as quant_typ -> 
-          let rec forall_arrow (typ : typ) : (id list * typ) option = match typ with
-            | TArrow _ -> Some ([], typ)
-            | TForall (_, x, _, typ') -> begin match forall_arrow typ' with
-              | None -> None
-              | Some (xs, t) -> Some (x :: xs, t)
-            end
-            | TRec (_, x, t) -> forall_arrow (typ_subst x typ t)
-            | _ -> None in
+          | _ -> raise (Sub.Typ_error (p, Sub.FixedString "synth2: Ambiguous union of functions")))
+        | ((TForall _) as quant_typ)
+        | ((TEmbed _) as quant_typ) -> 
           begin match forall_arrow quant_typ with
           | None -> 
             raise (Sub.Typ_error (p, Sub.Typ((fun t -> sprintf "synth: expected function, got %s"
@@ -693,7 +712,13 @@ struct
             let arg_typs = map (synth env default_typ) args in
             let assumed_arg_exps = 
               List.map2 (fun e t -> ECheat (p, Ext.embed_t t, e)) args arg_typs in
+            Printf.eprintf "In EApp, arg_typs are:\n";
+            List.iter (fun t -> Printf.eprintf "  %s\n" (string_of_typ t)) arg_typs;
+            Printf.eprintf "1In Eapp, arrow_typ is %s\n" (string_of_typ arrow_typ);
+            Printf.eprintf "2In Eapp, tarrow is    %s\n" (string_of_typ (TArrow (arg_typs, None, r)));
             let assoc = typ_assoc env arrow_typ (TArrow (arg_typs, None, r)) in
+            IdMap.iter (fun k t ->
+              Printf.eprintf "  [%s => %s]\n" k (string_of_typ t)) assoc;
             let guess_typ_app exp typ_var = 
               try
                 let guessed_typ = 
@@ -702,14 +727,16 @@ struct
                     if (List.length expected_typs > List.length args) 
                     then (TPrim "Undef")
                     else raise Not_found in
-                ETypApp (p, exp, Ext.embed_t guessed_typ) 
+                ETypApp (p, exp, Ext.embed_t guessed_typ)
               with Not_found -> begin
                 raise (Sub.Typ_error 
                          (p, Sub.FixedString (sprintf "synth: could not instantiate typ_var %s" typ_var))) end in
             let guessed_exp = 
               fold_left guess_typ_app (ECheat (p, Ext.embed_t quant_typ, f)) 
                 typ_vars in
-            synth env default_typ (EApp (p, guessed_exp, assumed_arg_exps))
+            let synthed_exp = EApp(p, guessed_exp, assumed_arg_exps) in
+            Printf.eprintf "In EApp, synthed_exp = %s\n" (Exp.string_of_exp synthed_exp);
+            synth env default_typ synthed_exp
           | Some _ -> failwith "expected TArrow from forall_arrow"
           end
         | not_func_typ -> 
@@ -765,7 +792,10 @@ struct
                 (string_of_typ t1) (string_of_typ t2)), u, s));
             typ_subst x s t (* Warning: produces possibily spurious errors *)
           end
+      | TEmbed t ->
+        Ext.extract_t (ExtTC.synth env default_typ exp)
       | t ->
+        Printf.eprintf "In ETypApp, and things went badly wrong with %s\n" (string_of_typ t);
         raise
           (Sub.Typ_error (p, Sub.TypTyp((fun t1 t2 -> 
             sprintf "expected forall-type in type application, got:\n%s\ntype argument is:\n%s"
