@@ -80,7 +80,8 @@ struct
           add_id_bindings free_ids acc) free_ids acc' in
         let free_ids' = IdMap.filter (fun id _ -> IdMap.mem id acc) free_ids' in
         helper free_ids' acc' in
-    Strobe.trace "Projecting free vars of " s (fun _ -> true) (fun () -> helper free_ids IdMap.empty)
+    (* Strobe.trace "Projecting free vars of " s (fun _ -> true) (fun () -> helper free_ids IdMap.empty) *)
+    helper free_ids IdMap.empty
   let project_mult_typ m t (env : env) = IdMap.fold IdMap.add (project (SMult m) env) (project (STyp t) env)
   let project_typs t1 t2 (env : env) = IdMap.fold IdMap.add (project (STyp t1) env) (project (STyp t2) env)
   let project_mults m1 m2 (env : env) = IdMap.fold IdMap.add (project (SMult m1) env) (project (SMult m2) env)
@@ -242,8 +243,8 @@ struct
       | MZeroPlus m -> MZeroPlus (rm m)
       | MSum (m1, m2) -> MSum (rm m1, rm m2)
     and  rjq t = match t with
-      | TForall (s,id,sigma,t) -> TForall(s,id,resolve_sigma sigma, rjq t)
-      | TLambda (s,iks,t) -> TLambda(s,iks,rjq t)
+      | TForall (s,id,sigma,t) -> TForall(s,id,resolve_sigma sigma, t)
+      | TLambda _ -> t
       | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]) ->
         failwith "childrenOf at outermost level"
       | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]) ->
@@ -297,12 +298,12 @@ struct
       | Strobe.TSink (s, t) -> Strobe.TSink (s, rs t)
       | Strobe.TTop -> Strobe.TTop
       | Strobe.TBot -> Strobe.TBot
-      | Strobe.TForall (s,id,t1,t2) -> Strobe.TForall(s,id,rs t1, rs t2)
+      | Strobe.TForall (s,id,t1,t2) -> Strobe.TForall(s,id,rs t1, t2)
       | Strobe.TId id -> t
-      | Strobe.TRec (s,id,t) -> Strobe.TRec (s, id, rs t)
-      | Strobe.TLambda (s, iks, t) -> Strobe.TLambda (s, iks, rs t)
+      | Strobe.TRec _ -> t
+      | Strobe.TLambda _ -> t
       | Strobe.TApp (t, ts) -> Strobe.TApp (rs t, (List.map rs ts))
-      | Strobe.TFix (s, id, k, t) -> Strobe.TFix (s, id, k, rs t)
+      | Strobe.TFix _ -> t
       | Strobe.TUninit tor -> 
         Strobe.TUninit (match !tor with Some t -> ref (Some (rs t)) | _ -> tor)
       | Strobe.TEmbed t -> Strobe.TEmbed (rjq t) in
