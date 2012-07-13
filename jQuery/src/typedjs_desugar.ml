@@ -47,7 +47,7 @@ struct
   exception Typ_stx_error of string
 
   (* Local Structure types *)
-  type preClauseMap = id list IdMap.t
+  type preClauseMap = id option list IdMap.t
   type clauseMap = multiplicity IdMap.t
   type backformMap = id list StringMap.t
 
@@ -270,7 +270,9 @@ struct
 
     (* Compile structure *)
     let compile (senv : structureEnv) (dc : W.declComp)  : structureEnv = 
-
+      
+      let element = "Element" in
+      
       let enforcePresence (id : id) (pcenv : preClauseEnv) : preClauseEnv =
         let helper (pcm : preClauseMap) =
           if (IdMap.mem id pcm) then pcm else (IdMap.add id [] pcm) in
@@ -295,7 +297,7 @@ struct
               if StringMap.mem s bm then (id::(StringMap.find s bm)) else [id] in
             StringMap.add s toAdd bm) bm strs in
 
-        let update (source : id) (target : id) (pcm : preClauseMap) 
+        let update (source : id) (target : id option) (pcm : preClauseMap) 
             : preClauseMap =
           if (IdMap.mem source pcm) then 
             (IdMap.add source (target::(IdMap.find source pcm)) pcm)
@@ -304,40 +306,40 @@ struct
         let rec compPreClauses (pcenv : preClauseEnv) (dccs : W.dcContent list) : preClauseEnv = 
           let { pce_parent = parent; pce_children = children; pce_prev = prev; pce_next = next} = pcenv in
           match dccs with
-          | []
+          | [] -> pcenv
           | W.DPlaceholder :: [] -> 
-            {pce_children = (update pname "ElementAny" children);
+            {pce_children = (update pname None children);
              pce_parent = parent;
              pce_prev = prev; 
              pce_next = next }
           | W.DNested  (name,_,_,_,_) :: []
           | W.DId name::[] -> 
-            {pce_children = (update pname name children);
-             pce_parent = (update name pname parent);
+            {pce_children = (update pname (Some name) children);
+             pce_parent = (update name (Some pname) parent);
              pce_prev = prev; 
              pce_next = next }
           | c1 :: ((c2 :: rest) as tail) -> (match c1, c2 with
             | W.DPlaceholder, W.DPlaceholder -> compPreClauses pcenv tail
             | W.DPlaceholder, W.DNested (name, _, _, _, _)
             | W.DPlaceholder, W.DId name -> compPreClauses 
-              {pce_children = (update pname "ElementAny" children);
+              {pce_children = (update pname None children);
                pce_parent = parent;
-               pce_prev = (update name "ElementAny" prev);
+               pce_prev = (update name None prev);
                pce_next = next; } tail
             | W.DNested (name, _, _, _, _), W.DPlaceholder
             | W.DId name, W.DPlaceholder -> compPreClauses 
-              {pce_children = (update pname name children);
-               pce_parent = (update name pname parent);
+              {pce_children = (update pname (Some name) children);
+               pce_parent = (update name (Some pname) parent);
                pce_prev = prev;
-               pce_next = (update name "ElementAny" next); } tail
+               pce_next = (update name None next); } tail
             | W.DNested (name1, _, _, _, _), W.DNested (name2, _, _, _, _)
             | W.DNested (name1, _, _, _, _), W.DId name2
             | W.DId name1, W.DNested (name2, _, _, _, _)
             | W.DId name1, W.DId name2 -> compPreClauses 
-              {pce_children = (update pname name1 children);
-               pce_parent = (update name1 pname parent);
-               pce_prev = (update name2 name1 prev);
-               pce_next = (update name1 name2 next)} tail) in
+              {pce_children = (update pname (Some name1) children);
+               pce_parent = (update name1 (Some pname) parent);
+               pce_prev = (update name2 (Some name1) prev);
+               pce_next = (update name1 (Some name2) next)} tail) in
 
         
         (* backformEnv updated for this W.declComp *)
@@ -379,38 +381,57 @@ struct
       let (benv_complete, pcenv) = compileComp empty_psenv dc in
 
       (* transform preClauseMap -> clauseMap *)
-      let transformPCM (pcm : preClauseMap) (f : int -> typ -> multiplicity) = 
-        IdMap.fold 
-          (fun id ids (cm : clauseMap) -> match ListExt.remove_dups ids with
-          | [] -> IdMap.add id (f 0 (JQ.TStrobe S.TTop)) cm
-          | hd::tl ->
-            let size = List.length tl + 1 in
-            let typ = JQ.TStrobe (List.fold_left (fun acc id -> 
-              S.TUnion (None,acc, (S.TId id))) 
-                                 (S.TId hd) tl) in
-            IdMap.add id (f size typ) cm)
-          pcm IdMap.empty in
-      
-      let childFun s t = let open JQ in match s with
-        | 0 -> MZeroPlus (MPlain (TStrobe (S.TId "ElementAny")))
-        | 1 -> MOne (MPlain t)
-        | _ -> MOnePlus (MPlain t) in
+      let transformPCM (pcm : preClauseMap) (f : id option list -> multiplicity) = 
+        IdMap.fold (fun id ids cm -> IdMap.add id (f (ListExt.remove_dups ids)) cm)
+           pcm IdMap.empty in
 
-      let parFun s t = let open JQ in match s with 
-        | 0 -> MZeroOne (MPlain (TStrobe (S.TId "ElementAny")))
-        | 1 -> MOne (MPlain t)
-        | _ -> MOne (MPlain t) in
+      (* Functions for transforming lists of tids into multiplicities *)
+
+      let wrap_id id = (JQ.MPlain (JQ.TStrobe (S.TId id))) in
+
+      let extract_id (ido : id option) : id  = match ido with 
+        | Some id -> id
+        | None -> element in
+
+      let transform_children idos = let open JQ in match idos with 
+        | [] -> MZero (wrap_id element)
+        | [Some id] -> MOne (wrap_id id) 
+        | [None] -> MZeroPlus (wrap_id element)
+        | hd::tail -> 
+          MOnePlus (MPlain (TStrobe (List.fold_left (fun acc ido ->
+            S.TUnion (None,acc, (S.TId (extract_id ido)))) 
+                                       (S.TId (extract_id hd)) tail))) in
+
+      let transform_sibs idos = let open JQ in match idos with
+        | [] -> MZero (wrap_id element)
+        | [Some id] -> MOne (wrap_id id)
+        | [None] -> MZeroOne (wrap_id element)
+        | _ -> failwith "transform_sibs needs a list of length 1" in
+
+      let transform_parent idos = let open JQ in match idos with
+        | [] -> MZeroOne (wrap_id element)
+        | [Some id] -> MOne (wrap_id id)
+        | [None] -> failwith "parent cannot be a placeholder"
+        | _ -> failwith "transform_parent needs a list of length 1" in
+
+      (* Make sure that the toplevel declComp has nextsib and prevsib
+         of 01<Element>
+         Note: this is moderately hackish and disgusting. 
+         TODO-liam: make this cleaner later on? *)
       
-      let prevNextFun s t = let open JQ in match s with 
-        | 0 -> MZero (MPlain t)
-        | 1 -> MOne (MPlain t)
-        | _ -> MOne (MPlain t) in
+      let (name, _,_,_,_) = dc in
+
+      let pcenv = {pce_children = pcenv.pce_children;
+                   pce_parent = pcenv.pce_parent;
+                   pce_prev = IdMap.add name [None] pcenv.pce_prev;
+                   pce_next = IdMap.add name [None] pcenv.pce_next;} in
       
       (* return final structureEnv *)
-      (benv_complete, {children = (transformPCM pcenv.pce_children childFun);
-                       parent = (transformPCM pcenv.pce_parent parFun);
-                       prev = (transformPCM pcenv.pce_prev prevNextFun);
-                       next = (transformPCM pcenv.pce_next prevNextFun)}) in
+      (benv_complete, 
+       {children = (transformPCM pcenv.pce_children transform_children);
+        parent = (transformPCM pcenv.pce_parent transform_parent);
+        prev = (transformPCM pcenv.pce_prev transform_sibs);
+        next = (transformPCM pcenv.pce_next transform_sibs)}) in
 
     (* Body of desugar_structure *)
     (gen_bindings dc, compile senv dc)

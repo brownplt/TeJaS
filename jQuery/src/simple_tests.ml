@@ -148,6 +148,9 @@ let newline () = pp_print_newline std_formatter ()
 let flush () = pp_print_flush std_formatter ()
 
 
+let print_env env : unit =
+  JQEnv.print_env env std_formatter;
+  Format.print_newline ()
 
 let test_harness test =
   let margin = pp_get_margin std_formatter () in
@@ -157,10 +160,11 @@ let test_harness test =
     pp_set_max_indent std_formatter 10000;
     test ()
   with e ->
+    Printf.eprintf "got an error\n";
     pp_set_margin std_formatter margin;
     pp_set_max_indent std_formatter max_indent;
+    (* Printf.eprintf (Printexc.to_string e); *)
     raise e
-
 
 let test1 n =
   let test1_help n a = 
@@ -308,23 +312,32 @@ let test3 n =
 (*   end in *)
 (*   test_harness test4 *)
 
-let test5 () = ()
-  (* TODO: rewrite this test *)
-  (* let test5 () = begin *)
-  (*   let text = "(Tweet : \"\"\"A structure for tweets\"\"\" *)
-  (*                  DivElement *)
-  (*                  optional classes = [first, last] *)
-  (*                  classes = [tweet] *)
-  (*                  /* ignore this! */ *)
-  (*                  (Author : DivElement classes = [author] ...) *)
-  (*                  (Time : DivElement classes = [time] ) *)
-  (*                  (Content : DivElement classes = [content] ... <Other> ...) *)
-  (*                  ... *)
-  (*              )" in *)
-  (*   let decls = LS.parseLocalStructure text in *)
-  (*   List.iter (fun d -> LS.Pretty.p_decl d Format.std_formatter; Format.print_newline()) decls *)
-  (* end in *)
-  (* test_harness test5 *)
+let test5 () = 
+  let open Typedjs_writtyp.WritTyp in
+  let helper () = 
+    let text = "type DivElement = #{ name : /\"HTMLDivElement\"/ };
+                (Tweet : \"\"\"A structure for tweets\"\"\"
+                   DivElement
+                   optional classes = [first, last]
+                   classes = [tweet]
+                   /* ignore this! */
+                   (Author : DivElement classes = [author] ...)
+                   (Time : DivElement classes = [time] )
+                    ...
+                   (Content : DivElement classes = [content] ... <Other> ...)
+                   ...
+               )" in
+    let decls = (JQEnv.parse_env text "dummy") in
+    let env = JQEnv.extend_global_env IdMap.empty decls in
+    let open Typedjs_writtyp.WritTyp in
+    let print_decls () =
+      List.iter (fun d -> print_env_decl d Format.std_formatter; Format.print_newline ();) decls in
+    begin
+      print_decls ();
+      Format.print_newline ();
+      print_env env;
+    end in
+  test_harness helper
 
 let test6 n =
   let test6 n =
@@ -416,7 +429,7 @@ let well_formed_test () =
   end
 
 let run_tests () =
-  try
+  (* try *)
     (* Random.self_init(); *)
     (* test1 500; *)
     (* test2 500; *)
@@ -425,7 +438,8 @@ let run_tests () =
     (* test5 (); *)
     (* test6 1000; *)
     (* test7 (); *)
-    well_formed_test ();
+    (* well_formed_test (); *)
+    test5 ();
     0
-  with _ -> 2
+  (* with _ -> 2 *)
 ;;
