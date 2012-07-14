@@ -784,13 +784,13 @@ struct
       begin match expose_simpl_typ env (synth env default_typ e) with
       | TForall (n, x, s, t) ->
         if Sub.subtype env u s then
-          apply_name n (typ_subst x u t)
+          apply_name n (canonical_type (typ_subst x u t))
         else 
           begin
             Sub.typ_mismatch p
               (Sub.TypTyp((fun t1 t2 -> sprintf "type-argument %s is not a subtype of the bound %s"
                 (string_of_typ t1) (string_of_typ t2)), u, s));
-            typ_subst x s t (* Warning: produces possibily spurious errors *)
+            canonical_type (typ_subst x s t) (* Warning: produces possibily spurious errors *)
           end
       | TEmbed t ->
         Ext.extract_t (ExtTC.synth env default_typ exp)
@@ -803,9 +803,9 @@ struct
       end
     | ECheat (p, t, _) -> 
       let t = Ext.extract_t t in
-      (* Printf.eprintf "Cheating to %s\n" (string_of_typ (replace_name None t)); *)
+      Printf.eprintf "Cheating to %s\n" (string_of_typ (replace_name None t));
       let simpl_t = Typ.trace "Exposing type" "" (fun _ -> true) (fun () -> expose_simpl_typ env t) in
-      (* Printf.eprintf "Exposed typ is %s\n" (string_of_typ (replace_name None simpl_t)); *)
+      Printf.eprintf "Exposed typ is %s\n" (string_of_typ (replace_name None simpl_t));
       simpl_t
     | EParen (p, e) -> synth env default_typ e
 

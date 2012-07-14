@@ -50,35 +50,44 @@ struct
     let (free_t, free_m) = free_sigma_ids s in
     let add_id_bindings set map = IdSet.fold (fun id acc -> 
       try
-        IdMap.add id (IdMap.find id env) acc
+        IdMap.add id (List.filter (fun b -> match b with BStrobe (Strobe.BTermTyp _) -> false | _ -> true)
+                        (IdMap.find id env)) acc
       with Not_found -> (Printf.eprintf "Couldn't find %s\n" id; acc)) set map in
     let free_ids = add_id_bindings free_t (add_id_bindings free_m IdMap.empty) in
-    let s = match s with
-      | SMult m -> string_of_mult m
-      | STyp t -> string_of_typ t in
+    (* let s = match s with *)
+    (*   | SMult m -> string_of_mult m *)
+    (*   | STyp t -> string_of_typ t in *)
+    (* Printf.eprintf "Free mult ids for %s are: {%s}\n" s (String.concat "," (IdSetExt.to_list free_m)); *)
+    (* Printf.eprintf "Free typ ids for %s are: {%s}\n" s (String.concat "," (IdSetExt.to_list free_t)); *)
     let rec helper free_ids acc =
+    (*   let s = (String.concat "," (IdMapExt.keys free_ids)) in *)
+    (*   Strobe.trace "Ids being checked: " s (fun _ -> true) (fun () -> helper' free_ids acc) *)
+    (* and helper' free_ids acc = *)
       if IdMap.cardinal free_ids = 0 then acc else
         let acc' = IdMap.fold IdMap.add free_ids acc in
         let free_ids' = IdMap.fold (fun id bs acc -> 
           let free_ids = List.fold_left (fun ids b -> match unwrap_b b with
-            | BStrobe (Strobe.BTermTyp t)
+            | BStrobe (Strobe.BTermTyp t) -> ids
             | BStrobe (Strobe.BTypBound(t, _))
             | BStrobe (Strobe.BLabelTyp t) -> 
-              let free_ids = JQ.free_ids (embed_t t) in
-              (* Printf.eprintf "New free_ids for %s are %s\n" (string_of_typ (embed_t t)) *)
-              (*   (String.concat "," (IdSetExt.to_list free_ids)); *)
+              let (free_t, free_m) = JQ.free_sigma_ids (STyp (embed_t t)) in
+              let free_ids = IdSet.union free_t free_m in
+              (* Printf.eprintf "Free typ mult_ids for %s are: {%s}\n" (string_of_typ (embed_t t)) *)
+              (*   (String.concat "," (IdSetExt.to_list free_m)); *)
+              (* Printf.eprintf "Free typ typ_ids for %s are: {%s}\n" (string_of_typ (embed_t t)) *)
+              (*   (String.concat "," (IdSetExt.to_list free_t)); *)
               IdSet.union ids free_ids
             | BStrobe (Strobe.BEmbed _) -> ids
             | BStrobe (Strobe.BTyvar _) -> ids
             | BMultBound(m, _) -> 
               let (free_t, free_m) = JQ.free_sigma_ids (SMult m) in 
               let free_ids = IdSet.union free_t free_m in
-              (* Printf.eprintf "New free_ids for %s are %s\n" (string_of_mult m) *)
+              (* Printf.eprintf "New mult free_ids for %s are %s\n" (string_of_mult m) *)
               (*   (String.concat "," (IdSetExt.to_list free_ids)); *)
               IdSet.union ids free_ids)
             IdSet.empty bs in
           add_id_bindings free_ids acc) free_ids acc' in
-        let free_ids' = IdMap.filter (fun id _ -> IdMap.mem id acc) free_ids' in
+        let free_ids' = IdMap.filter (fun id _ -> not (IdMap.mem id acc)) free_ids' in
         helper free_ids' acc' in
     (* Strobe.trace "Projecting free vars of " s (fun _ -> true) (fun () -> helper free_ids IdMap.empty) *)
     helper free_ids IdMap.empty
@@ -118,25 +127,41 @@ struct
     let addToCache (cache, ret) = (SPMap.add (project_typs t1 t2 env, STyps (t1, t2)) ret cache, ret) in
     try incr cache_hits; (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
-      else match t1, t2 with
-      | TStrobe t1, TStrobe t2 -> cache, StrobeSub.subtype env t1 t2
-      | TDom (_, t1, sel1), TDom (_, t2, sel2) ->
-        subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
-      | TDom _, _ -> subtype_typ env cache t1 (TDom(None, t2, Css.all))
-      | _, TDom _ -> subtype_typ env cache (TDom(None, t1, Css.all)) t2
-      | TApp(t1, args1), TApp(t2, args2) ->
+      else match unwrap_t t1, unwrap_t t2 with
+      | TApp(TStrobe (Strobe.TFix(Some "jQ", "jq", _, _)), args1), TApp(TStrobe (Strobe.TFix(Some "jQ", "jq", _, _)), args2) ->
         if (List.length args1 <> List.length args2) then (cache, false)
-        else List.fold_left2 subtype_sigma_list (cache, true) ((STyp t1)::args1) ((STyp t2)::args2)
-      | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
-        (* Kernel rule *)
-        if not (equivalent_sigma env s1 s2) then cache, false
-        else 
-          let t2 = typ_typ_subst x2 (embed_t (Strobe.TId x1)) t2 in
-          let env' = match s2 with
-            | STyp t -> Env.bind_typ_id x1 t env
-            | SMult m -> Env.bind_mult_id x1 m env in
-          subtype_typ env' cache t1 t2
-      | _ -> (cache, false))
+        else List.fold_left2 subtype_sigma_list (cache, true) args1 args2
+      | t1, t2 ->
+        let simpl_t1 = simpl_typ env t1 in
+        let simpl_t2 = simpl_typ env t2 in
+        let env' = project_typs simpl_t1 simpl_t2 env in
+        try (cache, SPMap.find (env', STyps (simpl_t1, simpl_t2)) cache)
+        with Not_found ->
+          Printf.eprintf "JQUERY ASSUMING %s <: %s, checking for consistency\n" (string_of_typ t1) (string_of_typ t2);
+          let cache = SPMap.add (env', STyps (t1, t2)) true cache in
+          match unwrap_t simpl_t1, unwrap_t simpl_t2 with
+          | TStrobe t1, TStrobe t2 -> 
+            tc_cache := cache; (* checkpoint state *)
+            cache, StrobeSub.subtype env t1 t2
+          | TDom (_, t1, sel1), TDom (_, t2, sel2) ->
+            subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
+          | TDom _, _ -> subtype_typ env cache t1 (TDom(None, t2, Css.all))
+          | _, TDom _ -> subtype_typ env cache (TDom(None, t1, Css.all)) t2
+          | TApp _, TApp _ -> Printf.eprintf "GOT HERE\n"; cache, false
+          (* UNSOUND: Type constructor might not be covariant in its arguments *)
+          (* | TApp(t1, args1), TApp(t2, args2) -> *)
+          (*   if (List.length args1 <> List.length args2) then (cache, false) *)
+          (*   else List.fold_left2 subtype_sigma_list (cache, true) ((STyp t1)::args1) ((STyp t2)::args2) *)
+          | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
+            (* Kernel rule *)
+            if not (equivalent_sigma env s1 s2) then cache, false
+            else 
+              let t2 = canonical_type (typ_typ_subst x2 (embed_t (Strobe.TId x1)) t2) in
+              let env' = match s2 with
+                | STyp t -> Env.bind_typ_id x1 t env
+                | SMult m -> Env.bind_mult_id x1 m env in
+              subtype_typ env' cache t1 t2
+          | _ -> (cache, false))
     end
       
   and subtype_mult lax (env : env) cache m1 m2 = 
@@ -182,7 +207,7 @@ struct
     | MPlain _, _ -> (cache, false) (* not canonical! *)
     )
 
-  and cache : bool SPMap.t ref = ref SPMap.empty
+  and tc_cache : bool SPMap.t ref = ref SPMap.empty
 
   let print_cache lbl =
     let open SigmaPair in
@@ -194,17 +219,17 @@ struct
       | STyps (t1, t2) -> 
         pair
           (label_braces "Env: " cut [Env.print_env env])
-          (label_pair "STyps" (JQ.Pretty.typ t1) (JQ.Pretty.typ t2))
+          (squish[text "STyps"; (pair (JQ.Pretty.typ t1) (JQ.Pretty.typ t2))])
       | SMults (m1, m2) -> 
         pair
           (label_braces "Env: " cut [Env.print_env env])
-          (label_pair "SMults" (JQ.Pretty.multiplicity m1) (JQ.Pretty.multiplicity m2))
+          (squish[text "SMults"; (pair (JQ.Pretty.multiplicity m1) (JQ.Pretty.multiplicity m2))])
       | SMultTyp (m1, t2) -> 
         pair
           (label_braces "Env: " cut [Env.print_env env])
-          (label_pair "SMultTyp" (JQ.Pretty.multiplicity m1) (JQ.Pretty.typ t2)))
+          (squish[text "SMultTyp"; (pair (JQ.Pretty.multiplicity m1) (JQ.Pretty.typ t2))]))
       (fun b -> text (string_of_bool b))
-      !cache
+      !tc_cache
 
       
   let rec resolve_special_functions (env : env) (senv : Env.structureEnv) (t : typ) =
@@ -312,19 +337,19 @@ struct
 
   (* SUBTYPING ONLY WORKS ON CANONICAL FORMS *)
   let subtype_sigma lax env s1 s2 =
-    (let (c, r) = (subtype_sigma lax env !cache (canonical_sigma s1) (canonical_sigma s2))
-     in cache := c; r)
+    (let (c, r) = (subtype_sigma lax env !tc_cache (canonical_sigma s1) (canonical_sigma s2))
+     in tc_cache := c; r)
   let subtype_typ lax env t1 t2 =
     let (c, r) = 
-       (subtype_typ lax env !cache
+       (subtype_typ lax env !tc_cache
           (resolve_special_functions env !Env.senv 
              (Env.expose_tdoms env (canonical_type t1)))
           (resolve_special_functions env !Env.senv 
              (Env.expose_tdoms env (canonical_type t2))))
-     in cache := c; r
+     in tc_cache := c; r
   let subtype_mult lax env m1 m2 =
-    (let (c, r) = (subtype_mult lax env !cache (canonical_multiplicity m1) (canonical_multiplicity m2))
-     in cache := c; r)
+    (let (c, r) = (subtype_mult lax env !tc_cache (canonical_multiplicity m1) (canonical_multiplicity m2))
+     in tc_cache := c; r)
 
   let subtype = subtype_typ true
 end

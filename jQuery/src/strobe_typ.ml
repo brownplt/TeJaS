@@ -481,34 +481,39 @@ struct
 
 
 
-  let rec map_reduce_t (map : extTyp -> 'a) (red : 'b -> 'a -> 'b) b t = match t with
-    | TPrim _
-    | TTop
-    | TBot
-    | TId _ -> b
-    | TForall(_, _, t1, t2)
-    | TUnion (_, t1, t2)
-    | TInter (_, t1, t2) -> 
-      let b' = map_reduce_t map red b t1 in
-      map_reduce_t map red b' t2
-    | TArrow(args, var, ret) ->
-      let typs = match var with None -> ret::args | Some t -> ret::t::args in
-      List.fold_left (map_reduce_t map red) b typs
-    | TObject obj -> 
-      List.fold_left (map_reduce_t map red) b (List.map thd3 obj.fields)
-    (* | TWith _ *)
-    | TThis t
-    | TRef (_, t)
-    | TSource(_, t)
-    | TSink(_, t)
-    | TRec(_, _, t)
-    | TLambda(_, _, t)
-    | TFix(_, _, _, t) -> map_reduce_t map red b t
-    | TApp(t, ts) ->
-      List.fold_left (map_reduce_t map red) (map_reduce_t map red b t) ts
-    | TEmbed t -> red b (map t)
-    | _ -> b
-  
+  let map_reduce_t (map : extTyp -> 'a) (id : IdSet.t -> id -> 'b) (red : IdSet.t -> 'b -> 'a -> 'b) b t = 
+    let rec helper bound b t = match t with
+      | TPrim _
+      | TTop
+      | TBot -> b
+      | TId x -> b
+      | TForall(_, x, t1, t2) ->
+        let bound' = IdSet.add x bound in
+        let b' = helper bound' b t1 in
+        helper bound' b' t2
+      | TUnion (_, t1, t2)
+      | TInter (_, t1, t2) -> 
+        let b' = helper bound b t1 in
+        helper bound b' t2
+      | TArrow(args, var, ret) ->
+        let typs = match var with None -> ret::args | Some t -> ret::t::args in
+        List.fold_left (helper bound) b typs
+      | TObject obj -> 
+        List.fold_left (helper bound) b (List.map thd3 obj.fields)
+      (* | TWith _ *)
+      | TThis t
+      | TRef (_, t)
+      | TSource(_, t)
+      | TSink(_, t) -> helper bound b t
+      | TRec(_, x, t) -> helper (IdSet.add x bound) b t
+      | TLambda(_, xks, t) -> helper (IdSet.union bound (IdSetExt.from_list (List.map fst2 xks))) b t
+      | TFix(_, x, _, t) -> helper (IdSet.add x bound) b t
+      | TApp(t, ts) ->
+        List.fold_left (helper bound) (helper bound b t) ts
+      | TEmbed t -> red bound b (map t)
+      | _ -> b
+    in helper IdSet.empty b t
+
 
 
 
@@ -534,78 +539,88 @@ struct
     | TObject o -> unions (L.map (fun (_, _, t) -> free_typ_ids t) o.fields)
     | TWith(t, flds) -> union (free_typ_ids t) (free_typ_ids (TObject flds))
     | TFix (_, x, _, t)
-    | TRec (_, x, t) -> let free_ids = free_typ_ids t in
-                        let ret = remove x free_ids in ret
+    | TRec (_, x, t) -> 
+      let free_ids = free_typ_ids t in
+      let ret = remove x free_ids in 
+      (* Printf.eprintf "Free_ids for %s are %s\n" (string_of_typ (typ)) *)
+      (*   (String.concat "," (IdSetExt.to_list ret)); *)
+      ret
     | TForall (_, x, s, t) -> union (free_typ_ids s) (remove x (free_typ_ids t))
-    | TLambda (_, xks, t) -> diff (free_typ_ids t) (from_list (map fst2 xks))
+    | TLambda (_, xks, t) ->
+      let ret = diff (free_typ_ids t) (from_list (map fst2 xks)) in
+      (* Printf.eprintf "Free_ids for %s are %s\n" (string_of_typ (typ)) *)
+      (*   (String.concat "," (IdSetExt.to_list ret)); *)
+      ret
     | TUninit t -> match !t with 
       | None -> empty
       | Some ty -> free_typ_ids ty
 
   let free_ids t = free_typ_ids t
 
-  let rec typ_subst x s outer typ = 
-    trace "STROBEtyp_subst"
-      (Pretty.simpl_typ typ ^ "[" ^ Pretty.simpl_typ (replace_name None s) ^ "/" ^ (match x with Some x -> x | None -> "<none>") ^ "]")
-      (fun _ -> true)
-      (fun () -> typ_subst' x s outer typ)
-  and typ_subst' x s outer typ = match typ with
-    | TEmbed t -> Ext.extract_t (outer t)
-    | TPrim _ -> typ
-    | TRegex _ -> typ
-    | TId y -> if x = Some y then s else typ
-    | TUnion (n, t1, t2) -> TUnion (n, typ_subst x s outer t1, typ_subst x s outer t2)
-    | TInter (n, t1, t2) ->
-      TInter (n, typ_subst x s outer t1, typ_subst x s outer t2)
-    | TArrow (t2s, v, t3)  ->
-      let opt_map f v = match v with None -> None | Some v -> Some (f v) in
-      TArrow (map (typ_subst x s outer) t2s, opt_map (typ_subst x s outer) v, typ_subst x s outer t3)
-    | TThis t -> TThis (typ_subst x s outer t)
-    | TWith(t, flds) -> TWith(typ_subst x s outer t, 
-                              mk_obj_typ (map (fun (n, p, t) -> (n, p, typ_subst x s outer t)) flds.fields)
-                                flds.absent_pat)
-    | TObject o ->
-      (* Printf.eprintf "STROBEtyp_subst %s->%s in %s\n" (match x with Some x -> x | None -> "<none>") (string_of_typ s) (string_of_typ typ); *)
-      TObject (mk_obj_typ (map (third3 (typ_subst x s outer)) o.fields) 
-                 o.absent_pat)
-    | TRef (n, t) -> TRef (n, typ_subst x s outer t)
-    | TSource (n, t) -> TSource (n, typ_subst x s outer t)
-    | TSink (n, t) -> TSink (n, typ_subst x s outer t)
-    | TTop -> TTop
-    | TBot -> TBot
-    | TLambda (n, yks, t) ->
-      (* Printf.eprintf "STROBEtyp_subst %s->%s in %s\n" (match x with Some x -> x | None -> "<none>") (string_of_typ s) (string_of_typ typ); *)
-      if List.exists (fun (y, _) -> Some y = x) yks then typ
-      else
-        let (ys, ks) = List.split yks in
-        let free = free_ids s in
-        let (new_ys, t') = rename_avoid_capture free ys t in
-        let new_yks = List.combine new_ys ks in
-        TLambda (n, new_yks, typ_subst x s outer t')
-    | TFix (n, y, k, t) ->
-      if x = Some y then typ
-      else begin
-        let free = free_ids s in
-        let (newys, t') = rename_avoid_capture free [y] t in
-        TFix (n, List.hd newys, k, typ_subst x s outer t')
-      end
-    | TForall (n, y, t1, t2) -> 
-      if x = Some y then typ
-      else 
-        let free = free_ids s in
-        let (beta, t2') = rename_avoid_capture free [y] t2 in
-        TForall (n, (List.hd beta), typ_subst x s outer t1, typ_subst x s outer t2')
-    | TRec (n, y, t) ->
-      if x = Some y then typ
-      else begin
-        let free = free_ids s in
-        let (beta, t') = rename_avoid_capture free [y] t in
-        TRec (n, (List.hd beta), typ_subst x s outer t')
-      end
-    | TApp (t, ts) -> TApp (typ_subst x s outer t, List.map (typ_subst x s outer) ts)
-    | TUninit t -> match !t with
-      | None -> typ
-      | Some t -> typ_subst x s outer t
+  let rec subst x s outer t = 
+    let rec typ_subst_internal x s outer typ = typ_subst' x s outer typ
+      (* trace "STROBEtyp_subst"  *)
+      (*   (Pretty.simpl_typ typ ^ "[" ^ Pretty.simpl_typ (replace_name None s) ^ "/" ^ (match x with Some x -> x | None -> "<none>") ^ "]") *)
+      (*   (fun _ -> true) *)
+      (*   (fun () -> typ_subst' x s outer typ) *)
+    and typ_subst' x s outer typ = match typ with
+      | TEmbed t -> Ext.extract_t (outer t)
+      | TPrim _ -> typ
+      | TRegex _ -> typ
+      | TId y -> if x = Some y then s else typ
+      | TUnion (n, t1, t2) -> TUnion (n, typ_subst_internal x s outer t1, typ_subst_internal x s outer t2)
+      | TInter (n, t1, t2) ->
+        TInter (n, typ_subst_internal x s outer t1, typ_subst_internal x s outer t2)
+      | TArrow (t2s, v, t3)  ->
+        let opt_map f v = match v with None -> None | Some v -> Some (f v) in
+        TArrow (map (typ_subst_internal x s outer) t2s, opt_map (typ_subst_internal x s outer) v, typ_subst_internal x s outer t3)
+      | TThis t -> TThis (typ_subst_internal x s outer t)
+      | TWith(t, flds) -> TWith(typ_subst_internal x s outer t, 
+                                mk_obj_typ (map (fun (n, p, t) -> (n, p, typ_subst_internal x s outer t)) flds.fields)
+                                  flds.absent_pat)
+      | TObject o ->
+      (* Printf.eprintf "STROBEtyp_subst_internal %s->%s in %s\n" (match x with Some x -> x | None -> "<none>") (string_of_typ s) (string_of_typ typ); *)
+        TObject (mk_obj_typ (map (third3 (typ_subst_internal x s outer)) o.fields) 
+                   o.absent_pat)
+      | TRef (n, t) -> TRef (n, typ_subst_internal x s outer t)
+      | TSource (n, t) -> TSource (n, typ_subst_internal x s outer t)
+      | TSink (n, t) -> TSink (n, typ_subst_internal x s outer t)
+      | TTop -> TTop
+      | TBot -> TBot
+      | TLambda (n, yks, t) ->
+        (* Printf.eprintf "STROBEtyp_subst_internal %s->%s in %s\n" (match x with Some x -> x | None -> "<none>") (string_of_typ s) (string_of_typ typ); *)
+        if List.exists (fun (y, _) -> Some y = x) yks then typ
+        else
+          let (ys, ks) = List.split yks in
+          let free = free_ids s in
+          let (new_ys, t') = rename_avoid_capture free ys t in
+          let new_yks = List.combine new_ys ks in
+          TLambda (n, new_yks, typ_subst_internal x s outer t')
+      | TFix (n, y, k, t) ->
+        if x = Some y then typ
+        else begin
+          let free = free_ids s in
+          let (newys, t') = rename_avoid_capture free [y] t in
+          TFix (n, List.hd newys, k, typ_subst_internal x s outer t')
+        end
+      | TForall (n, y, t1, t2) -> 
+        if x = Some y then typ
+        else 
+          let free = free_ids s in
+          let (beta, t2') = rename_avoid_capture free [y] t2 in
+          TForall (n, (List.hd beta), typ_subst_internal x s outer t1, typ_subst_internal x s outer t2')
+      | TRec (n, y, t) ->
+        if x = Some y then typ
+        else begin
+          let free = free_ids s in
+          let (beta, t') = rename_avoid_capture free [y] t in
+          TRec (n, (List.hd beta), typ_subst_internal x s outer t')
+        end
+      | TApp (t, ts) -> TApp (typ_subst_internal x s outer t, List.map (typ_subst_internal x s outer) ts)
+      | TUninit t -> match !t with
+        | None -> typ
+        | Some t -> typ_subst_internal x s outer t
+    in typ_subst_internal x s outer t
   and rename_avoid_capture (free : IdSet.t) (ys : id list) (t : typ) =
     let fresh_var old = (* a, b, ... z, aa, bb, ..., zz, ... *)
       let rec try_ascii m n =
@@ -622,17 +637,14 @@ struct
           (x::new_ys, IdMap.add y (TId x) substs))
         ([], IdMap.empty) ys in
     let new_ys = List.rev rev_new_ys in
-    let t' = IdMap.fold typ_subst_help substs t in
+    let t' = IdMap.fold typ_subst substs t in
     (new_ys, t')
-  and typ_subst_help x s t = typ_subst (Some x) s (Ext.typ_subst x (Ext.embed_t s)) t
 
-  let subst = typ_subst
-
-  let typ_subst x s t = typ_subst_help x s t
+  and typ_subst x s t = canonical_type (subst (Some x) s (Ext.typ_subst x (Ext.embed_t s)) t)
 
 
   (** Decides if two types are syntactically equal. This helps subtyping. *)
-  let rec equivalent_typ (env : env) (typ1 : typ) (typ2 : typ) : bool = 
+  and equivalent_typ (env : env) (typ1 : typ) (typ2 : typ) : bool = 
     match (Ext.unwrap_bt typ1, Ext.unwrap_bt typ2) with
     | TTop, TTop
     | TBot, TBot -> true
@@ -695,7 +707,7 @@ struct
 
 
   (* canonicalize types as best as possible *)
-  let rec canonical_type t =
+  and canonical_type t =
     let c = canonical_type in
     let t = Ext.unwrap_bt t in
     match t with
@@ -765,14 +777,14 @@ struct
       let newAbsent = Pat.union (Pat.subtract o.absent_pat unionPats) (flds.absent_pat) in
       let newAbsent = if Pat.is_empty newAbsent then Pat.empty else newAbsent in
       let ret = TObject (mk_obj_typ newFields newAbsent) in
-      ret
+      canonical_type ret
     end
     | TRec(n, id, t) -> TRec(n, id, merge t flds)
     | TRef (n, t) -> TRef (n, merge t flds)
     | TSource (n, t) -> TSource (n, merge t flds)
     | TSink (n, t) -> TSink (n, merge t flds)
     | TThis t -> TThis (merge t flds)
-    | _ -> typ
+    | _ -> canonical_type typ
 
   and lookup_typ env x =
     let bs = IdMap.find x env in
@@ -790,7 +802,7 @@ struct
         | TId x -> (try fst2 (lookup_typ typenv x) with Not_found -> t)
         | _ -> t in
       let flds' = mk_obj_typ (map (third3 expose_twith) flds.fields) flds.absent_pat in
-      replace_name None (merge t flds')
+      canonical_type (replace_name None (merge t flds'))
     | TUnion(n, t1, t2) -> TUnion (n, expose_twith t1, expose_twith t2)
     | TInter(n, t1, t2) -> TInter(n, expose_twith t1, expose_twith t2)
     | TRec(n, id, t) -> TRec(n, id, expose_twith t)
@@ -798,7 +810,7 @@ struct
     | TSource (n, t) -> TSource (n, expose_twith t)
     | TSink (n, t) -> TSink (n, expose_twith t)
     | TThis t -> TThis (expose_twith t)
-    | _ -> typ
+    | _ -> canonical_type (typ)
 
   and simpl_typ typenv typ = match typ with
     | TEmbed t -> Ext.extract_t (Ext.simpl_typ typenv t)
@@ -876,7 +888,7 @@ struct
          expose typenv (simpl_typ typenv (fst2 (lookup_typ typenv x)))
        with Not_found -> Printf.eprintf "Could not find type %s\n" x; raise Not_found)
     | TThis t -> TThis (expose typenv t)
-    | _ -> typ
+    | _ -> canonical_type typ
 
 
   (* Quick hack to infer types; it often works. Sometimes it does not. *)

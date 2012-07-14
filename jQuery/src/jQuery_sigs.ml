@@ -118,6 +118,7 @@ module type JQUERY_SUBTYPING = sig
   val num_cache_hits : unit -> int
   val num_cache_misses : unit -> int
   val print_cache : string -> FormatExt.printer
+  val project_typs : typ -> typ -> env -> env
 end
 
 module type JQUERY_KINDING = sig
@@ -144,6 +145,7 @@ module type JQUERY_TYP_ENV = sig
   val nextsib_of : structureEnv -> typ -> multiplicity
   val expose_tdoms : env -> typ -> typ
   val senv : structureEnv ref
+  val print_structureEnv : string -> structureEnv -> FormatExt.printer
 end
 
 module type JQUERY_TYPECHECKING = sig

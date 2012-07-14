@@ -135,6 +135,7 @@ end
 module type EXT_TYP_SUBTYPING = sig
   include EXT_TYP_ACTIONS
   val subtype : env -> typ -> typ -> bool
+  val project_typs : typ -> typ -> env -> env
 end
 
 module type EXT_KINDING = sig

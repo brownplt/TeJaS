@@ -225,26 +225,27 @@ struct
     let (|||) c thunk = if (snd c) then c else thunk (fst c) in
     let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
     let subtype_typ_list c t1 t2 = c &&& (fun c -> subt env c t1 t2) in
-    let addToCache (cache, ret) = (TPMap.add ((* project_typs t1 t2 *) env, (s, t)) ret cache, ret) in
-    try incr cache_hits; (cache, TPMap.find ((* project_typs s t  *)env, (s, t)) cache)
+    let project_typs s t env = ExtSub.project_typs (Ext.embed_t s) (Ext.embed_t t) env in
+    let addToCache (cache, ret) = (TPMap.add (project_typs s t env, (s, t)) ret cache, ret) in
+    try incr cache_hits; (cache, TPMap.find (project_typs s t env, (s, t)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if s = t then (cache, true)
       else if equivalent_typ env s t then cache, true
-      else match Ext.unwrap_bt s, Ext.unwrap_bt t with
-      | TApp(sf, sargs), TApp(tf, targs) when Ext.unwrap_bt sf = Ext.unwrap_bt tf ->
-        (* if the two types are type applications of the same type constructor,
-           check if all arguments are covariantly subtyped. *)
-        List.fold_left2 subtype_typ_list (cache, true) sargs targs
-      | TEmbed s, t -> cache, ExtSub.subtype env s (Ext.embed_t t)
-      | s, TEmbed t -> cache, ExtSub.subtype env (Ext.embed_t s) t
-      | _ ->
+      else match Ext.unwrap_bt (expose env s), Ext.unwrap_bt (expose env t) with
+      (* UNSOUND: Type constructor might not be covariant in its arguments *)
+      (* | TApp(sf, sargs), TApp(tf, targs) when Ext.unwrap_bt sf = Ext.unwrap_bt tf -> *)
+      (*   List.fold_left2 subtype_typ_list (cache, true) sargs targs *)
+      | TEmbed s, t -> tc_cache := cache; cache, ExtSub.subtype env s (Ext.embed_t t)
+      | s, TEmbed t -> tc_cache := cache; cache, ExtSub.subtype env (Ext.embed_t s) t
+      | s, t ->
         (* let _ = Printf.eprintf "Not equivalent, so simplfying.\n" in *)
         let simpl_s = expose env (simpl_typ env s) in
         let simpl_t = expose env (simpl_typ env t) in
+        Printf.eprintf "STROBE ASSUMING %s <: %s, checking for consistency\n" (string_of_typ s) (string_of_typ t);
         (* Printf.eprintf "Is %s <?: %s?\n" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
-        try (cache, TPMap.find ((* project_type simpl_s simpl_t *) env, (simpl_s, simpl_t)) cache)
+        try (cache, TPMap.find (project_typs simpl_s simpl_t env, (simpl_s, simpl_t)) cache)
         with Not_found ->
           (* Printf.printf "Checking %s against %s\n" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
-          let cache = TPMap.add (env, (s, t)) true cache in
+          let cache = TPMap.add (project_typs s t env, (s, t)) true cache in
           match simpl_s, simpl_t with
           | TUninit t', t2 -> begin match !t' with
             | None -> subt env cache (TPrim "Undef") t2
@@ -254,8 +255,8 @@ struct
             | None -> subt env cache t1 (TPrim "Undef")
             | Some t2 -> subt env cache t1 t2
           end
-          | TEmbed t1, t2 -> cache, ExtSub.subtype env t1 (Ext.embed_t t2)
-          | t1, TEmbed t2 -> cache, ExtSub.subtype env (Ext.embed_t t1) t2
+          | TEmbed t1, t2 -> tc_cache := cache; cache, ExtSub.subtype env t1 (Ext.embed_t t2)
+          | t1, TEmbed t2 -> tc_cache := cache; cache, ExtSub.subtype env (Ext.embed_t t1) t2
           | TRegex pat1, TRegex pat2 ->
             (* Printf.eprintf "TREGEX: Is %s <?: %s?   " (Pat.pretty pat1) (Pat.pretty pat2); *)
             let ret = Pat.is_subset (pat_env env) pat1 pat2 in
@@ -335,7 +336,7 @@ struct
             (* TODO: ensure s1 = s2 *)
             subt env cache s1 s2 &&& (fun c -> subt env c s2 s1) &&&
               (fun c ->
-                let t2 = subst (Some x2) (TId x1) (fun x -> x) t2 in
+                let t2 = canonical_type (typ_subst x2 (TId x1) t2) in
                 let env' = Env.bind_typ_id x1 (Ext.embed_t s1) env in
                 subt env' c t1 t2)
           | _, TTop -> cache, true
@@ -411,13 +412,13 @@ struct
   and subtypes env ss ts = 
     let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
     try 
-      let (c, r) = List.fold_left2 (fun c s t -> c &&& (fun c -> subt env c s t)) (!cache, true) ss ts in
-      cache := c;
+      let (c, r) = List.fold_left2 (fun c s t -> c &&& (fun c -> subt env c s t)) (!tc_cache, true) ss ts in
+      tc_cache := c;
       r
     with 
       | Invalid_argument _ -> false (* unequal lengths *)
 
-  and cache : bool TPMap.t ref = ref TPMap.empty 
+  and tc_cache : bool TPMap.t ref = ref TPMap.empty 
   and print_cache lbl =
     let open TypPair in
     let open Format in
@@ -429,11 +430,11 @@ struct
           (label_braces "Env: " cut [Env.print_env env])
           (pair (Pretty.typ t1) (Pretty.typ t2)))
       (fun b -> text (string_of_bool b))
-      !cache
+      !tc_cache
 
   and subtype env s t = 
-    let (c, r) = subt env !cache s t in
-    cache := c;
+    let (c, r) = subt env !tc_cache s t in
+    tc_cache := c;
     r
 
   and typ_union cs s t = match subtype cs s t, subtype cs t s with

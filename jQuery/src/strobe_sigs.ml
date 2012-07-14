@@ -127,7 +127,7 @@ module type STROBE_ACTIONS = sig
   val free_ids : typ -> IdSet.t
   val free_typ_ids : typ -> IdSet.t
 
-  val map_reduce_t : (extTyp -> 'a) -> ('b -> 'a -> 'b) -> 'b -> typ -> 'b
+  val map_reduce_t : (extTyp -> 'a) -> (IdSet.t -> id -> 'b) -> (IdSet.t -> 'b -> 'a -> 'b) -> 'b -> typ -> 'b
   val subst : id option -> typ -> (extTyp -> extTyp) -> typ -> typ
   val typ_subst : id -> typ -> typ -> typ
   val rename_avoid_capture : IdSet.t -> id list -> typ -> (id list * typ)

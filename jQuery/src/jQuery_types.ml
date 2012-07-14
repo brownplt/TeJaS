@@ -336,8 +336,7 @@ struct
         | SMult _ -> free_typ_ids typ in
       IdSet.union (free_sigma_typ_ids bound) free_t
     | TLambda (_, yks, t) ->
-      let nonmults = ListExt.filter_map (fun (y, k) -> match unwrap_k k with KMult _ -> None | _ -> Some y) yks in
-      IdSet.diff (free_typ_ids t) (IdSetExt.from_list nonmults)
+      IdSet.diff (free_typ_ids t) (IdSetExt.from_list (List.map fst2 yks))
     | TApp (t, ss) -> IdSetExt.unions (free_typ_ids t :: (map free_sigma_typ_ids ss))
     | TStrobe t -> Strobe.free_typ_ids t
   and free_sigma_typ_ids s = match s with
@@ -370,10 +369,17 @@ struct
         | SMult _ -> free_typ_ids typ in
       IdSet.union (free_sigma_mult_ids bound) free_t
     | TLambda (_, yks, t) ->
-      let mults = ListExt.filter_map (fun (y, k) -> match unwrap_k k with KMult _ -> Some y | _ -> None) yks in
-      IdSet.diff (free_typ_ids t) (IdSetExt.from_list mults)
+      IdSet.diff (free_typ_ids t) (IdSetExt.from_list (List.map fst2 yks))
     | TApp (t, ss) -> IdSetExt.unions (free_typ_ids t :: (map free_sigma_typ_ids ss))
-    | TStrobe t -> Strobe.map_reduce_t free_typ_mult_ids IdSet.union IdSet.empty t
+    | TStrobe t -> 
+      let ret = Strobe.map_reduce_t 
+        free_typ_mult_ids (* map over extTyps *)
+        (fun bound id -> if IdSet.mem id bound then IdSet.empty else IdSet.singleton id) (* TIds, ignoring bound *)
+        (fun bound ids1 ids2 -> IdSet.diff (IdSet.union ids1 ids2) bound) (* combine, ignoring bound vars *)
+        IdSet.empty t in
+      (* Printf.eprintf "Free_typ_mult_ids for %s are %s\n" (string_of_typ (TStrobe t))  *)
+      (*   (String.concat "," (IdSetExt.to_list ret)); *)
+      ret
   and free_sigma_mult_ids s = match s with
     | STyp t -> free_typ_ids t
     | SMult m -> free_mult_typ_ids m
@@ -439,7 +445,7 @@ struct
         in unwrap_t subst_t
       end
       | TApp(f, args) -> 
-        (* Printf.eprintf "Substituting %s->%s in %s\n" x (string_of_sigma s) (string_of_typ typ); *)
+        Printf.eprintf "Substituting %s->%s in %s\n" x (string_of_sigma s) (string_of_typ typ);
         TApp(typ_help f, List.map sigma_help args)
       | TLambda (n, yks, t) ->
         (* Printf.eprintf "JQTLambda %s\n" (string_of_typ typ); *)

@@ -144,7 +144,7 @@ struct
   (**** End Local Structure ***)
 
 
-  let print_structureEnv (senv : structureEnv) = 
+  let print_structureEnv lbl (senv : structureEnv) = 
     let open FormatExt in
     let open Desugar in
     let (benv, cenv) = senv in
@@ -154,28 +154,26 @@ struct
       horzOrVert (List.fold_left (fun a id -> (print_id id)::a) [] ids) in
     let print_cenv_key = print_id in
     let print_cenv_val = JQuery.Pretty.multiplicity in
-    vert [text "Backform Environment";
-          (Typedjs_desugar.StringMapExt.p_map "Classes" empty 
-             print_benv_key print_benv_val benv.classes);
-          (Typedjs_desugar.StringMapExt.p_map "Optional Classes" 
-             empty print_benv_key print_benv_val benv.optClasses);
-          (Typedjs_desugar.StringMapExt.p_map "Ids" 
-             empty print_benv_key print_benv_val benv.ids);
-          text "Clause Environment";
-          (IdMapExt.p_map "Children Clause" 
-             empty print_cenv_key print_cenv_val cenv.children);
-          (IdMapExt.p_map "Parent Clause" 
-             empty print_cenv_key print_cenv_val cenv.parent);
-          (IdMapExt.p_map "Prev Sib Clause" 
-             empty print_cenv_key print_cenv_val cenv.prev);
-          (IdMapExt.p_map "Next Sib Clause" 
-             empty print_cenv_key print_cenv_val cenv.next)]
+    label lbl [text "Backform Environment";
+               (Typedjs_desugar.StringMapExt.p_map "Classes" empty 
+                  print_benv_key print_benv_val benv.classes);
+               (Typedjs_desugar.StringMapExt.p_map "Optional Classes" 
+                  empty print_benv_key print_benv_val benv.optClasses);
+               (Typedjs_desugar.StringMapExt.p_map "Ids" 
+                  empty print_benv_key print_benv_val benv.ids);
+               text "Clause Environment";
+               (IdMapExt.p_map "Children Clause" 
+                  empty print_cenv_key print_cenv_val cenv.children);
+               (IdMapExt.p_map "Parent Clause" 
+                  empty print_cenv_key print_cenv_val cenv.parent);
+               (IdMapExt.p_map "Prev Sib Clause" 
+                  empty print_cenv_key print_cenv_val cenv.prev);
+               (IdMapExt.p_map "Next Sib Clause" 
+                  empty print_cenv_key print_cenv_val cenv.next)]
 
 
   let print_env env fmt = 
-    let _ = Env.print_env env fmt in
-    let _ = print_structureEnv !senv fmt in
-    (Format.pp_print_flush fmt ())
+    Env.print_env env fmt
 
   let parse_env_buf = Env.parse_env_buf
   let parse_env = Env.parse_env
