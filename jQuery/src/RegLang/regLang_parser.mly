@@ -48,7 +48,10 @@ cat :
 
 chardescs :
   | chardesc { $1 }
-  | chardesc chardescs { Alt($1, $2) }
+  | chardesc chardescs { 
+    match $1, $2 with
+    | InSet s1, InSet s2 -> InSet (CharSet.union s1 s2)
+    | c1, c2 -> Alt(c1, c2) }
 
 chardesc :
   | CHAR HYPHEN CHAR { range [$1, $3] }
