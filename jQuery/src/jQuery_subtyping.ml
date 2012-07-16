@@ -52,13 +52,13 @@ struct
       try
         IdMap.add id (List.filter (fun b -> match b with BStrobe (Strobe.BTermTyp _) -> false | _ -> true)
                         (IdMap.find id env)) acc
-      with Not_found -> (Printf.eprintf "Couldn't find %s\n" id; acc)) set map in
+      with Not_found -> (Strobe.traceMsg "Couldn't find %s" id; acc)) set map in
     let free_ids = add_id_bindings free_t (add_id_bindings free_m IdMap.empty) in
     (* let s = match s with *)
     (*   | SMult m -> string_of_mult m *)
     (*   | STyp t -> string_of_typ t in *)
-    (* Printf.eprintf "Free mult ids for %s are: {%s}\n" s (String.concat "," (IdSetExt.to_list free_m)); *)
-    (* Printf.eprintf "Free typ ids for %s are: {%s}\n" s (String.concat "," (IdSetExt.to_list free_t)); *)
+    (* Strobe.traceMsg "Free mult ids for %s are: {%s}" s (String.concat "," (IdSetExt.to_list free_m)); *)
+    (* Strobe.traceMsg "Free typ ids for %s are: {%s}" s (String.concat "," (IdSetExt.to_list free_t)); *)
     let rec helper free_ids acc =
     (*   let s = (String.concat "," (IdMapExt.keys free_ids)) in *)
     (*   Strobe.trace "Ids being checked: " s (fun _ -> true) (fun () -> helper' free_ids acc) *)
@@ -72,9 +72,9 @@ struct
             | BStrobe (Strobe.BLabelTyp t) -> 
               let (free_t, free_m) = JQ.free_sigma_ids (STyp (embed_t t)) in
               let free_ids = IdSet.union free_t free_m in
-              (* Printf.eprintf "Free typ mult_ids for %s are: {%s}\n" (string_of_typ (embed_t t)) *)
+              (* Strobe.traceMsg "Free typ mult_ids for %s are: {%s}" (string_of_typ (embed_t t)) *)
               (*   (String.concat "," (IdSetExt.to_list free_m)); *)
-              (* Printf.eprintf "Free typ typ_ids for %s are: {%s}\n" (string_of_typ (embed_t t)) *)
+              (* Strobe.traceMsg "Free typ typ_ids for %s are: {%s}" (string_of_typ (embed_t t)) *)
               (*   (String.concat "," (IdSetExt.to_list free_t)); *)
               IdSet.union ids free_ids
             | BStrobe (Strobe.BEmbed _) -> ids
@@ -82,7 +82,7 @@ struct
             | BMultBound(m, _) -> 
               let (free_t, free_m) = JQ.free_sigma_ids (SMult m) in 
               let free_ids = IdSet.union free_t free_m in
-              (* Printf.eprintf "New mult free_ids for %s are %s\n" (string_of_mult m) *)
+              (* Strobe.traceMsg "New mult free_ids for %s are %s" (string_of_mult m) *)
               (*   (String.concat "," (IdSetExt.to_list free_ids)); *)
               IdSet.union ids free_ids)
             IdSet.empty bs in
@@ -137,7 +137,7 @@ struct
         let env' = project_typs simpl_t1 simpl_t2 env in
         try (cache, SPMap.find (env', STyps (simpl_t1, simpl_t2)) cache)
         with Not_found ->
-          Printf.eprintf "JQUERY ASSUMING %s <: %s, checking for consistency\n" (string_of_typ t1) (string_of_typ t2);
+          Strobe.traceMsg "JQUERY ASSUMING %s <: %s, checking for consistency" (string_of_typ t1) (string_of_typ t2);
           let cache = SPMap.add (env', STyps (t1, t2)) true cache in
           match unwrap_t simpl_t1, unwrap_t simpl_t2 with
           | TStrobe t1, TStrobe t2 -> 
@@ -147,7 +147,7 @@ struct
             subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
           | TDom _, _ -> subtype_typ env cache t1 (TDom(None, t2, Css.all))
           | _, TDom _ -> subtype_typ env cache (TDom(None, t1, Css.all)) t2
-          | TApp _, TApp _ -> Printf.eprintf "GOT HERE\n"; cache, false
+          | TApp _, TApp _ -> Strobe.traceMsg "GOT HERE"; cache, false
           (* UNSOUND: Type constructor might not be covariant in its arguments *)
           (* | TApp(t1, args1), TApp(t2, args2) -> *)
           (*   if (List.length args1 <> List.length args2) then (cache, false) *)

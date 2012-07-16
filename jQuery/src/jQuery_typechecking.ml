@@ -99,7 +99,7 @@ struct
       | TStrobe t ->
         embed_t (StrobeTC.synth env default_typ exp)
       | t ->
-        Printf.eprintf "In ETypApp, and things went badly wrong with %s\n" (string_of_typ t);
+        Strobe.traceMsg "In ETypApp, and things went badly wrong with %s\n" (string_of_typ t);
         raise
           (Strobe.Typ_error (p, Strobe.TypTyp((fun t1 t2 -> 
             sprintf "expected forall-type in type application, got:\n%s\ntype argument is:\n%s"

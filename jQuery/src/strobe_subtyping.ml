@@ -237,14 +237,14 @@ struct
       | TEmbed s, t -> tc_cache := cache; cache, ExtSub.subtype env s (Ext.embed_t t)
       | s, TEmbed t -> tc_cache := cache; cache, ExtSub.subtype env (Ext.embed_t s) t
       | s, t ->
-        (* let _ = Printf.eprintf "Not equivalent, so simplfying.\n" in *)
+        (* let _ = traceMsg "Not equivalent, so simplfying." in *)
         let simpl_s = expose env (simpl_typ env s) in
         let simpl_t = expose env (simpl_typ env t) in
-        Printf.eprintf "STROBE ASSUMING %s <: %s, checking for consistency\n" (string_of_typ s) (string_of_typ t);
-        (* Printf.eprintf "Is %s <?: %s?\n" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
+        traceMsg "STROBE ASSUMING %s <: %s, checking for consistency" (string_of_typ s) (string_of_typ t);
+        (* traceMsg "Is %s <?: %s?" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
         try (cache, TPMap.find (project_typs simpl_s simpl_t env, (simpl_s, simpl_t)) cache)
         with Not_found ->
-          (* Printf.printf "Checking %s against %s\n" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
+          (* traceMsg "Checking %s against %s" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
           let cache = TPMap.add (project_typs s t env, (s, t)) true cache in
           match simpl_s, simpl_t with
           | TUninit t', t2 -> begin match !t' with
@@ -258,9 +258,9 @@ struct
           | TEmbed t1, t2 -> tc_cache := cache; cache, ExtSub.subtype env t1 (Ext.embed_t t2)
           | t1, TEmbed t2 -> tc_cache := cache; cache, ExtSub.subtype env (Ext.embed_t t1) t2
           | TRegex pat1, TRegex pat2 ->
-            (* Printf.eprintf "TREGEX: Is %s <?: %s?   " (Pat.pretty pat1) (Pat.pretty pat2); *)
+            (* traceMsg "TREGEX: Is %s <?: %s?   " (Pat.pretty pat1) (Pat.pretty pat2); *)
             let ret = Pat.is_subset (pat_env env) pat1 pat2 in
-            (* Printf.eprintf "%b\n" ret; *)
+            (* traceMsg "%b" ret; *)
             (cache, ret)
           | TUnion(_, t11, t12), t2 -> (* order matters -- left side must be split first! *)
             subt env cache t11 t2 &&& (fun c -> subt env c t12 t2)
@@ -371,7 +371,7 @@ struct
       if Pat.is_overlapped pat1 pat2 then
         begin
           (cache, subtype_presence pres1 pres2) &&&
-            (* Printf.printf "%s overlaps %s; checking subtypes of %s <: %s\n" *)
+            (* traceMsg "%s overlaps %s; checking subtypes of %s <: %s" *)
             (*   (Pat.pretty pat1) (Pat.pretty pat2) (string_of_typ t1) (string_of_typ t2); *)
             (fun c -> subt env c t1 t2)
         end

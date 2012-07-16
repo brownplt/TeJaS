@@ -37,10 +37,10 @@ struct
             (string_of_typ typ)))
 
   let trace prompt print thunk arg = thunk arg
-    (* Strobe.trace prompt (print arg) (fun () -> thunk arg) *)
+    (* Strobe.trace prompt (print arg) (fun _ -> true) (fun () -> thunk arg) *)
 
   let rec kind_check (env : env) (recIds : id list) (typ : typ) : kind = 
-    trace "KindCheck" (fun _ -> "<Strobe.typ>") (fun typ -> kind_check' env recIds typ) typ
+    trace "KindCheck" Strobe.Pretty.simpl_typ (fun typ -> kind_check' env recIds typ) typ
 
   and kind_check' (env : env) (recIds : id list) (typ : typ) : kind =
     let bind_kind_id x k env = 

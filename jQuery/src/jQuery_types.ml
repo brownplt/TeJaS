@@ -377,7 +377,7 @@ struct
         (fun bound id -> if IdSet.mem id bound then IdSet.empty else IdSet.singleton id) (* TIds, ignoring bound *)
         (fun bound ids1 ids2 -> IdSet.diff (IdSet.union ids1 ids2) bound) (* combine, ignoring bound vars *)
         IdSet.empty t in
-      (* Printf.eprintf "Free_typ_mult_ids for %s are %s\n" (string_of_typ (TStrobe t))  *)
+      (* Strobe.traceMsg "Free_typ_mult_ids for %s are %s" (string_of_typ (TStrobe t))  *)
       (*   (String.concat "," (IdSetExt.to_list ret)); *)
       ret
   and free_sigma_mult_ids s = match s with
@@ -445,10 +445,10 @@ struct
         in unwrap_t subst_t
       end
       | TApp(f, args) -> 
-        Printf.eprintf "Substituting %s->%s in %s\n" x (string_of_sigma s) (string_of_typ typ);
+        Strobe.traceMsg "Substituting %s->%s in %s" x (string_of_sigma s) (string_of_typ typ);
         TApp(typ_help f, List.map sigma_help args)
       | TLambda (n, yks, t) ->
-        (* Printf.eprintf "JQTLambda %s\n" (string_of_typ typ); *)
+        (* Strobe.traceMsg "JQTLambda %s" (string_of_typ typ); *)
         if List.exists (fun (y, _) -> y = x) yks then typ
         else
           let (ys, ks) = List.split yks in
@@ -740,7 +740,7 @@ struct
 
   let rec typ_assoc env t1 t2 =
     Strobe.trace "JQtyp_assoc" 
-      (Pretty.simpl_typ t1 ^ " & " ^ Pretty.simpl_typ t2) 
+      (Pretty.simpl_typ t1 ^ " with " ^ Pretty.simpl_typ t2) 
       (fun _ -> true) (fun () -> typ_assoc' env t1 t2)
   and typ_assoc' env t1 t2 =
     match t1, t2 with
@@ -748,8 +748,10 @@ struct
       IdMap.map (fun t -> embed_t t) (Strobe.typ_assoc env s t)
     
     | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]),
-      TStrobe (Strobe.TSource (_, Strobe.TObject o)) ->
-      Printf.eprintf "GOT HERE5\n";
+      TStrobe (Strobe.TSource (_, Strobe.TObject o))
+    | TStrobe (Strobe.TSource (_, Strobe.TObject o)),
+      TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]) ->
+      Strobe.traceMsg "GOT HERE5";
       let ofields = Strobe.fields o in
       let (_, _, thisTyp) = List.find (fun (p, _, _) ->
         Pat.is_equal p (Pat.singleton "__this__")) ofields in

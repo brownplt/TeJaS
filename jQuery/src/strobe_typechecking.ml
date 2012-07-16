@@ -83,7 +83,7 @@ struct
           (string_of_typ t) (string_of_kind k)), typ, k)))
     with
     | Typ.Kind_error msg ->
-      Printf.eprintf "Couldn't check type for %s\n" (string_of_typ typ);
+      traceMsg "Couldn't check type for %s" (string_of_typ typ);
       raise (Typ.Kind_error (Pos.toString p ^ ": " ^ msg))
         
   let expose_simpl_typ env typ = expose env (simpl_typ env typ)
@@ -149,10 +149,10 @@ struct
         | _ -> None) 
       | TForall _ -> Some t (* BSL : This seems incomplete; extract_arrow won't descend under a Forall *)
       | TEmbed t' -> begin
-        Printf.eprintf "Got here\n";
+        traceMsg "Got here";
         match ExtTC.forall_arrow t' with
         | Some _ -> Some t
-        | None -> Printf.eprintf "nope.\n"; None
+        | None -> traceMsg "nope."; None
       end
       | _ -> None in
     match helper t with
@@ -169,8 +169,8 @@ struct
     | EId(p, x) -> "EId " ^ x ^ " " ^ (Pos.toString p)
     | EBracket(p, _, _) -> "EBracket " ^ (Pos.toString p)
     | EUpdate(p, _, _, _) -> "EUpdate " ^ (Pos.toString p)
-    | EPrefixOp(p, _, _) -> "EPrefixOp " ^ (Pos.toString p)
-    | EInfixOp(p, _, _, _) -> "EInfixOp " ^ (Pos.toString p)
+    | EPrefixOp(p, x, _) -> "EPrefixOp " ^ x ^ " " ^ (Pos.toString p)
+    | EInfixOp(p, x, _, _) -> "EInfixOp " ^ x ^ " " ^ (Pos.toString p)
     | EIf(p, _, _, _) -> "EIf " ^ (Pos.toString p)
     | EApp(p, _, _) -> "EApp " ^ (Pos.toString p)
     | EFunc(p, _, _, _) -> "EFunc " ^ (Pos.toString p)
@@ -254,10 +254,10 @@ struct
     with Sub.Typ_error (p, s) -> Sub.typ_mismatch p s
       
   and check' (env : env) (default_typ : Typ.extTyp option) (exp : exp) (typ : Typ.typ) : unit = 
-    (* Printf.eprintf "Check': checking %s : %s\n" (string_of_exp exp) (string_of_typ typ); *)
+    (* traceMsg "Check': checking %s : %s" (string_of_exp exp) (string_of_typ typ); *)
     match exp with
     | ELabel (p, lbl, e) ->
-      (* Printf.eprintf "Check': Binding label %s in expression %s\n" lbl (string_of_exp e); *)
+      (* traceMsg "Check': Binding label %s in expression %s" lbl (string_of_exp e); *)
       let s = Ext.extract_t (ExtTC.synth (Env.bind_lbl lbl (Ext.embed_t typ) env) default_typ e) in
       if not (Sub.subtype env s (expose env typ)) then
         Sub.typ_mismatch p (Sub.TypTyp((fun t1 t2 -> sprintf "label has type %s, but body returns %s"
@@ -266,9 +266,9 @@ struct
       check (Env.bind_id x (ExtTC.synth env default_typ e1) env) default_typ e2 typ
     | ECheat (p, t, (EFunc(pf, args, func_info, body) as f)) -> 
       let t = Ext.extract_t t in
-      (* Printf.eprintf "Cheating to %s\n" (string_of_typ (replace_name None t)); *)
+      (* traceMsg "Cheating to %s" (string_of_typ (replace_name None t)); *)
       let simpl_t = expose_simpl_typ env t in
-      (* Printf.eprintf "Exposed typ is %s\n" (string_of_typ (replace_name None simpl_t)); *)
+      (* traceMsg "Exposed typ is %s" (string_of_typ (replace_name None simpl_t)); *)
       check env default_typ f simpl_t
     | EFunc (p, args, func_info, body) -> 
       let misowned_vars = IdSet.inter !consumed_owned_vars 
@@ -366,7 +366,7 @@ struct
         let newObjTyp = TObject (mk_obj_typ 
                                    (List.map (fun (fieldName, fieldExp) -> 
                                      let fieldTyp = (Sub.inherits p env t (Pat.singleton fieldName)) in
-                                     (* Printf.eprintf "Check' EObject Checking field %s\n" fieldName; *)
+                                     (* traceMsg "Check' EObject Checking field %s" fieldName; *)
                                      check env default_typ fieldExp fieldTyp;
                                      (Pat.singleton fieldName, Present, fieldTyp)) fields)
                                    absPat) in
@@ -377,21 +377,21 @@ struct
       | _ -> Sub.typ_mismatch p (Sub.Typ((fun t -> sprintf "expected TObject, got %s" (string_of_typ t)), typ))
     end
     | _ -> 
-      (* Printf.eprintf "Check': Synthing type for expression\n"; *)
+      (* traceMsg "Check': Synthing type for expression"; *)
       let synthed = Ext.extract_t (ExtTC.synth env default_typ exp) in
       let synth_typ = expose_simpl_typ env synthed in
-      (* Printf.eprintf "Check': Checking %s <?: %s\n" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ)); *)
+      (* traceMsg "Check': Checking %s <?: %s" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ)); *)
       if not (Sub.subtype env synth_typ (expose_simpl_typ env typ)) then begin
         (* Printf.printf "failed.\n"; *)
         Sub.typ_mismatch (Exp.pos exp)
           (Sub.TypTyp((fun t1 t2 -> sprintf "%%expected %s to have type %s, got %s" (string_of_exp exp) (string_of_typ t1) (string_of_typ t2)), (expose_simpl_typ env typ), synth_typ))
       end (* else *)
-  (* Printf.printf "Checking finished.\n" *)
+  (* traceMsg "Checking finished." *)
 
   and synth (env : env) (default_typ : Typ.extTyp option) (exp : exp) : Typ.typ = 
     trace "Synth" (fun _ -> true) (synth' env default_typ) exp
   and synth' env (default_typ : Typ.extTyp option) exp : Typ.typ =
-    (* Printf.eprintf "*Synthing type for %s\n" (string_of_exp exp); *)
+    (* traceMsg "*Synthing type for %s" (string_of_exp exp); *)
     match exp with
     (* TODO: Pure if-splitting rule; make more practical by integrating with
        flow typing. *)
@@ -472,12 +472,12 @@ struct
       end
     | EDeref (p, e) -> 
       let typ = (synth env default_typ e) in
-      Printf.eprintf "In EDeref, synthed type of %s is %s\n" (string_of_exp e) (string_of_typ typ);
+      traceMsg "In EDeref, synthed type of %s is %s" (string_of_exp e) (string_of_typ typ);
       let typ = expose_simpl_typ env typ in
-      Printf.eprintf "In EDeref, exposed type is %s\n" (string_of_typ typ);
+      traceMsg "In EDeref, exposed type is %s" (string_of_typ typ);
       let typ = 
         try ((check_kind p env typ)) 
-        with _ -> Printf.eprintf "Bad kind!\n"; typ in
+        with _ -> traceMsg "Bad kind for %s!" (string_of_typ typ); typ in
       if typ = TPrim "Unsafe" 
       then raise (Sub.Typ_error (p, Sub.FixedString "synth: Cannot dereference an unsafe value"))
       else begin match typ with
@@ -545,7 +545,7 @@ struct
         | TRef (_, TPrim "Unsafe") -> TPrim "Unsafe" (* BSL: PUNTING ON ASSIGNMENT TO UNSAFE *)
         | TRef (_, s) 
         | TSink (_, s) -> 
-        (* Printf.eprintf "Synth ESetRef: Checking that %s has type %s\n" (string_of_exp e2) (string_of_typ s); *)
+        (* traceMsg "Synth ESetRef: Checking that %s has type %s" (string_of_exp e2) (string_of_typ s); *)
           check env default_typ e2 s; s
         | s -> 
           Sub.typ_mismatch p (Sub.Typ((fun t -> sprintf "left-hand side of assignment has type %s" (string_of_typ t)), s));
@@ -554,7 +554,7 @@ struct
       end
     | ELabel (p, lbl, e) -> 
       (* This is a valid assumption for JavaScript. *)
-      (* Printf.eprintf "Synth: Binding label %s in expression %s\n" lbl (string_of_exp e); *)
+      (* traceMsg "Synth: Binding label %s in expression %s" lbl (string_of_exp e); *)
       check (Env.bind_lbl lbl (Ext.embed_t (TPrim "Undef")) env) default_typ e (TPrim "Undef");
       TPrim "Undef"
     | EBreak (p, lbl, e) ->
@@ -610,9 +610,9 @@ struct
       end
     | EUpdate (p, obj, field, value) -> begin
       let tobj = synth env default_typ obj in
-      (* Printf.eprintf "EUpdate1: Synthed type for object %s is\n%s\n" (string_of_exp obj) (string_of_typ tobj); *)
-      (* Printf.eprintf "EUpdate2: Synthed type for value %s is\n%s\n" (string_of_exp value) (string_of_typ (synth env default_typ value)); *)
-      (* Printf.eprintf "EUpdate3: %s\n" (string_of_bool (subtype env (synth env default_typ value) (expose env (TId "Ext")))); *)
+      (* traceMsg "EUpdate1: Synthed type for object %s is\n%s" (string_of_exp obj) (string_of_typ tobj); *)
+      (* traceMsg "EUpdate2: Synthed type for value %s is\n%s" (string_of_exp value) (string_of_typ (synth env default_typ value)); *)
+      (* traceMsg "EUpdate3: %s" (string_of_bool (subtype env (synth env default_typ value) (expose env (TId "Ext")))); *)
       match expose_simpl_typ env tobj, 
       expose_simpl_typ env (synth env default_typ field)(* , synth env default_typ value *) with
       | TObject o, TRegex idx_pat (* (TRegex idx_pat as tfld), typ *) ->
@@ -650,7 +650,7 @@ struct
     | EInfixOp (p, op, e1, e2) -> synth env default_typ (EApp (p, EId (p, op), [e1; e2]))
     | EApp (p, f, args) -> 
       let rec check_app tfun =
-        Printf.eprintf "Checking EApp@%s with function type %s\n" (Pos.toString p) (string_of_typ tfun);
+        traceMsg "Checking EApp@%s with function type %s" (Pos.toString p) (string_of_typ tfun);
         begin match expose_simpl_typ env tfun with 
         | TArrow (expected_typs, None, result_typ) -> 
           let args = fill (List.length expected_typs - List.length args) 
@@ -712,13 +712,13 @@ struct
             let arg_typs = map (synth env default_typ) args in
             let assumed_arg_exps = 
               List.map2 (fun e t -> ECheat (p, Ext.embed_t t, e)) args arg_typs in
-            Printf.eprintf "In EApp, arg_typs are:\n";
-            List.iter (fun t -> Printf.eprintf "  %s\n" (string_of_typ t)) arg_typs;
-            Printf.eprintf "1In Eapp, arrow_typ is %s\n" (string_of_typ arrow_typ);
-            Printf.eprintf "2In Eapp, tarrow is    %s\n" (string_of_typ (TArrow (arg_typs, None, r)));
+            traceMsg "In EApp, arg_typs are:";
+            List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs;
+            traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ);
+            traceMsg "2In Eapp, tarrow is    %s" (string_of_typ (TArrow (arg_typs, None, r)));
             let assoc = typ_assoc env arrow_typ (TArrow (arg_typs, None, r)) in
             IdMap.iter (fun k t ->
-              Printf.eprintf "  [%s => %s]\n" k (string_of_typ t)) assoc;
+              traceMsg "  [%s => %s]" k (string_of_typ t)) assoc;
             let guess_typ_app exp typ_var = 
               try
                 let guessed_typ = 
@@ -735,7 +735,7 @@ struct
               fold_left guess_typ_app (ECheat (p, Ext.embed_t quant_typ, f)) 
                 typ_vars in
             let synthed_exp = EApp(p, guessed_exp, assumed_arg_exps) in
-            Printf.eprintf "In EApp, synthed_exp = %s\n" (Exp.string_of_exp synthed_exp);
+            traceMsg "In EApp, synthed_exp = %s" (Exp.string_of_exp synthed_exp);
             synth env default_typ synthed_exp
           | Some _ -> failwith "expected TArrow from forall_arrow"
           end
@@ -744,7 +744,7 @@ struct
           raise (Sub.Typ_error 
                    (p, Sub.Typ((fun t -> sprintf "expected function, got %s" (string_of_typ t)), not_func_typ)))
         end in 
-      (* Printf.eprintf "Synth EApp: Checking function body\n"; *)
+      (* traceMsg "Synth EApp: Checking function body"; *)
       check_app (un_null (synth env default_typ f))
     | ERec (p, binds, body) -> 
       (* No kinding check here, but it simply copies the type from the function.
@@ -758,7 +758,7 @@ struct
       (* BSL: Synthesizing Ext *)
       let thisType = if usesThis body then TThis (TId "Ext") else TThis (TPrim "Unsafe") in
       let arrowTyp = TArrow([thisType], Some (TId "Ext"), TId "Ext") in
-      (* Printf.eprintf "Checking expression for Ext-arrow:\n%s\n" (string_of_exp exp); *)
+      (* traceMsg "Checking expression for Ext-arrow: %s" (string_of_exp exp); *)
       check env default_typ exp arrowTyp;
       arrowTyp
     | ESubsumption (p, t, e) ->
@@ -766,8 +766,8 @@ struct
       check env default_typ e t;
       t
     | EAssertTyp (p, t, e) ->
-      (* Printf.eprintf "Synth: AssertTyp that %s has type %s\n" (string_of_exp e) (string_of_typ t); *)
-      (* Printf.eprintf "%s\n" (string_of_bool (subtype env (synth env default_typ e) t)); *)
+      (* traceMsg "Synth: AssertTyp that %s has type %s" (string_of_exp e) (string_of_typ t); *)
+      (* traceMsg "%s" (string_of_bool (subtype env (synth env default_typ e) t)); *)
       let t = check_kind p env (Ext.extract_t t) in
       let _ = check env default_typ e t in
       t
@@ -795,7 +795,7 @@ struct
       | TEmbed t ->
         Ext.extract_t (ExtTC.synth env default_typ exp)
       | t ->
-        Printf.eprintf "In ETypApp, and things went badly wrong with %s\n" (string_of_typ t);
+        traceMsg "In ETypApp, and things went badly wrong with %s" (string_of_typ t);
         raise
           (Sub.Typ_error (p, Sub.TypTyp((fun t1 t2 -> 
             sprintf "expected forall-type in type application, got:\n%s\ntype argument is:\n%s"
@@ -803,9 +803,9 @@ struct
       end
     | ECheat (p, t, _) -> 
       let t = Ext.extract_t t in
-      Printf.eprintf "Cheating to %s\n" (string_of_typ (replace_name None t));
+      traceMsg "Cheating to %s" (string_of_typ (replace_name None t));
       let simpl_t = Typ.trace "Exposing type" "" (fun _ -> true) (fun () -> expose_simpl_typ env t) in
-      Printf.eprintf "Exposed typ is %s\n" (string_of_typ (replace_name None simpl_t));
+      traceMsg "Exposed typ is %s" (string_of_typ (replace_name None simpl_t));
       simpl_t
     | EParen (p, e) -> synth env default_typ e
 

@@ -50,8 +50,8 @@ struct
     pp_set_max_boxes str_formatter max;
     s
 
-  let trace (msg : string) print success (thunk : 'a -> 'b) (arg : 'a) = thunk arg
-    (* Strobe.trace msg (print arg) success (fun () -> thunk arg) *)
+  let trace (msg : string) print success (thunk : 'a -> 'b) (arg : 'a) = (* thunk arg *)
+    Strobe.trace msg (print arg) success (fun () -> thunk arg)
 
   let rec kind_check_sigma (env : env) (recIds : id list) (s : sigma) : kind = match s with
     | STyp t -> kind_check_typ env recIds t

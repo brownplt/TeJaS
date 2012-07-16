@@ -463,6 +463,8 @@ struct
   exception Kind_error of string
 
   let depth = ref 0
+  let traceMsg msg =
+    Printf.eprintf ("%s*** " ^^ msg ^^ "\n") (String.make (!depth) ' ')
   let trace (prompt : string) (msg : string) (success : 'a -> bool) (thunk : unit -> 'a) = 
 
     (* thunk () *)
@@ -905,7 +907,7 @@ struct
 
   let rec typ_assoc env t1 t2 =
     trace "STROBEtyp_assoc" 
-      (Pretty.simpl_typ t1 ^ " & " ^ Pretty.simpl_typ t2)
+      (Pretty.simpl_typ t1 ^ " with " ^ Pretty.simpl_typ t2)
       (fun _ -> true) (fun () -> typ_assoc' env t1 t2)
   and typ_assoc' (env : env) (typ1 : typ) (typ2 : typ) =
     match (typ1, typ2) with
