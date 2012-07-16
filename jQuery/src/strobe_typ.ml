@@ -565,8 +565,13 @@ struct
       (*   (Pretty.simpl_typ typ ^ "[" ^ Pretty.simpl_typ (replace_name None s) ^ "/" ^ (match x with Some x -> x | None -> "<none>") ^ "]") *)
       (*   (fun _ -> true) *)
       (*   (fun () -> typ_subst' x s outer typ) *)
-    and typ_subst' x s outer typ = match typ with
-      | TEmbed t -> Ext.extract_t (outer t)
+    and typ_subst' x s outer typ = 
+      match typ with
+      | TEmbed t -> 
+        (* traceMsg "Strobe_subst: %s->%s in %s"  *)
+        (*   (match x with | Some s -> s | None -> "no-id") *)
+        (*   (string_of_typ s) (string_of_typ typ); *)
+        Ext.extract_t (outer t)
       | TPrim _ -> typ
       | TRegex _ -> typ
       | TId y -> if x = Some y then s else typ
@@ -581,11 +586,13 @@ struct
                                 mk_obj_typ (map (fun (n, p, t) -> (n, p, typ_subst_internal x s outer t)) flds.fields)
                                   flds.absent_pat)
       | TObject o ->
+
       (* Printf.eprintf "STROBEtyp_subst_internal %s->%s in %s\n" (match x with Some x -> x | None -> "<none>") (string_of_typ s) (string_of_typ typ); *)
         TObject (mk_obj_typ (map (third3 (typ_subst_internal x s outer)) o.fields) 
                    o.absent_pat)
       | TRef (n, t) -> TRef (n, typ_subst_internal x s outer t)
-      | TSource (n, t) -> TSource (n, typ_subst_internal x s outer t)
+      | TSource (n, t) -> 
+        TSource (n, typ_subst_internal x s outer t)
       | TSink (n, t) -> TSink (n, typ_subst_internal x s outer t)
       | TTop -> TTop
       | TBot -> TBot

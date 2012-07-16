@@ -405,19 +405,19 @@ struct
         ([], IdMap.empty) ys in
     let new_ys = List.rev rev_new_ys in
     let t' = IdMap.fold subst substs (STyp t) in
-    let t'' = match t' with STyp t -> t | _ -> failwith "impossible" in
+    let t'' = match t' with STyp t -> t | _ -> failwith "Rename_avoid_capture impossible" in
     (new_ys, t'')
 
   and subst x (s : sigma) (sigma : sigma) : sigma =
     let rec sigma_help sigma : sigma = match sigma with
-      | STyp typ -> STyp (typ_help typ)
+      | STyp typ -> typ_sigma_help typ
       | SMult mult -> SMult (mult_help mult)
     and mult_help mult =
       Strobe.trace "JQsubst_mult_help" 
         (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_mult mult ^ "/" ^ x ^ "]") 
         (fun _ -> true) (fun () -> mult_help' mult)
     and mult_help' mult : multiplicity = match mult with
-      | MPlain typ -> plain_help typ
+      | MPlain typ -> typ_mult_help typ
       | MId y -> if x = y then (match s with SMult m -> m | STyp _ -> mult) else mult
       | MZero m -> MZero (mult_help m)
       | MOne m -> MOne (mult_help m)
@@ -425,22 +425,30 @@ struct
       | MOnePlus m -> MOnePlus (mult_help m)
       | MZeroPlus m -> MZeroPlus (mult_help m)
       | MSum (m1, m2) -> MSum (mult_help m1, mult_help m2)
-    and plain_help typ : multiplicity = match typ with
+    and typ_sigma_help typ : sigma = match typ with
       | TStrobe (Strobe.TId y) -> 
-        if y = x 
-        then match s with
-        | STyp t -> MPlain t
-        | SMult m -> m
-        else MPlain typ
-      | _ -> MPlain (typ_help typ)
+        if y = x then s else STyp typ
+      | _ -> STyp (typ_help typ)
+    and typ_mult_help typ : multiplicity = match typ_sigma_help typ with
+      | STyp t -> MPlain t
+      | SMult m -> m
     and typ_help typ =
       Strobe.trace "JQsubst_typ_help" 
         (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_typ typ ^ "/" ^ x ^ "]")
         (fun _ -> true) (fun () -> typ_help' typ)
     and typ_help' typ : typ = match typ with
+      (* | TStrobe (Strobe.TId y) -> if y = x then begin *)
+      (*   match s with *)
+      (*   | STyp t -> t *)
+      (*   | SMult m -> *)
+      (*     let msg = sprintf "ill-kinded substitution: %s[%s/%s] is not a type" *)
+      (*       (string_of_typ typ) (string_of_sigma s) x in *)
+      (*     raise (Invalid_argument msg) *)
+      (* end else typ *)
       | TStrobe tstrobe -> begin
         let subst_t = match s with
-          | STyp t -> embed_t (Strobe.subst (Some x) (extract_t t) typ_help tstrobe)
+          | STyp t -> 
+            embed_t (Strobe.subst (Some x) (extract_t t) typ_help tstrobe)
           | SMult m -> embed_t (Strobe.subst None Strobe.TTop typ_help tstrobe)
         in unwrap_t subst_t
       end
@@ -464,12 +472,12 @@ struct
       | TDom (name, t, sel) -> TDom(name, typ_help t, sel)
     in sigma_help sigma
 
-  and typ_sig_subst x s typ = match subst x s (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible"
-  and typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible"
-  and typ_mult_subst x t m = match subst x (STyp t) (SMult m) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible"
-  and mult_sig_subst x s mult = match subst x s (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible"
-  and mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> canonical_type t | _ -> failwith "impossible"
-  and mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible"
+  and typ_sig_subst x s typ = match subst x s (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible1"
+  and typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible2"
+  and typ_mult_subst x t m = match subst x (STyp t) (SMult m) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible3"
+  and mult_sig_subst x s mult = match subst x s (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible4"
+  and mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> canonical_type t | SMult m' -> Strobe.traceMsg "Mult_typ_subst %s[%s/%s] = %s??? failed" (string_of_typ t) (string_of_mult m) x (string_of_mult m'); failwith "impossible5"
+  and mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible6"
   and typ_subst x t typ = typ_typ_subst x t typ
 
 
@@ -548,7 +556,7 @@ struct
       let pieces = collect t in
       let nodups = remove_dups pieces in
       match List.rev nodups with
-      | [] -> failwith "impossible"
+      | [] -> failwith "impossible 7"
       | hd::tl -> 
         embed_t (S.apply_name n (List.fold_left (fun acc t ->
                      if t = S.TBot
@@ -645,7 +653,7 @@ struct
       | MPlain _, _
       | MId _, _
       | _, MPlain _
-      | _, MId _ -> failwith "impossible"
+      | _, MId _ -> failwith "impossible 8"
       | t1, t2 -> MSum (t1, t2)
 
   let rec simpl_typ env typ = match typ with
