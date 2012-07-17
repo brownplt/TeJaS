@@ -716,27 +716,34 @@ struct
             List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs;
             traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ);
             traceMsg "2In Eapp, tarrow is    %s" (string_of_typ (TArrow (arg_typs, None, r)));
-            let assoc = typ_assoc env arrow_typ (TArrow (arg_typs, None, r)) in
-            IdMap.iter (fun k t ->
-              traceMsg "  [%s => %s]" k (string_of_typ t)) assoc;
-            let guess_typ_app exp typ_var = 
-              try
-                let guessed_typ = 
-                  try IdMap.find typ_var assoc
-                  with Not_found ->
-                    if (List.length expected_typs > List.length args) 
-                    then (TPrim "Undef")
-                    else raise Not_found in
-                ETypApp (p, exp, Ext.embed_t guessed_typ)
-              with Not_found -> begin
-                raise (Sub.Typ_error 
-                         (p, Sub.FixedString (sprintf "synth: could not instantiate typ_var %s" typ_var))) end in
-            let guessed_exp = 
-              fold_left guess_typ_app (ECheat (p, Ext.embed_t quant_typ, f)) 
-                typ_vars in
-            let synthed_exp = EApp(p, guessed_exp, assumed_arg_exps) in
-            traceMsg "In EApp, synthed_exp = %s" (Exp.string_of_exp synthed_exp);
-            synth env default_typ synthed_exp
+            (* let assoc = ExtTC.typ_assoc env (Ext.embed_t arrow_typ) *)
+            (*   (Ext.embed_t (TArrow (arg_typs, None, r))) in *)
+
+            (* Ext.extract_t (assoc (Ext.embed_t r)) *)
+            let sub = ExtTC.assoc_sub env (Ext.embed_t arrow_typ) 
+              (Ext.embed_t (TArrow (arg_typs, None, r))) in
+            Ext.extract_t (sub typ_vars (Ext.embed_t r))
+
+            (* IdMap.iter (fun k t -> *)
+            (*   traceMsg "  [%s => %s]" k (string_of_typ t)) assoc; *)
+            (* let guess_typ_app exp typ_var =  *)
+            (*   try *)
+            (*     let guessed_typ =  *)
+            (*       try IdMap.find typ_var assoc *)
+            (*       with Not_found -> *)
+            (*         if (List.length expected_typs > List.length args)  *)
+            (*         then (TPrim "Undef") *)
+            (*         else raise Not_found in *)
+            (*     ETypApp (p, exp, Ext.embed_t guessed_typ) *)
+            (*   with Not_found -> begin *)
+            (*     raise (Sub.Typ_error  *)
+            (*              (p, Sub.FixedString (sprintf "synth: could not instantiate typ_var %s" typ_var))) end in *)
+            (* let guessed_exp =  *)
+            (*   fold_left guess_typ_app (ECheat (p, Ext.embed_t quant_typ, f))  *)
+            (*     typ_vars in *)
+            (* let synthed_exp = EApp(p, guessed_exp, assumed_arg_exps) in *)
+            (* traceMsg "In EApp, synthed_exp = %s" (Exp.string_of_exp synthed_exp); *)
+            (* synth env default_typ synthed_exp *)
           | Some _ -> failwith "expected TArrow from forall_arrow"
           end
         | not_func_typ -> 

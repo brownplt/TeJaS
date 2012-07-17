@@ -88,12 +88,14 @@ module type JQUERY_ACTIONS = sig
   val typ_mult_subst : id -> typ -> multiplicity -> multiplicity
   val typ_typ_subst : id -> typ -> typ -> typ
   val typ_subst : id -> typ -> typ -> typ
+  val sig_typ_subst : id -> sigma -> typ -> typ
   val string_of_typ : typ -> string
   val string_of_mult : multiplicity -> string
   val string_of_kind : kind -> string
   val simpl_typ : env -> typ -> typ
   val squash : env -> typ -> typ
-  val typ_assoc : env -> typ -> typ -> typ IdMap.t
+  val assoc_sub : env -> typ -> typ -> (id list -> typ -> typ)
+  val typ_assoc : env -> typ -> typ -> binding IdMap.t
 end
 
 module type JQUERY_MODULE = sig

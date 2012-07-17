@@ -139,12 +139,13 @@ module type STROBE_ACTIONS = sig
   val expose : env -> typ -> typ
   val simpl_typ : env -> typ -> typ
 
-  val typ_assoc : env -> typ -> typ -> typ IdMap.t
+  val typ_assoc: 
+    (id -> typ -> extBinding IdMap.t -> extBinding IdMap.t) ->
+    (extBinding IdMap.t -> extBinding IdMap.t -> extBinding IdMap.t) ->
+    env -> typ -> typ -> extBinding IdMap.t
 
   val trace : string -> string -> ('a -> bool) -> (unit -> 'a) -> 'a
   val traceMsg : ('a, out_channel, unit, unit, unit, unit) format6 -> 'a
-
-  (* val merge : typ -> obj_typ -> typ *)
 
 end
 

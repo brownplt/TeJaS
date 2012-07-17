@@ -109,7 +109,6 @@ module type TYP_ACTIONS = sig
   val canonical_type : typ -> typ
   val string_of_typ : typ -> string
   val string_of_kind : kind -> string
-  val typ_assoc : env -> typ -> typ -> typ IdMap.t
 end
 
 module type EXT_TYP_ACTIONS = sig
@@ -130,6 +129,8 @@ module type EXT_TYP_ACTIONS = sig
   val unwrap_bk : baseKind -> baseKind
   val unwrap_bb : baseBinding -> baseBinding
   val simpl_typ : env -> typ -> typ
+  val assoc_sub  : env -> typ -> typ -> (id list -> typ -> typ)
+  val typ_assoc : env -> typ -> typ -> binding IdMap.t
 end
 
 module type EXT_TYP_SUBTYPING = sig

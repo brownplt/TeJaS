@@ -472,14 +472,13 @@ struct
       | TDom (name, t, sel) -> TDom(name, typ_help t, sel)
     in sigma_help sigma
 
-  and typ_sig_subst x s typ = match subst x s (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible1"
+  and sig_typ_subst x s typ = match subst x s (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible1"
   and typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible2"
   and typ_mult_subst x t m = match subst x (STyp t) (SMult m) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible3"
-  and mult_sig_subst x s mult = match subst x s (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible4"
+  and sig_mult_subst x s mult = match subst x s (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible4"
   and mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> canonical_type t | SMult m' -> Strobe.traceMsg "Mult_typ_subst %s[%s/%s] = %s??? failed" (string_of_typ t) (string_of_mult m) x (string_of_mult m'); failwith "impossible5"
   and mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible6"
   and typ_subst x t typ = typ_typ_subst x t typ
-
 
 
   (* simple structural equivalence -- e.g. up to permutation of parts of Union or Inter or Sum
@@ -672,7 +671,7 @@ struct
         apply_name name
           (simpl_typ env
              (List.fold_right2 (* well-kinded, no need to check *)
-                (fun (x, k) t2 u -> typ_sig_subst x t2 u)
+                (fun (x, k) t2 u -> sig_typ_subst x t2 u)
                 args ts u))
       | func_t ->
         let msg = sprintf "ill-kinded type application in JQ.simpl_typ. Type is \
@@ -735,38 +734,54 @@ struct
     squash_t t
 
 
-  (* Quick hack to infer types; it often works. Sometimes it does not. *)
+
   let assoc_merge = IdMap.merge (fun x opt_s opt_t -> match opt_s, opt_t with
-    | Some (TStrobe (Strobe.TId y)), Some (TStrobe (Strobe.TId z)) ->
+    | Some (BStrobe (Strobe.BTermTyp (Strobe.TId y))), 
+      Some (BStrobe (Strobe.BTermTyp (Strobe.TId z)))
+    | Some (BMultBound (MId y, _)), Some (BMultBound (MId z, _)) ->
       if x = y then opt_t else opt_s
-    | Some (TStrobe (Strobe.TId _)), Some t
-    | Some t, Some (TStrobe (Strobe.TId _)) -> Some t
+    | Some (BStrobe (Strobe.BTermTyp (Strobe.TId _))), Some t
+    | Some t, Some (BStrobe (Strobe.BTermTyp (Strobe.TId _)))
+    | Some (BMultBound (MId _, _)), Some t
+    | Some t, Some (BMultBound (MId _, _)) -> Some t
     | Some t, _
     | _, Some t ->
       Some t
     | None, None -> None)
 
-  let rec typ_assoc env t1 t2 =
+
+  let rec typ_assoc env t1 t2  =
     Strobe.trace "JQtyp_assoc" 
       (Pretty.simpl_typ t1 ^ " with " ^ Pretty.simpl_typ t2) 
       (fun _ -> true) (fun () -> typ_assoc' env t1 t2)
-  and typ_assoc' env t1 t2 =
-    match t1, t2 with
-    | TStrobe s, TStrobe t ->
-      IdMap.map (fun t -> embed_t t) (Strobe.typ_assoc env s t)
-    
-    | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]),
-      TStrobe (Strobe.TSource (_, Strobe.TObject o))
-    | TStrobe (Strobe.TSource (_, Strobe.TObject o)),
-      TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]) ->
-      Strobe.traceMsg "GOT HERE5";
+  and typ_assoc' env t1 t2 : binding IdMap.t =
+
+    let add_strobe x t m = IdMap.add x (embed_b (Strobe.BTermTyp t)) m in
+
+    (* consumes TApp and a source TObject and produces (m1, m2), where
+       m1 is the multiplicity from ... *)
+    let get_this o =
       let ofields = Strobe.fields o in
       let (_, _, thisTyp) = List.find (fun (p, _, _) ->
         Pat.is_equal p (Pat.singleton "__this__")) ofields in
+      thisTyp in
+
+    match t1, t2 with
+    | TStrobe s, TStrobe t -> Strobe.typ_assoc add_strobe assoc_merge env s t
+    | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]),
+      TStrobe (Strobe.TSource (_, Strobe.TObject o)) ->
       begin
-        match embed_t thisTyp with
+        match embed_t (get_this o) with
         | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
           mult_assoc env (canonical_multiplicity s) (canonical_multiplicity m)
+        | _ -> IdMap.empty
+      end
+    | TStrobe (Strobe.TSource (_, Strobe.TObject o)),
+      TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]) ->
+      begin
+        match embed_t (get_this o) with
+        | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
+          mult_assoc env (canonical_multiplicity m) (canonical_multiplicity s)
         | _ -> IdMap.empty
       end
     | TApp (s1, s2), TApp(t1, t2) ->
@@ -778,23 +793,18 @@ struct
         | _ -> IdMap.empty)
         (typ_assoc env s1 t1)
         s2 t2
-    | TApp (s1, s2), t
-    | t, TApp (s1, s2) ->
-      typ_assoc env (simpl_typ env (TApp (s1, s2))) t
-
-
+    | TApp (s1, s2), t -> typ_assoc env (simpl_typ env (TApp (s1, s2))) t
+    | t, TApp (s1, s2) -> typ_assoc env t (simpl_typ env (TApp (s1, s2)))
     | TForall (_, x, STyp s1, s2), TForall (_, y, STyp t1, t2) ->
       assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
     | TForall (_, x, SMult s1, s2), TForall (_, y, SMult t1, t2) ->
       assoc_merge (mult_assoc env s1 t1) (typ_assoc env s2 t2)
-
     | TDom(_, s1, _), TDom(_, s2, _) ->
       typ_assoc env s1 s2
-
     | _ -> IdMap.empty
   and mult_assoc env m1 m2 =
     match m1, m2 with
-    | MId m, _ -> IdMap.empty
+    | MId m, _ -> IdMap.singleton m (BMultBound(m2, KMult (KStrobe Strobe.KStar)))
     | MPlain t1, MPlain t2 -> typ_assoc env t1 t2
     | MOne m1, MOne m2
     | MZeroOne m1, MOne m2
@@ -812,6 +822,16 @@ struct
       assoc_merge (mult_assoc env m11 m21) (mult_assoc env m12 m22)
     | _ -> IdMap.empty
 
+  let assoc_sub env t1 t2 = 
+    let assocmap = typ_assoc env t1 t2 in
+    (fun typ_vars t ->
+      (List.fold_left (fun tacc tvar -> sig_typ_subst tvar 
+        (match IdMap.find tvar assocmap with
+        | BMultBound (m, _) -> SMult m
+        | BStrobe (Strobe.BTermTyp t) -> STyp (embed_t t)
+        | _ -> failwith "impossible: we never added anything but BMultBounds and BTermTyps to the association map!"
+        ) tacc) t typ_vars))
+    
 end
 
 module MakeModule

@@ -912,11 +912,12 @@ struct
     | None, None -> None)
 
 
-  let rec typ_assoc env t1 t2 =
+  let rec typ_assoc add merge env t1 t2 =
     trace "STROBEtyp_assoc" 
       (Pretty.simpl_typ t1 ^ " with " ^ Pretty.simpl_typ t2)
-      (fun _ -> true) (fun () -> typ_assoc' env t1 t2)
-  and typ_assoc' (env : env) (typ1 : typ) (typ2 : typ) =
+      (fun _ -> true) (fun () -> typ_assoc' add merge env t1 t2)
+  and typ_assoc' add merge (env : env) (typ1 : typ) (typ2 : typ) =
+    let typ_assoc = typ_assoc add merge in
     match (typ1, typ2) with
     | TUninit t1, t2 -> begin match !t1 with
       | None -> IdMap.empty
@@ -926,33 +927,30 @@ struct
       | None -> IdMap.empty
       | Some t2 -> typ_assoc env t1 t2
     end 
-    | TEmbed s, t
-    | t, TEmbed s ->
-      IdMap.map (fun t -> Ext.extract_t t) (Ext.typ_assoc env (Ext.embed_t t) s)
-    | TId x, _ -> IdMap.singleton x typ2
+    | TEmbed s, t -> Ext.typ_assoc env s (Ext.embed_t t)
+    | t, TEmbed s -> Ext.typ_assoc env (Ext.embed_t t) s
+    | TId x, _ -> (add x typ2 IdMap.empty)
     | TApp (s1, [s2]), TApp (t1, [t2])
     | TInter (_, s1, s2), TInter (_, t1, t2)
     | TUnion (_, s1, s2), TUnion (_, t1, t2) ->
-      assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
-
-    | TApp (s1, s2), t
-    | t, TApp (s1, s2) ->
-      typ_assoc env (simpl_typ env (TApp (s1, s2))) t
-
+      merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
+    | TApp (s1, s2), t -> typ_assoc env (simpl_typ env (TApp (s1, s2))) t
+    | t, TApp (s1, s2) -> typ_assoc env t (simpl_typ env (TApp (s1, s2)))
     | TObject o1, TObject o2 ->
       let flds1 = fields o1 in
       let flds2 = fields o2 in
-      List.fold_left assoc_merge
+      List.fold_left merge
         IdMap.empty
-        (ListExt.map2_noerr (fld_assoc env) flds1 flds2)
+        (ListExt.map2_noerr (fun (_, _, s) (_, _, t) -> typ_assoc env s t) 
+           flds1 flds2)
     | TSource (_, s), TSource (_, t)
     | TSink (_, s), TSink (_, t)
     | TRef (_, s), TRef (_, t) ->
       typ_assoc env s t
     | TArrow (args1, v1, r1), TArrow (args2, v2, r2) ->
-      List.fold_left assoc_merge
+      List.fold_left merge
         ((fun base -> match v1, v2 with
-        | Some v1, Some v2 -> assoc_merge (typ_assoc env v1 v2) base
+        | Some v1, Some v2 -> merge (typ_assoc env v1 v2) base
         | _ -> base)
             (typ_assoc env r1 r2))
         (ListExt.map2_noerr (typ_assoc env) args1 args2)
@@ -961,12 +959,8 @@ struct
       typ_assoc env s t
     | TForall (_, x, s1, s2), TForall (_, y, t1, t2) ->
       (* also here *)
-      assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
-
+      merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
     | _ -> IdMap.empty
-
-  and fld_assoc env (_, _, s) (_, _, t) = typ_assoc env s t
-
 
 end
 
