@@ -766,7 +766,7 @@ struct
       begin
         match embed_t thisTyp with
         | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
-          mult_assoc env s m
+          mult_assoc env (canonical_multiplicity s) (canonical_multiplicity m)
         | _ -> IdMap.empty
       end
     | TApp (s1, s2), TApp(t1, t2) ->
@@ -797,9 +797,16 @@ struct
     | MId m, _ -> IdMap.empty
     | MPlain t1, MPlain t2 -> typ_assoc env t1 t2
     | MOne m1, MOne m2
+    | MZeroOne m1, MOne m2
+    | MOnePlus m1, MOne m2
+    | MZeroPlus m1, MOne m2
     | MZero m1, MZero m2
+    | MZeroOne m1, MZero m2
+    | MZeroPlus m1, MZero m2
     | MZeroOne m1, MZeroOne m2
+    | MZeroPlus m1, MZeroOne m2
     | MOnePlus m1, MOnePlus m2
+    | MZeroPlus m1, MOnePlus m2
     | MZeroPlus m1, MZeroPlus m2 -> mult_assoc env m1 m2
     | MSum(m11, m12), MSum(m21, m22) ->
       assoc_merge (mult_assoc env m11 m21) (mult_assoc env m12 m22)

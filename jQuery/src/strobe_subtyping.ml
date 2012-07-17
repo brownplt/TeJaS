@@ -234,6 +234,8 @@ struct
       (* UNSOUND: Type constructor might not be covariant in its arguments *)
       (* | TApp(sf, sargs), TApp(tf, targs) when Ext.unwrap_bt sf = Ext.unwrap_bt tf -> *)
       (*   List.fold_left2 subtype_typ_list (cache, true) sargs targs *)
+      | _, TTop -> cache, true
+      | TBot, _ -> cache, true
       | TEmbed s, t -> tc_cache := cache; cache, ExtSub.subtype env s (Ext.embed_t t)
       | s, TEmbed t -> tc_cache := cache; cache, ExtSub.subtype env (Ext.embed_t s) t
       | s, t ->
@@ -255,6 +257,8 @@ struct
             | None -> subt env cache t1 (TPrim "Undef")
             | Some t2 -> subt env cache t1 t2
           end
+          | _, TTop -> cache, true
+          | TBot, _ -> cache, true
           | TEmbed t1, t2 -> tc_cache := cache; cache, ExtSub.subtype env t1 (Ext.embed_t t2)
           | t1, TEmbed t2 -> tc_cache := cache; cache, ExtSub.subtype env (Ext.embed_t t1) t2
           | TRegex pat1, TRegex pat2 ->
@@ -339,8 +343,6 @@ struct
                 let t2 = canonical_type (typ_subst x2 (TId x1) t2) in
                 let env' = Env.bind_typ_id x1 (Ext.embed_t s1) env in
                 subt env' c t1 t2)
-          | _, TTop -> cache, true
-          | TBot, _ -> cache, true
           | TLambda (_, [(x, KStar)], s), TLambda (_, [(y, KStar)], t) ->
             let env = Env.bind_typ_id x (Ext.embed_t TTop) env in
             let env = Env.bind_typ_id y (Ext.embed_t TTop) env in
