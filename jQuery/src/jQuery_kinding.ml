@@ -97,9 +97,9 @@ struct
           end in
         match extract_t t_op with
         | Strobe.TPrim ("childrenOf" as p)
-        | Strobe.TPrim ("parent" as p)
-        | Strobe.TPrim ("next" as p)
-        | Strobe.TPrim ("prev" as p) ->
+        | Strobe.TPrim ("parentOf" as p)
+        | Strobe.TPrim ("nextSibOf" as p)
+        | Strobe.TPrim ("prevSibOf" as p) ->
           begin
             try List.iter2 check [Strobe.KStar] s_args
             with Invalid_argument _ -> 

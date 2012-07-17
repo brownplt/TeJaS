@@ -274,10 +274,10 @@ struct
         failwith "childrenOf at outermost level"
       | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]) ->
         failwith "parentOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "prevsibOf"), [STyp t]) ->
-        failwith "prevsibOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "nextsibOf"), [STyp t]) ->
-        failwith "nextsibOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "prevSibOf"), [STyp t]) ->
+        failwith "prevSibOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "nextSibOf"), [STyp t]) ->
+        failwith "nextSibOf at outermost level"
       | TApp(t, args) ->
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult m with
@@ -289,14 +289,14 @@ struct
             SMult (canonical_multiplicity (m (Env.parent_of senv (rjq t))))
           | TApp(TStrobe (Strobe.TPrim "parentOf"), _), _ ->
             failwith "parentOf not called with a single type argument"
-          | TApp(TStrobe (Strobe.TPrim "prevsibOf"), [STyp t]), m ->
+          | TApp(TStrobe (Strobe.TPrim "prevSibOf"), [STyp t]), m ->
             SMult (canonical_multiplicity (m (Env.prevsib_of senv (rjq t))))
-          | TApp(TStrobe (Strobe.TPrim "prevsibOf"), _), _ ->
-            failwith "prevsibOf not called with a single type argument"
-          | TApp(TStrobe (Strobe.TPrim "nextsibOf"), [STyp t]), m ->
+          | TApp(TStrobe (Strobe.TPrim "prevSibOf"), _), _ ->
+            failwith "prevSibOf not called with a single type argument"
+          | TApp(TStrobe (Strobe.TPrim "nextSibOf"), [STyp t]), m ->
             SMult (canonical_multiplicity (m (Env.nextsib_of senv (rjq t))))
-          | TApp(TStrobe (Strobe.TPrim "nextsibOf"), _), _ ->
-            failwith "nextsibOf not called with a single type argument"
+          | TApp(TStrobe (Strobe.TPrim "nextSibOf"), _), _ ->
+            failwith "nextSibOf not called with a single type argument"
           | _, _ -> SMult m
         end
         | STyp _ -> s) args)
