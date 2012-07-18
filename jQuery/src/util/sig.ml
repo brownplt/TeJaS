@@ -129,7 +129,6 @@ module type EXT_TYP_ACTIONS = sig
   val unwrap_bk : baseKind -> baseKind
   val unwrap_bb : baseBinding -> baseBinding
   val simpl_typ : env -> typ -> typ
-  val assoc_sub  : env -> typ -> typ -> (id list -> typ -> typ)
   val typ_assoc : env -> typ -> typ -> binding IdMap.t
 end
 
@@ -160,7 +159,7 @@ module type TYPECHECKING = sig
   val disable_flows : unit -> unit
   val bind_forall_vars : env -> typ -> env * typ
   val typecheck : env -> typ option -> exp -> unit
-  val forall_arrow : typ -> (id list * typ) option
+  val forall_arrow : typ -> ((id * binding) list * typ) option
 end
 
 module type EXT_TYPECHECKING = sig
@@ -171,7 +170,8 @@ module type EXT_TYPECHECKING = sig
   val disable_flows : unit -> unit
   val typecheck : env -> typ option -> exp -> unit
   val bind_forall_vars : env -> typ -> env * typ
-  val forall_arrow : typ -> (id list * typ) option
+  val forall_arrow : typ -> ((id * binding) list * typ) option
+  val assoc_sub  : env -> typ -> typ -> (Pos.t -> (id * binding) list -> typ -> typ)
 end
 
 module type TYP_ENV = sig

@@ -115,7 +115,14 @@ struct
          with Not_found -> failwith "impossible") (* Backform has ALL lsids *))
          lsidSet
          (MZero (MPlain (TStrobe Strobe.TTop)))) (* This will disappear anyway *)
-    | TStrobe (Strobe.TId id) -> IdMap.find id cm (* TODO: is this ok? *)
+    | TStrobe (Strobe.TId id) -> 
+      (* TODO: is this ok? *)
+      begin
+      try IdMap.find id cm with Not_found -> 
+	Strobe.traceMsg "exception not_found with id %s" id;
+	raise Not_found
+      end
+    
     | TStrobe (Strobe.TUnion (_, t1, t2)) ->
     (* TODO: is it ok to reduce TUnions to MSums? *)
       MSum (x_of benv cm (TStrobe t1), x_of benv cm (TStrobe t2))
@@ -374,4 +381,109 @@ struct
   (* let rec bind_typ env typ : env * typ = match typ with *)
   (*   | TForall (n, x, s, t) -> bind_typ (bind_typ_id x s env) (apply_name n t) *)
   (*   | typ -> (env, typ) *)
+
+
+  let rec resolve_special_functions (env : env) (senv : structureEnv) (t : typ) =
+    let rec extract_mult m = match m with
+      | MPlain t -> (t, fun m -> m)
+      | MOne m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MOne (m t))
+      | MZero m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MZero (m t))
+      | MOnePlus m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MOnePlus (m t))
+      | MZeroOne m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MZeroOne (m t))
+      | MZeroPlus m ->
+        let (t, m) = extract_mult m in
+        (t, fun t -> MZeroPlus (m t))
+      | MId m -> 
+        failwith ("can't handle MId(" ^ m ^ ") here")
+      | MSum _ -> failwith "can't handle MSums here" in
+    let rec resolve_sigma s = match s with
+      | STyp t -> STyp (rjq t)
+      | SMult m -> SMult (resolve_mult m) 
+    and resolve_mult m =
+      let rm = resolve_mult in
+      match m with
+      | MPlain t -> MPlain (rjq t)
+      | MId _ -> m
+      | MZero m-> MZero (rm m)
+      | MOne m -> MOne (rm m)
+      | MZeroOne m -> MZeroOne (rm m)
+      | MOnePlus m -> MOnePlus (rm m)
+      | MZeroPlus m -> MZeroPlus (rm m)
+      | MSum (m1, m2) -> MSum (rm m1, rm m2)
+    and  rjq t = match t with
+      | TForall (s,id,sigma,t) -> TForall(s,id,resolve_sigma sigma, t)
+      | TLambda _ -> t
+      | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]) ->
+        failwith "childrenOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]) ->
+        failwith "parentOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "prevSibOf"), [STyp t]) ->
+        failwith "prevSibOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "nextSibOf"), [STyp t]) ->
+        failwith "nextSibOf at outermost level"
+      | TApp(t, args) ->
+        TApp(rjq t, List.map (fun s -> match s with
+        | SMult m -> begin match extract_mult m with
+          | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]), m ->
+            SMult (canonical_multiplicity (m (children_of senv (rjq t))))
+          | TApp(TStrobe (Strobe.TPrim "childrenOf"), _), _ ->
+            failwith "childrenOf not called with a single type argument"
+          | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]), m ->
+            SMult (canonical_multiplicity (m (parent_of senv (rjq t))))
+          | TApp(TStrobe (Strobe.TPrim "parentOf"), _), _ ->
+            failwith "parentOf not called with a single type argument"
+          | TApp(TStrobe (Strobe.TPrim "prevSibOf"), [STyp t]), m ->
+            SMult (canonical_multiplicity (m (prevsib_of senv (rjq t))))
+          | TApp(TStrobe (Strobe.TPrim "prevSibOf"), _), _ ->
+            failwith "prevSibOf not called with a single type argument"
+          | TApp(TStrobe (Strobe.TPrim "nextSibOf"), [STyp t]), m ->
+            SMult (canonical_multiplicity (m (nextsib_of senv (rjq t))))
+          | TApp(TStrobe (Strobe.TPrim "nextSibOf"), _), _ ->
+            failwith "nextSibOf not called with a single type argument"
+          | _, _ -> SMult m
+        end
+        | STyp _ -> s) args)
+      | TDom (s, t, sel) -> TDom (s, rjq t, sel)
+      | TStrobe t -> TStrobe (rs t)
+    and rs t = 
+      let rs_obj o = Strobe.mk_obj_typ 
+        (List.map (third3 rs) (Strobe.fields o)) 
+        (Strobe.absent_pat o) in
+      match t with 
+      | Strobe.TPrim s -> t
+      | Strobe.TUnion (s,t1,t2) -> Strobe.TUnion(s, rs t1, rs t2)
+      | Strobe.TInter (s,t1,t2) -> Strobe.TInter(s, rs t1, rs t2)
+      | Strobe.TArrow (ts,t1,t2) ->
+        Strobe.TArrow(List.map rs ts,
+                      (opt_map rs t1),
+                      rs t2)
+      | Strobe.TThis t -> Strobe.TThis (rs t)
+      | Strobe.TObject o -> Strobe.TObject (rs_obj o)
+      | Strobe.TWith (t, o) -> Strobe.TWith (rs t, rs_obj o)
+      | Strobe.TRegex _ -> t
+      | Strobe.TRef (s, t) -> Strobe.TRef (s, rs t)
+      | Strobe.TSource (s, t) -> Strobe.TSource (s, rs t)
+      | Strobe.TSink (s, t) -> Strobe.TSink (s, rs t)
+      | Strobe.TTop -> Strobe.TTop
+      | Strobe.TBot -> Strobe.TBot
+      | Strobe.TForall (s,id,t1,t2) -> Strobe.TForall(s,id,rs t1, t2)
+      | Strobe.TId id -> t
+      | Strobe.TRec _ -> t
+      | Strobe.TLambda _ -> t
+      | Strobe.TApp (t, ts) -> Strobe.TApp (rs t, (List.map rs ts))
+      | Strobe.TFix _ -> t
+      | Strobe.TUninit tor -> 
+	tor := opt_map rs !tor;
+        Strobe.TUninit tor
+      | Strobe.TEmbed t -> Strobe.TEmbed (rjq t) in
+    rjq t
+      
 end

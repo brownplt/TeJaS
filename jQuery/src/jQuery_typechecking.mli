@@ -14,6 +14,7 @@ module Make :
         functor (Sub : JQuery_sigs.JQUERY_SUBTYPING
                  with type typ = JQ.typ
   with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity
   with type binding = JQ.binding
   with type baseTyp = JQ.baseTyp
   with type baseKind = JQ.baseKind
@@ -22,6 +23,7 @@ module Make :
           functor (Kind : JQuery_sigs.JQUERY_KINDING
                    with type typ = JQ.typ
   with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity
   with type binding = JQ.binding
   with type baseTyp = JQ.baseTyp
   with type baseKind = JQ.baseKind

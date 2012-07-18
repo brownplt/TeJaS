@@ -453,7 +453,7 @@ struct
         in unwrap_t subst_t
       end
       | TApp(f, args) -> 
-        Strobe.traceMsg "Substituting %s->%s in %s" x (string_of_sigma s) (string_of_typ typ);
+        (* Strobe.traceMsg "Substituting %s->%s in %s" x (string_of_sigma s) (string_of_typ typ); *)
         TApp(typ_help f, List.map sigma_help args)
       | TLambda (n, yks, t) ->
         (* Strobe.traceMsg "JQTLambda %s" (string_of_typ typ); *)
@@ -752,11 +752,13 @@ struct
 
   let rec typ_assoc env t1 t2  =
     Strobe.trace "JQtyp_assoc" 
-      (Pretty.simpl_typ t1 ^ " with " ^ Pretty.simpl_typ t2) 
+      (string_of_typ t1 ^ " with " ^ string_of_typ t2) 
       (fun _ -> true) (fun () -> typ_assoc' env t1 t2)
   and typ_assoc' env t1 t2 : binding IdMap.t =
 
-    let add_strobe x t m = IdMap.add x (embed_b (Strobe.BTermTyp t)) m in
+    let add_strobe x t m = 
+      Strobe.traceMsg "In JQ.add_strobe %s -> %s" x (string_of_typ (embed_t t));
+      IdMap.add x (embed_b (Strobe.BTermTyp t)) m in
 
     (* consumes TApp and a source TObject and produces (m1, m2), where
        m1 is the multiplicity from ... *)
@@ -794,7 +796,11 @@ struct
         (typ_assoc env s1 t1)
         s2 t2
     | TApp (s1, s2), t -> typ_assoc env (simpl_typ env (TApp (s1, s2))) t
-    | t, TApp (s1, s2) -> typ_assoc env t (simpl_typ env (TApp (s1, s2)))
+    | t, TApp (s1, s2) -> 
+      let str_t1 = (string_of_typ t) in
+      let str_t2 = (string_of_typ (TApp (s1, s2))) in
+      Strobe.traceMsg "in typ assoc', trying to associate %s with %s\n" str_t1 str_t2;
+      typ_assoc env t (simpl_typ env (TApp (s1, s2)))
     | TForall (_, x, STyp s1, s2), TForall (_, y, STyp t1, t2) ->
       assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
     | TForall (_, x, SMult s1, s2), TForall (_, y, SMult t1, t2) ->
@@ -821,16 +827,6 @@ struct
     | MSum(m11, m12), MSum(m21, m22) ->
       assoc_merge (mult_assoc env m11 m21) (mult_assoc env m12 m22)
     | _ -> IdMap.empty
-
-  let assoc_sub env t1 t2 = 
-    let assocmap = typ_assoc env t1 t2 in
-    (fun typ_vars t ->
-      (List.fold_left (fun tacc tvar -> sig_typ_subst tvar 
-        (match IdMap.find tvar assocmap with
-        | BMultBound (m, _) -> SMult m
-        | BStrobe (Strobe.BTermTyp t) -> STyp (embed_t t)
-        | _ -> failwith "impossible: we never added anything but BMultBounds and BTermTyps to the association map!"
-        ) tacc) t typ_vars))
     
 end
 

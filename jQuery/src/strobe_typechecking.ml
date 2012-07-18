@@ -229,16 +229,16 @@ struct
 
 
 
-  let rec forall_arrow (typ : typ) : (id list * typ) option = match typ with
+  let rec forall_arrow (typ : typ) : ((id * extBinding) list * typ) option = match typ with
     | TEmbed t -> begin
       match ExtTC.forall_arrow t with
       | None -> None
       | Some (ids, t) -> Some (ids, Ext.extract_t t)
     end
     | TArrow _ -> Some ([], typ)
-    | TForall (_, x, _, typ') -> begin match forall_arrow typ' with
+    | TForall (_, x, b, typ') -> begin match forall_arrow typ' with
       | None -> None
-      | Some (xs, t) -> Some (x :: xs, t)
+      | Some (xs, t) -> Some ((x, Ext.embed_b (BTypBound(b, KStar))) :: xs, t)
     end
     | TRec (_, x, t) -> forall_arrow (typ_subst x typ t)
     | _ -> None
@@ -710,9 +710,9 @@ struct
           | Some (typ_vars, (TArrow (expected_typs, _, r) as arrow_typ)) -> 
             (* guess-work breaks bidirectionality *)
             let arg_typs = map (synth env default_typ) args in
-            let assumed_arg_exps = 
-              List.map2 (fun e t -> ECheat (p, Ext.embed_t t, e)) args arg_typs in
-            traceMsg "In EApp, arg_typs are:";
+            (* let assumed_arg_exps =  *)
+            (*   List.map2 (fun e t -> ECheat (p, Ext.embed_t t, e)) args arg_typs in *)
+            traceMsg "In Epp, arg_typs are:";
             List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs;
             traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ);
             traceMsg "2In Eapp, tarrow is    %s" (string_of_typ (TArrow (arg_typs, None, r)));
@@ -720,9 +720,15 @@ struct
             (*   (Ext.embed_t (TArrow (arg_typs, None, r))) in *)
 
             (* Ext.extract_t (assoc (Ext.embed_t r)) *)
-            let sub = ExtTC.assoc_sub env (Ext.embed_t arrow_typ) 
-              (Ext.embed_t (TArrow (arg_typs, None, r))) in
-            Ext.extract_t (sub typ_vars (Ext.embed_t r))
+            let sub = ExtTC.assoc_sub env 
+	      (* NOTE: Can leave the return type out, because we're just
+		 copying it, so it will never yield any information *)
+	      (Ext.embed_t (TArrow (expected_typs, None, TTop))) 
+              (Ext.embed_t (TArrow (arg_typs, None, TTop))) in
+	    traceMsg "3In Eapp, original return type is %s" (string_of_typ r);
+            let ret = Ext.extract_t (sub p typ_vars (Ext.embed_t r)) in
+	    traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret);
+	    ret
 
             (* IdMap.iter (fun k t -> *)
             (*   traceMsg "  [%s => %s]" k (string_of_typ t)) assoc; *)

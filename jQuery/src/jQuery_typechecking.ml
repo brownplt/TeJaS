@@ -14,6 +14,7 @@ module Make
   (Sub : JQuery_sigs.JQUERY_SUBTYPING
    with type typ = JQ.typ
   with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity
   with type binding = JQ.binding
   with type baseTyp = JQ.baseTyp
   with type baseKind = JQ.baseKind
@@ -22,6 +23,7 @@ module Make
   (Kind : JQuery_sigs.JQUERY_KINDING
    with type typ = JQ.typ
   with type kind = JQ.kind
+  with type multiplicity = JQ.multiplicity
   with type binding = JQ.binding
   with type baseTyp = JQ.baseTyp
   with type baseKind = JQ.baseKind
@@ -57,17 +59,76 @@ struct
   let disable_flows () = StrobeTC.disable_flows () 
   (* need () because otherwise this is a value, not a function, and ML gets angry at that *)
 
-  let rec forall_arrow (typ : typ) : (id list * typ) option = match typ with
+  let rec forall_arrow (typ : typ) : ((id * binding) list * typ) option = match typ with
     | TStrobe s -> begin
       match StrobeTC.forall_arrow s with
       | None -> None
       | Some (ids, t) -> Some (ids, embed_t t)
     end
-    | TForall (_, x, _, typ') -> begin match forall_arrow typ' with
+    | TForall (_, x, b, typ') -> begin match forall_arrow typ' with
       | None -> None
-      | Some (xs, t) -> Some (x :: xs, t)
+      | Some (xs, typ) -> match b with
+  | STyp t -> Some ((x, BStrobe (Strobe.BTypBound(extract_t t, Strobe.KStar))) :: xs, typ)
+  | SMult m -> Some ((x, BMultBound (m, KMult (KStrobe Strobe.KStar))) :: xs, typ)
     end
     | _ -> None
+
+  let assoc_sub env t1 t2 = 
+    Strobe.traceMsg "associating %s with %s" (string_of_typ t1) (string_of_typ t2);
+    (* let t1' = (Env.resolve_special_functions env !Env.senv (Env.expose_tdoms env (canonical_type t1))) in *)
+    (* let t2' = (Env.resolve_special_functions env !Env.senv (Env.expose_tdoms env (canonical_type t2))) in *)
+    let assocmap = typ_assoc env t1 t2 in
+    Strobe.traceMsg "In assoc_sub, associations are:";
+    IdMap.iter (fun tvar b -> match b with
+    | BMultBound (m, _) -> 
+      Strobe.traceMsg "  %s => %s" tvar (string_of_mult m)
+    | BStrobe (Strobe.BTermTyp t) ->
+      Strobe.traceMsg "  %s => %s" tvar (string_of_typ (embed_t t))
+    | b -> Strobe.traceMsg "  %s => UNKNOWN BINDING!" tvar) assocmap;
+    (fun p typ_vars t ->
+      Env.resolve_special_functions env !Env.senv 
+  (Env.expose_tdoms env 
+     (canonical_type
+        (List.fold_left (fun tacc (tvar, binding) -> 
+    try
+      sig_typ_subst tvar 
+        (match IdMap.find tvar assocmap, binding with
+        | BMultBound (m, _), BMultBound (bindm, _) -> 
+          if not (Sub.subtype_mult true env m bindm)
+          then begin
+      Strobe.typ_mismatch p 
+        (Strobe.FixedString 
+           (Printf.sprintf "%s is associated to %s, but this isn't a sub-multiplicity of the bound %s" tvar (string_of_mult m) (string_of_mult bindm)));
+      SMult m
+          end else
+      SMult m
+        | BStrobe (Strobe.BTermTyp t), BStrobe (Strobe.BTypBound(bindt, _)) -> 
+          if not (Sub.subtype env (embed_t t) (embed_t bindt))
+          then begin
+      Strobe.typ_mismatch p
+        (Strobe.FixedString
+           (Printf.sprintf "%s is associated to %s, but this isn't a subtype of the bound %s" tvar (string_of_typ (embed_t t)) (string_of_typ (embed_t bindt))));
+      STyp (embed_t t)
+          end else
+      STyp (embed_t t)
+        | BMultBound _, _
+        | BStrobe (Strobe.BTermTyp _), _ ->
+          failwith "impossible: somehow we associated a type-id to a multiplicity, or vice versa"
+        | _ -> failwith "impossible: we never added anything but BMultBounds and BTermTyps to the association map!"
+        ) tacc
+    with Not_found ->
+      match binding with
+      | BMultBound (m, _) ->
+        raise (Strobe.Typ_error (p, Strobe.FixedString
+          (Printf.sprintf "synth: could not instantiate mult_var %s under bound %s" tvar (string_of_mult m))))
+      | BStrobe (Strobe.BTypBound(t, _)) ->
+        raise (Strobe.Typ_error (p, Strobe.FixedString
+          (Printf.sprintf "synth: could not instantiate typ_var %s under bound %s" tvar (string_of_typ (embed_t t)))))
+      | _ ->
+	raise (Strobe.Typ_error (p, Strobe.FixedString
+	  (Printf.sprintf "synth: could not instantiate typ variable %s (with unknown bound??)" tvar)))
+         ) t typ_vars))))
+
 
   let rec check (env : env) (default_typ : typ option) (exp : exp) (typ : typ) : unit =
     try trace "Check" (fun _ -> true) (fun exp -> check' env default_typ exp typ) exp
