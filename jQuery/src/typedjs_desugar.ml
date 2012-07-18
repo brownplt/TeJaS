@@ -426,12 +426,13 @@ struct
                    pce_prev = IdMap.add name [None] pcenv.pce_prev;
                    pce_next = IdMap.add name [None] pcenv.pce_next;} in
       
+      
       (* return final structureEnv *)
       (benv_complete, 
-       {children = (transformPCM pcenv.pce_children transform_children);
-        parent = (transformPCM pcenv.pce_parent transform_parent);
-        prev = (transformPCM pcenv.pce_prev transform_sibs);
-        next = (transformPCM pcenv.pce_next transform_sibs)}) in
+       {children = IdMap.add element (JQ.MZeroPlus (wrap_id element)) (transformPCM pcenv.pce_children transform_children);
+        parent = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_parent transform_parent);
+        prev = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_prev transform_sibs);
+        next = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_next transform_sibs)}) in
 
     (* Body of desugar_structure *)
     (gen_bindings dc, compile senv dc)
