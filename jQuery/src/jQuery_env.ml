@@ -105,7 +105,7 @@ struct
   (* (\* build children and canonicalize result *\) *)
   (*   get_children_of t *)
 
-  let rec x_of (benv : Desugar.backformEnv) (cm : Desugar.clauseMap) (t : typ) : multiplicity = 
+  let rec x_of (benv : Desugar.backformEnv) (cm : Desugar.clauseMap) (t : typ ) : multiplicity = 
     let open JQuery in
     match t with
     | TDom (s,t,sels) ->
@@ -126,24 +126,27 @@ struct
     | TStrobe (Strobe.TUnion (_, t1, t2)) ->
     (* TODO: is it ok to reduce TUnions to MSums? *)
       MSum (x_of benv cm (TStrobe t1), x_of benv cm (TStrobe t2))
-    | _ -> failwith "impossible: x_of can only be called on TDom, TId, TUnion"
+    | _ -> failwith 
+      (Printf.sprintf 
+         "impossible: x_of can only be called on TDom, TId, TUnion, got %s"
+         (string_of_typ t))
 
 
-  let children_of (senv : structureEnv) (t : typ) : multiplicity =
+  let children (senv : structureEnv) (t : typ) : multiplicity =
     let (_,cenv) = senv in
     x_of (fst senv) cenv.Desugar.children t
 
 
-  let parent_of (senv : structureEnv) (t : typ) : multiplicity =
+  let parent (senv : structureEnv) (t : typ) : multiplicity =
     let (_,cenv) = senv in
     x_of (fst senv) cenv.Desugar.parent t
 
 
-  let prevsib_of (senv : structureEnv) (t : typ) : multiplicity =
+  let prevsib (senv : structureEnv) (t : typ) : multiplicity =
     let (_,cenv) = senv in
     x_of (fst senv) cenv.Desugar.prev t
 
-  let nextsib_of (senv : structureEnv) (t : typ) : multiplicity =
+  let nextsib (senv : structureEnv) (t : typ) : multiplicity =
     let (_,cenv) = senv in
     x_of (fst senv) cenv.Desugar.next t
 
@@ -432,25 +435,30 @@ struct
       | TApp(t, args) ->
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult m with
-          | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]), m ->
-            SMult (canonical_multiplicity (m (children_of senv (rjq t))))
-          | TApp(TStrobe (Strobe.TPrim "childrenOf"), _), _ ->
-            failwith "childrenOf not called with a single type argument"
-          | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]), m ->
-            SMult (canonical_multiplicity (m (parent_of senv (rjq t))))
-          | TApp(TStrobe (Strobe.TPrim "parentOf"), _), _ ->
-            failwith "parentOf not called with a single type argument"
-          | TApp(TStrobe (Strobe.TPrim "prevSibOf"), [STyp t]), m ->
-            SMult (canonical_multiplicity (m (prevsib_of senv (rjq t))))
-          | TApp(TStrobe (Strobe.TPrim "prevSibOf"), _), _ ->
-            failwith "prevSibOf not called with a single type argument"
-          | TApp(TStrobe (Strobe.TPrim "nextSibOf"), [STyp t]), m ->
-            SMult (canonical_multiplicity (m (nextsib_of senv (rjq t))))
-          | TApp(TStrobe (Strobe.TPrim "nextSibOf"), _), _ ->
-            failwith "nextSibOf not called with a single type argument"
-          | _, _ -> SMult m
+          | (TApp ((TStrobe (Strobe.TPrim "childrenOf")), [SMult m]), m1) ->
+            let (t, m2) = extract_mult m in
+            SMult (canonical_multiplicity (m1 (m2 (children senv (rjq t)))))
+          | (TApp ((TStrobe (Strobe.TPrim "childrenOf")), _), _) ->
+            failwith "childrenOf not called with a single mult argument"
+          | (TApp ((TStrobe (Strobe.TPrim "parentOf")), [SMult m]), m1) ->
+            let (t, m2) = extract_mult m in
+            SMult (canonical_multiplicity (m1 (m2 (parent senv (rjq t)))))
+          | (TApp ((TStrobe (Strobe.TPrim "parentOf")), _), _) ->
+            failwith "parentOf not called with a single mult argument"
+          | (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), [SMult m]), m1) ->
+            let (t, m2) = extract_mult m in
+            SMult (canonical_multiplicity (m1 (m2 (prevsib senv (rjq t)))))
+          | (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), _), _) ->
+            failwith "prevSibOf not called with a single mult argument"
+          | (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), [SMult m]), m1) ->
+            let (t, m2) = extract_mult m in
+            SMult (canonical_multiplicity (m1 (m2 (nextsib senv (rjq t)))))
+          | (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), _), _) ->
+            failwith "nextSibOf not called with a single mult argument"
+          | _ -> s
         end
-        | STyp _ -> s) args)
+        | STyp _ -> s
+        ) args)
       | TDom (s, t, sel) -> TDom (s, rjq t, sel)
       | TStrobe t -> TStrobe (rs t)
     and rs t = 

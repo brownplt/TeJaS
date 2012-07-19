@@ -821,7 +821,8 @@ struct
     | TThis t -> TThis (expose_twith t)
     | _ -> canonical_type (typ)
 
-  and simpl_typ typenv typ = match typ with
+  and simpl_typ typenv typ = 
+    match typ with
     | TEmbed t -> Ext.extract_t (Ext.simpl_typ typenv t)
     | TPrim _ 
     | TUnion _

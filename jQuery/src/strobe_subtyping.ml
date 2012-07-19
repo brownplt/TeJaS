@@ -301,6 +301,10 @@ struct
           | TThis _, TThis _ -> cache, false
           | _, TThis t2 -> subt env cache s t2
           | TThis t1, _ -> subt env cache t1 t
+          | TArrow (args1, None, ret1), TArrow (args2, None, ret2) ->
+            if (List.length args1 <> List.length args2) then (cache, false)
+            else
+              (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1))
           | TArrow (args1, None, ret1), TArrow (args2, Some var2, ret2) ->
             if (List.length args1 < List.length args2) then (cache, false)
             else 
@@ -372,9 +376,9 @@ struct
     let check_simple_overlap cache ((pat1, pres1, t1), (pat2, pres2, t2)) = 
       if Pat.is_overlapped pat1 pat2 then
         begin
+          (* traceMsg "%s overlaps %s; checking subtypes of %s <: %s" *)
+          (*   (Pat.pretty pat1) (Pat.pretty pat2) (string_of_typ t1) (string_of_typ t2); *)
           (cache, subtype_presence pres1 pres2) &&&
-            (* traceMsg "%s overlaps %s; checking subtypes of %s <: %s" *)
-            (*   (Pat.pretty pat1) (Pat.pretty pat2) (string_of_typ t1) (string_of_typ t2); *)
             (fun c -> subt env c t1 t2)
         end
       else

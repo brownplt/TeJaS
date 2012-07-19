@@ -50,8 +50,9 @@ struct
     pp_set_max_boxes str_formatter max;
     s
 
-  let trace (msg : string) print success (thunk : 'a -> 'b) (arg : 'a) = (* thunk arg *)
-    Strobe.trace msg (print arg) success (fun () -> thunk arg)
+  let trace (msg : string) print success (thunk : 'a -> 'b) (arg : 'a) = 
+    thunk arg
+    (* Strobe.trace msg (print arg) success (fun () -> thunk arg) *)
 
   let rec kind_check_sigma (env : env) (recIds : id list) (s : sigma) : kind = match s with
     | STyp t -> kind_check_typ env recIds t
@@ -101,7 +102,7 @@ struct
         | Strobe.TPrim ("nextSibOf" as p)
         | Strobe.TPrim ("prevSibOf" as p) ->
           begin
-            try List.iter2 check [Strobe.KStar] s_args
+            try List.iter2 check [Strobe.KEmbed (KMult (KStrobe Strobe.KStar))] s_args
             with Invalid_argument _ -> 
               raise (Strobe.Kind_error 
                        (sprintf "%s<> expects one argument, got %d" 

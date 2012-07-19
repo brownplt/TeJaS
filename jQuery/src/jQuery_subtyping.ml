@@ -114,7 +114,7 @@ struct
       else
         (cache, false)
     (* ************************** *)
-    | _ -> (cache, false)
+    | STyp t, SMult m -> (cache, false)
 
   and subtype_typ lax env cache s t =
     Strobe.trace "JQUERY_subtype_typ" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subtype_typ' lax env cache s t)
@@ -147,7 +147,7 @@ struct
             subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
           | TDom _, _ -> subtype_typ env cache t1 (TDom(None, t2, Css.all))
           | _, TDom _ -> subtype_typ env cache (TDom(None, t1, Css.all)) t2
-          | TApp _, TApp _ -> Strobe.traceMsg "GOT HERE"; cache, false
+          | TApp _, TApp _ -> Strobe.traceMsg "GOT HERE in subtype_typ'"; cache, false
           (* UNSOUND: Type constructor might not be covariant in its arguments *)
           (* | TApp(t1, args1), TApp(t2, args2) -> *)
           (*   if (List.length args1 <> List.length args2) then (cache, false) *)
@@ -164,7 +164,9 @@ struct
           | _ -> (cache, false))
     end
       
-  and subtype_mult lax (env : env) cache m1 m2 = 
+  and subtype_mult lax env cache m1 m2 =
+    Strobe.trace "JQUERY_subtype_mult" (string_of_mult m1 ^ " <?: " ^ string_of_mult m2) snd2 (fun () -> subtype_mult' lax env cache m1 m2)
+  and subtype_mult' lax (env : env) cache m1 m2 = 
     let subtype_mult = subtype_mult lax env in
     let subtype_typ = subtype_typ lax env in (* ok for now because there are no MId binding forms in Mult *)
     let open SigmaPair in
@@ -180,31 +182,31 @@ struct
     | MPlain t1, MPlain t2 -> subtype_typ cache t1 t2
     | MOne (MPlain t1), MOne (MPlain t2)
     | MOne (MPlain t1), MZeroOne (MPlain t2)
-    | MOne (MPlain t1), MOnePlus (MPlain t2) -> subtype_typ cache t1 t2
+    | MOne (MPlain t1), MOnePlus (MPlain t2)
+    | MOne (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
     | MOne (MPlain _), MZero _ -> (cache, false)
-    | MOne _, _ -> (cache, false) (* not canonical! *)
+    | MOne _, _ -> Strobe.traceMsg "Got here1"; (cache, false) (* not canonical! *)
     | MZero _, MZero _
     | MZero _, MZeroOne _
     | MZero _, MZeroPlus _ -> (cache, true)
     | MZero _, _ -> (cache, false)
-    | MZeroOne (MPlain t1), MZeroOne (MPlain t2) -> subtype_typ cache t1 t2
+    | MZeroOne (MPlain t1), MZeroOne (MPlain t2)
+    | MZeroOne (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
     | MZeroOne (MPlain _), MOne (MPlain _)
     | MZeroOne (MPlain _), MZero _
     | MZeroOne (MPlain _), MOnePlus (MPlain _) -> (cache, false)
-    | MZeroOne _, _ -> (cache, false) (* not canonical! *)
-    | MOnePlus (MPlain t1), MOnePlus (MPlain t2) -> subtype_typ cache t1 t2
+    | MZeroOne _, _ -> Strobe.traceMsg "Got here2"; (cache, false) (* not canonical! *)
+    | MOnePlus (MPlain t1), MOnePlus (MPlain t2)
+    | MOnePlus (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
     | MOnePlus (MPlain _), MZero _
     | MOnePlus (MPlain _), MOne _
     | MOnePlus (MPlain _), MZeroOne _ -> (cache, false)
-    | MOnePlus _, _ -> (cache, false) (* not canonical! *)
-    | MZeroPlus m1', MZero _ -> subtype_mult cache m1' m2
-    | MZeroPlus _, MOne _ -> (cache, false)
-    | MZeroPlus m1', MZeroOne m2' -> subtype_mult cache m1' (MZero m2')
-    | MZeroPlus _, MOnePlus _ -> (cache, false)
-    | MZeroPlus m1', MZeroPlus m2' -> subtype_mult cache m1' m2'
-    | MZeroPlus _, _ -> (cache, false) (* not canonical! *)
+    | MOnePlus _, _ -> Strobe.traceMsg "Got here3"; (cache, false) (* not canonical! *)
+    | MZeroPlus (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
+    | MZeroPlus (MPlain _), _ -> (cache, false)
+    | MZeroPlus _, _ -> Strobe.traceMsg "Got here4"; (cache, false) (* not canonical! *)
     | MSum _, _
-    | MPlain _, _ -> (cache, false) (* not canonical! *)
+    | MPlain _, _ -> Strobe.traceMsg "Got here5"; (cache, false) (* not canonical! *)
     )
 
   and tc_cache : bool SPMap.t ref = ref SPMap.empty
@@ -237,12 +239,17 @@ struct
     (let (c, r) = (subtype_sigma lax env !tc_cache (canonical_sigma s1) (canonical_sigma s2))
      in tc_cache := c; r)
   let subtype_typ lax env t1 t2 =
+    (* Strobe.traceMsg "attempting to resolve t1: %s | t2: %s"  *)
+    (*   (string_of_typ t1) (string_of_typ t2); *)
+    let t1' = (Env.resolve_special_functions env !Env.senv 
+             (Env.expose_tdoms env (canonical_type t1))) in
+    let t2' = (Env.resolve_special_functions env !Env.senv 
+             (Env.expose_tdoms env (canonical_type t2))) in
+    Strobe.traceMsg "resolved t1: %s | t2: %s" 
+      (string_of_typ t1') (string_of_typ t2');
     let (c, r) = 
-       (subtype_typ lax env !tc_cache
-          (Env.resolve_special_functions env !Env.senv 
-             (Env.expose_tdoms env (canonical_type t1)))
-          (Env.resolve_special_functions env !Env.senv 
-             (Env.expose_tdoms env (canonical_type t2))))
+       (subtype_typ lax env !tc_cache t1' t2')
+
      in tc_cache := c; r
   let subtype_mult lax env m1 m2 =
     (let (c, r) = (subtype_mult lax env !tc_cache (canonical_multiplicity m1) (canonical_multiplicity m2))

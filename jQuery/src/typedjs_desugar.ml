@@ -132,7 +132,15 @@ struct
         then S.TApp (JQ.extract_t t, sts)
         else JQ.extract_t (JQ.TApp (t, ss))
       end
-      | _ -> JQ.extract_t (JQ.TApp (t, map sigma t2s))
+      (* Hack to make sure special function primitives are multiplicities, not types *)
+      | _ -> 
+        JQ.extract_t (JQ.TApp(t, map (fun w -> match sigma w with
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "childrenOf"), _)) as a)
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "parentOf"), _)) as a) 
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "prevSibOf"), _)) as a) 
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "nextSibOf"), _)) as a) -> 
+          JQ.SMult (JQ.MPlain a)
+        | s -> s) t2s))
     end
     | W.Forall (x, s, t) -> 
       let s = sigma s in
@@ -406,13 +414,19 @@ struct
         | [] -> MZero (wrap_id element)
         | [Some id] -> MOne (wrap_id id)
         | [None] -> MZeroOne (wrap_id element)
-        | _ -> failwith "transform_sibs needs a list of length 1" in
+        | hd::tail -> MOne (MPlain (TStrobe (List.fold_left (fun acc ido ->
+          S.TUnion (None,acc, (S.TId (extract_id ido)))) 
+                                                (S.TId (extract_id hd)) tail))) in
+
 
       let transform_parent idos = let open JQ in match idos with
         | [] -> MZeroOne (wrap_id element)
         | [Some id] -> MOne (wrap_id id)
         | [None] -> failwith "parent cannot be a placeholder"
-        | _ -> failwith "transform_parent needs a list of length 1" in
+        | hd:: tail -> MOne (MPlain (TStrobe (List.fold_left (fun acc ido ->
+          S.TUnion (None,acc, (S.TId (extract_id ido)))) 
+                                                (S.TId (extract_id hd)) tail))) in
+
 
       (* Make sure that the toplevel declComp has nextsib and prevsib
          of 01<Element>

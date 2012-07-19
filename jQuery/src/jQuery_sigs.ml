@@ -140,10 +140,6 @@ module type JQUERY_TYP_ENV = sig
   val bind_mult_id : id -> multiplicity -> env -> env
   val bind_rec_typ_id : id -> id list -> sigma -> env -> env
   val lookup_mult_id : id -> env -> multiplicity
-  val children_of : structureEnv -> typ -> multiplicity
-  val parent_of : structureEnv -> typ -> multiplicity
-  val prevsib_of : structureEnv -> typ -> multiplicity
-  val nextsib_of : structureEnv -> typ -> multiplicity
   val expose_tdoms : env -> typ -> typ
   val senv : structureEnv ref
   val print_structureEnv : string -> structureEnv -> FormatExt.printer

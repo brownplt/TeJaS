@@ -85,49 +85,58 @@ struct
     | BStrobe (Strobe.BTermTyp t) ->
       Strobe.traceMsg "  %s => %s" tvar (string_of_typ (embed_t t))
     | b -> Strobe.traceMsg "  %s => UNKNOWN BINDING!" tvar) assocmap;
-    (fun p typ_vars t ->
-      Env.resolve_special_functions env !Env.senv 
-  (Env.expose_tdoms env 
-     (canonical_type
-        (List.fold_left (fun tacc (tvar, binding) -> 
-    try
-      sig_typ_subst tvar 
-        (match IdMap.find tvar assocmap, binding with
-        | BMultBound (m, _), BMultBound (bindm, _) -> 
-          if not (Sub.subtype_mult true env m bindm)
-          then begin
-      Strobe.typ_mismatch p 
-        (Strobe.FixedString 
-           (Printf.sprintf "%s is associated to %s, but this isn't a sub-multiplicity of the bound %s" tvar (string_of_mult m) (string_of_mult bindm)));
-      SMult m
-          end else
-      SMult m
-        | BStrobe (Strobe.BTermTyp t), BStrobe (Strobe.BTypBound(bindt, _)) -> 
-          if not (Sub.subtype env (embed_t t) (embed_t bindt))
-          then begin
-      Strobe.typ_mismatch p
-        (Strobe.FixedString
-           (Printf.sprintf "%s is associated to %s, but this isn't a subtype of the bound %s" tvar (string_of_typ (embed_t t)) (string_of_typ (embed_t bindt))));
-      STyp (embed_t t)
-          end else
-      STyp (embed_t t)
-        | BMultBound _, _
-        | BStrobe (Strobe.BTermTyp _), _ ->
-          failwith "impossible: somehow we associated a type-id to a multiplicity, or vice versa"
-        | _ -> failwith "impossible: we never added anything but BMultBounds and BTermTyps to the association map!"
-        ) tacc
-    with Not_found ->
-      match binding with
-      | BMultBound (m, _) ->
-        raise (Strobe.Typ_error (p, Strobe.FixedString
-          (Printf.sprintf "synth: could not instantiate mult_var %s under bound %s" tvar (string_of_mult m))))
-      | BStrobe (Strobe.BTypBound(t, _)) ->
-        raise (Strobe.Typ_error (p, Strobe.FixedString
-          (Printf.sprintf "synth: could not instantiate typ_var %s under bound %s" tvar (string_of_typ (embed_t t)))))
-      | _ ->
-	raise (Strobe.Typ_error (p, Strobe.FixedString
-	  (Printf.sprintf "synth: could not instantiate typ variable %s (with unknown bound??)" tvar)))
-         ) t typ_vars))))
+    let do_substitution p typ_vars t =
+      let apply_typ_var tacc (tvar, binding) =
+        try
+          sig_typ_subst tvar 
+            (match IdMap.find tvar assocmap, binding with
+            | BMultBound (m, _), BMultBound (bindm, _) -> 
+              if not (Sub.subtype_mult true env m bindm)
+              then begin
+                Strobe.typ_mismatch p 
+                  (Strobe.FixedString 
+                     (Printf.sprintf "%s is associated to %s, but this isn't a sub-multiplicity of the bound %s"
+                        tvar (string_of_mult m) (string_of_mult bindm)));
+                SMult m
+              end else
+                SMult m
+            | BStrobe (Strobe.BTermTyp t), BStrobe (Strobe.BTypBound(bindt, _)) -> 
+              if not (Sub.subtype env (embed_t t) (embed_t bindt))
+              then begin
+                Strobe.typ_mismatch p
+                  (Strobe.FixedString
+                     (Printf.sprintf "%s is associated to %s, but this isn't a subtype of the bound %s"
+                        tvar (string_of_typ (embed_t t)) (string_of_typ (embed_t bindt))));
+                STyp (embed_t t)
+              end else
+                STyp (embed_t t)
+            | BMultBound _, _
+            | BStrobe (Strobe.BTermTyp _), _ ->
+              failwith "impossible: somehow we associated a type-id to a multiplicity, or vice versa"
+            | _ -> failwith "impossible: we never added anything but BMultBounds and BTermTyps to the association map!"
+            ) tacc
+        with Not_found ->
+          match binding with
+          | BMultBound (m, _) ->
+            raise (Strobe.Typ_error (p, Strobe.FixedString
+              (Printf.sprintf "synth: could not instantiate mult_var %s under bound %s"
+                 tvar (string_of_mult m))))
+          | BStrobe (Strobe.BTypBound(t, _)) ->
+            raise (Strobe.Typ_error (p, Strobe.FixedString
+              (Printf.sprintf "synth: could not instantiate typ_var %s under bound %s"
+                 tvar (string_of_typ (embed_t t)))))
+          | _ ->
+	          raise (Strobe.Typ_error (p, Strobe.FixedString
+	            (Printf.sprintf "synth: could not instantiate variable %s (with unknown bound??)"
+                 tvar))) in
+      let substituted = List.fold_left apply_typ_var t typ_vars in
+      let resolved = Env.resolve_special_functions env !Env.senv 
+        (Env.expose_tdoms env (canonical_type substituted)) in
+      Strobe.traceMsg "In do_substitution: original typ is %s" (string_of_typ t);
+      Strobe.traceMsg "In do_substitution: subst'd is %s" (string_of_typ substituted);
+      Strobe.traceMsg "In do_substitution: resolved typ is %s" (string_of_typ resolved);
+      resolved in
+    do_substitution
 
 
   let rec check (env : env) (default_typ : typ option) (exp : exp) (typ : typ) : unit =
@@ -142,8 +151,11 @@ struct
     | _ -> Strobe.typ_mismatch (Exp.pos exp) (Strobe.FixedString "JQuery.check NYI")
 
   and synth (env : env) (default_typ : typ option) (exp : exp) : typ = 
-    trace "Synth" (fun _ -> true) (synth' env default_typ) exp
-  and synth' env default_typ exp : typ = match exp with
+    let res = synth' env default_typ exp in
+    Strobe.traceMsg "Result of jQuery_synth is: %s"(string_of_typ res); res
+    (* trace "Synth" (fun _ -> true) (synth' env default_typ) exp *)
+  and synth' env default_typ exp : typ = 
+    let ret = match exp with
     | ETypApp (p, e, u) ->
       begin match embed_t (Strobe.expose env (extract_t (simpl_typ env (synth env default_typ e)))) with
       | TForall (n, x, STyp s, t) ->
@@ -169,6 +181,8 @@ struct
       end      
     | _ ->
       embed_t (StrobeTC.synth env default_typ exp)
+    in 
+    Env.resolve_special_functions env !Env.senv (Env.expose_tdoms env (canonical_type ret))
 
   let typecheck env default_typ exp =
     let _ = synth env default_typ exp in

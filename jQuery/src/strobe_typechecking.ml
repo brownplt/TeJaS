@@ -88,6 +88,7 @@ struct
         
   let expose_simpl_typ env typ = expose env (simpl_typ env typ)
 
+
   let rec bind_forall_vars (env : env) (typ : Typ.typ) : env * Typ.typ = match typ with
     | TForall (n, x, s, t) -> bind_forall_vars (Env.bind_typ_id x (Ext.embed_t s) env) (apply_name n t)
     | TEmbed t -> let (env, t) = ExtTC.bind_forall_vars env t in (env, Ext.extract_t t)
@@ -149,10 +150,9 @@ struct
         | _ -> None) 
       | TForall _ -> Some t (* BSL : This seems incomplete; extract_arrow won't descend under a Forall *)
       | TEmbed t' -> begin
-        traceMsg "Got here";
         match ExtTC.forall_arrow t' with
         | Some _ -> Some t
-        | None -> traceMsg "nope."; None
+        | None -> None
       end
       | _ -> None in
     match helper t with
@@ -377,10 +377,12 @@ struct
       | _ -> Sub.typ_mismatch p (Sub.Typ((fun t -> sprintf "expected TObject, got %s" (string_of_typ t)), typ))
     end
     | _ -> 
-      (* traceMsg "Check': Synthing type for expression"; *)
       let synthed = Ext.extract_t (ExtTC.synth env default_typ exp) in
       let synth_typ = expose_simpl_typ env synthed in
-      (* traceMsg "Check': Checking %s <?: %s" (string_of_typ synth_typ) (string_of_typ (expose_simpl_typ env typ)); *)
+      traceMsg "synthed is: %s | synth_typ is: %s" 
+        (string_of_typ synthed)  (string_of_typ synth_typ);
+      traceMsg "About to subtype:  %s <?: %s" (string_of_typ synth_typ) 
+        (string_of_typ (expose_simpl_typ env typ));
       if not (Sub.subtype env synth_typ (expose_simpl_typ env typ)) then begin
         (* Printf.printf "failed.\n"; *)
         Sub.typ_mismatch (Exp.pos exp)
@@ -391,6 +393,8 @@ struct
   and synth (env : env) (default_typ : Typ.extTyp option) (exp : exp) : Typ.typ = 
     trace "Synth" (fun _ -> true) (synth' env default_typ) exp
   and synth' env (default_typ : Typ.extTyp option) exp : Typ.typ =
+    let synth env defaultTyp exp =
+      Ext.extract_t (ExtTC.synth env defaultTyp exp) in
     (* traceMsg "*Synthing type for %s" (string_of_exp exp); *)
     match exp with
     (* TODO: Pure if-splitting rule; make more practical by integrating with
@@ -649,10 +653,14 @@ struct
     | EPrefixOp (p, op, e) -> synth env default_typ (EApp (p, EId (p, op), [e]))
     | EInfixOp (p, op, e1, e2) -> synth env default_typ (EApp (p, EId (p, op), [e1; e2]))
     | EApp (p, f, args) -> 
+      traceMsg "Strobe_synth: EApp with function %s | args %s" (string_of_exp f)
+        (List.fold_left (fun acc a -> (acc ^ (string_of_exp a))) "" args);
       let rec check_app tfun =
         traceMsg "Checking EApp@%s with function type %s" (Pos.toString p) (string_of_typ tfun);
         begin match expose_simpl_typ env tfun with 
         | TArrow (expected_typs, None, result_typ) -> 
+          traceMsg "Got to TArrow, and args are: %s"
+            (List.fold_left (fun acc a -> (acc ^ (string_of_exp a))) "" args);
           let args = fill (List.length expected_typs - List.length args) 
             (EConst (p, JavaScript_syntax.CUndefined)) args in
           begin
@@ -662,6 +670,7 @@ struct
                 (Sub.NumNum(sprintf "arity-mismatch:  %d args expected, but %d given",
                             (List.length expected_typs), (List.length args)))
           end;
+          traceMsg "Strobe_synth EApp TArrow: result_typ is %s"(string_of_typ result_typ);
           result_typ
         | TArrow (expected_typs, Some vararg_typ, result_typ) -> 
           if (List.length expected_typs > List.length args) then
@@ -757,7 +766,6 @@ struct
           raise (Sub.Typ_error 
                    (p, Sub.Typ((fun t -> sprintf "expected function, got %s" (string_of_typ t)), not_func_typ)))
         end in 
-      (* traceMsg "Synth EApp: Checking function body"; *)
       check_app (un_null (synth env default_typ f))
     | ERec (p, binds, body) -> 
       (* No kinding check here, but it simply copies the type from the function.
@@ -820,7 +828,7 @@ struct
       let simpl_t = Typ.trace "Exposing type" "" (fun _ -> true) (fun () -> expose_simpl_typ env t) in
       traceMsg "Exposed typ is %s" (string_of_typ (replace_name None simpl_t));
       simpl_t
-    | EParen (p, e) -> synth env default_typ e
+    | EParen (p, e) ->  synth env default_typ e
 
   and synths env default_typ es = map (synth env default_typ) es
 

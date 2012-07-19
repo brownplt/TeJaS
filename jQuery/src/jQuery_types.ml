@@ -412,13 +412,17 @@ struct
     let rec sigma_help sigma : sigma = match sigma with
       | STyp typ -> typ_sigma_help typ
       | SMult mult -> SMult (mult_help mult)
-    and mult_help mult =
-      Strobe.trace "JQsubst_mult_help" 
-        (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_mult mult ^ "/" ^ x ^ "]") 
-        (fun _ -> true) (fun () -> mult_help' mult)
+    and mult_help mult = mult_help' mult
+      (* Strobe.trace "JQsubst_mult_help"  *)
+      (*   (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_mult mult ^ "/" ^ x ^ "]")  *)
+      (*   (fun _ -> true) (fun () -> mult_help' mult) *)
     and mult_help' mult : multiplicity = match mult with
       | MPlain typ -> typ_mult_help typ
-      | MId y -> if x = y then (match s with SMult m -> m | STyp _ -> mult) else mult
+      | MId y -> if x = y then begin
+        (match s with 
+        | SMult m -> m
+        | STyp t -> mult)
+      end else mult
       | MZero m -> MZero (mult_help m)
       | MOne m -> MOne (mult_help m)
       | MZeroOne m -> MZeroOne (mult_help m)
@@ -432,10 +436,10 @@ struct
     and typ_mult_help typ : multiplicity = match typ_sigma_help typ with
       | STyp t -> MPlain t
       | SMult m -> m
-    and typ_help typ =
-      Strobe.trace "JQsubst_typ_help" 
-        (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_typ typ ^ "/" ^ x ^ "]")
-        (fun _ -> true) (fun () -> typ_help' typ)
+    and typ_help typ = typ_help' typ
+      (* Strobe.trace "JQsubst_typ_help"  *)
+      (*   (Pretty.simpl_sigma sigma ^ "[" ^ Pretty.simpl_typ typ ^ "/" ^ x ^ "]") *)
+      (*   (fun _ -> true) (fun () -> typ_help' typ) *)
     and typ_help' typ : typ = match typ with
       (* | TStrobe (Strobe.TId y) -> if y = x then begin *)
       (*   match s with *)
@@ -655,7 +659,8 @@ struct
       | _, MId _ -> failwith "impossible 8"
       | t1, t2 -> MSum (t1, t2)
 
-  let rec simpl_typ env typ = match typ with
+  let rec simpl_typ env typ =
+    match typ with
     | TStrobe t -> embed_t (Strobe.simpl_typ env (extract_t typ))
     | TApp (t, ts) -> begin
       match embed_t (Strobe.expose env (extract_t (simpl_typ env t))) with
@@ -809,6 +814,7 @@ struct
       typ_assoc env s1 s2
     | _ -> IdMap.empty
   and mult_assoc env m1 m2 =
+    Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2);
     match m1, m2 with
     | MId m, _ -> IdMap.singleton m (BMultBound(m2, KMult (KStrobe Strobe.KStar)))
     | MPlain t1, MPlain t2 -> typ_assoc env t1 t2
