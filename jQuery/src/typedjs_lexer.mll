@@ -47,6 +47,7 @@ rule token = parse
    | "(" { LPAREN }
    | ")" { RPAREN }
    | "#{" { HASHBRACE }
+   | "#(" { HASHPAREN }
    | "{" { LBRACE }
    | "{{" { LLBRACE }
    | "}}" { RRBRACE }
