@@ -126,10 +126,13 @@ struct
     | TStrobe (Strobe.TUnion (_, t1, t2)) ->
     (* TODO: is it ok to reduce TUnions to MSums? *)
       MSum (x_of benv cm (TStrobe t1), x_of benv cm (TStrobe t2))
-    | _ -> failwith 
-      (Printf.sprintf 
-         "impossible: x_of can only be called on TDom, TId, TUnion, got %s"
-         (string_of_typ t))
+    (* This is bad, but let it through so it can be caught elsewhere (it
+       probably already was, in association *)
+    | _ ->  MOne (MPlain t)
+  (* failwith  *)
+  (* (Printf.sprintf  *)
+  (*    "impossible: x_of can only be called on TDom, TId, TUnion, got %s" *)
+  (*    (string_of_typ t)) *)
 
 
   let children (senv : structureEnv) (t : typ) : multiplicity =
