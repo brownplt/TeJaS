@@ -709,6 +709,7 @@ struct
       | Some t1, Some t2 -> equivalent_typ env t1 t2
       | _, _ -> false
     end
+    | TEmbed t1, TEmbed t2 -> Ext.equivalent_typ env t1 t2
     | _, _ -> false
 
   and equivalent_typ_fld env (pat1, pres1, t1) (pat2, pres2, t2) = 
