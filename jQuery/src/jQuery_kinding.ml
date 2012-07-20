@@ -52,7 +52,7 @@ struct
 
   let trace (msg : string) print success (thunk : 'a -> 'b) (arg : 'a) = 
     thunk arg
-    (* Strobe.trace msg (print arg) success (fun () -> thunk arg) *)
+    (* Strobe.trace msg (print arg) success (fun () -> thunk arg)  *)
 
   let rec kind_check_sigma (env : env) (recIds : id list) (s : sigma) : kind = match s with
     | STyp t -> kind_check_typ env recIds t
@@ -86,7 +86,7 @@ struct
           let bs = List.filter (fun b -> match embed_b (extract_b b) with BMultBound _ -> false | _ -> true) bs in
           IdMap.add x ((BMultBound(m, k1))::bs) env in
       let k2 = kind_check_typ env' recIds t in
-      if k1 <> k2 then kind_mismatch_typ t k1 k2 else k1
+      k2
     | TApp (t_op, s_args) ->
       begin 
         let check k_arg s_arg = 

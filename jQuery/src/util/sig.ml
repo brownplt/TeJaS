@@ -107,6 +107,7 @@ module type TYP_ACTIONS = sig
   val equivalent_typ : env -> typ -> typ -> bool
   val rename_avoid_capture : (* free *) IdSet.t -> (* to rename *) id list -> (* in type *) typ -> (id list * typ)
   val canonical_type : typ -> typ
+  val collapse_if_possible : env -> typ -> typ
   val string_of_typ : typ -> string
   val string_of_kind : kind -> string
 end

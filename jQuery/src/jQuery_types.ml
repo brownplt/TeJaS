@@ -738,6 +738,22 @@ struct
     in 
     squash_t t
 
+  let rec collapse_if_possible env typ = match unwrap_t typ with
+    | TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> begin
+      let ofields = Strobe.fields o in
+      try
+        let (_, _, thisTyp) = List.find (fun (p, _, _) ->
+          Pat.is_equal p (Pat.singleton "__this__")) ofields in
+        begin
+          match embed_t thisTyp with
+          | (TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m])) as collapsed ->
+            if typ = (simpl_typ env collapsed)
+            then collapsed else typ
+          | _ -> typ
+        end
+      with Not_found -> TStrobe (Strobe.TObject o)
+    end
+    | t -> t
 
 
   let assoc_merge = IdMap.merge (fun x opt_s opt_t -> match opt_s, opt_t with
@@ -771,12 +787,13 @@ struct
       let ofields = Strobe.fields o in
       let (_, _, thisTyp) = List.find (fun (p, _, _) ->
         Pat.is_equal p (Pat.singleton "__this__")) ofields in
-      thisTyp in
+      (thisTyp) in
 
     match t1, t2 with
     | TStrobe s, TStrobe t -> Strobe.typ_assoc add_strobe assoc_merge env s t
     | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]),
       TStrobe (Strobe.TSource (_, Strobe.TObject o)) ->
+      Strobe.traceMsg "TApp jQ 1";
       begin
         match embed_t (get_this o) with
         | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
@@ -785,6 +802,7 @@ struct
       end
     | TStrobe (Strobe.TSource (_, Strobe.TObject o)),
       TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]) ->
+      Strobe.traceMsg "TApp jQ 2";
       begin
         match embed_t (get_this o) with
         | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
@@ -792,6 +810,7 @@ struct
         | _ -> IdMap.empty
       end
     | TApp (s1, s2), TApp(t1, t2) ->
+      Strobe.traceMsg "TApp jQ 3";
       if List.length s2 <> List.length t2 then IdMap.empty else
       List.fold_left2 (fun acc t1 t2 -> 
         match t1, t2 with
@@ -800,8 +819,11 @@ struct
         | _ -> IdMap.empty)
         (typ_assoc env s1 t1)
         s2 t2
-    | TApp (s1, s2), t -> typ_assoc env (simpl_typ env (TApp (s1, s2))) t
+    | TApp (s1, s2), t -> 
+      Strobe.traceMsg "TApp 4";
+      typ_assoc env (simpl_typ env (TApp (s1, s2))) t
     | t, TApp (s1, s2) -> 
+      Strobe.traceMsg "TApp 5";
       let str_t1 = (string_of_typ t) in
       let str_t2 = (string_of_typ (TApp (s1, s2))) in
       Strobe.traceMsg "in typ assoc', trying to associate %s with %s\n" str_t1 str_t2;
@@ -818,7 +840,7 @@ struct
     match m1, m2 with
     | MId m, _ -> IdMap.singleton m (BMultBound(m2, KMult (KStrobe Strobe.KStar)))
     | MPlain t1, MPlain t2 -> typ_assoc env t1 t2
-    | MOne m1, MOne m2
+    | MOne m, m2 -> mult_assoc env m m2
     | MZeroOne m1, MOne m2
     | MOnePlus m1, MOne m2
     | MZeroPlus m1, MOne m2

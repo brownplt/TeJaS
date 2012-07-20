@@ -386,7 +386,7 @@ struct
       if not (Sub.subtype env synth_typ (expose_simpl_typ env typ)) then begin
         (* Printf.printf "failed.\n"; *)
         Sub.typ_mismatch (Exp.pos exp)
-          (Sub.TypTyp((fun t1 t2 -> sprintf "%%expected %s to have type %s, got %s" (string_of_exp exp) (string_of_typ t1) (string_of_typ t2)), (expose_simpl_typ env typ), synth_typ))
+          (Sub.TypTyp((fun t1 t2 -> sprintf "%%expected %s to have type %s, got %s" (string_of_exp exp) (string_of_typ (collapse_if_possible env t1)) (string_of_typ (collapse_if_possible env t2))), (expose_simpl_typ env typ), synth_typ))
       end (* else *)
   (* traceMsg "Checking finished." *)
 
@@ -724,20 +724,17 @@ struct
             traceMsg "In Epp, arg_typs are:";
             List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs;
             traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ);
-            traceMsg "2In Eapp, tarrow is    %s" (string_of_typ (TArrow (arg_typs, None, r)));
-            (* let assoc = ExtTC.typ_assoc env (Ext.embed_t arrow_typ) *)
-            (*   (Ext.embed_t (TArrow (arg_typs, None, r))) in *)
-
-            (* Ext.extract_t (assoc (Ext.embed_t r)) *)
+            traceMsg "2In Eapp, tarrow is    %s"
+              (string_of_typ (TArrow (arg_typs, None, r)));
             let sub = ExtTC.assoc_sub env 
-	      (* NOTE: Can leave the return type out, because we're just
-		 copying it, so it will never yield any information *)
-	      (Ext.embed_t (TArrow (expected_typs, None, TTop))) 
+	            (* NOTE: Can leave the return type out, because we're just
+		             copying it, so it will never yield any information *)
+	            (Ext.embed_t (TArrow (expected_typs, None, TTop))) 
               (Ext.embed_t (TArrow (arg_typs, None, TTop))) in
-	    traceMsg "3In Eapp, original return type is %s" (string_of_typ r);
+	          traceMsg "3In Eapp, original return type is %s" (string_of_typ r);
             let ret = Ext.extract_t (sub p typ_vars (Ext.embed_t r)) in
-	    traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret);
-	    ret
+	          traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret);
+	          ret
 
             (* IdMap.iter (fun k t -> *)
             (*   traceMsg "  [%s => %s]" k (string_of_typ t)) assoc; *)

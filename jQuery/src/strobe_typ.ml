@@ -772,6 +772,9 @@ struct
 
 
 
+  let rec collapse_if_possible env typ = 
+    Ext.extract_t (Ext.collapse_if_possible env (Ext.embed_t typ)) 
+
   let rec merge typ flds = match typ with
     | TUnion(n, t1, t2) -> TUnion (n, merge t1 flds, merge t2 flds)
     | TInter(n, t1, t2) -> TInter(n, merge t1 flds, merge t2 flds)
@@ -928,6 +931,8 @@ struct
       | None -> IdMap.empty
       | Some t2 -> typ_assoc env t1 t2
     end 
+    | TThis (TEmbed s), t -> Ext.typ_assoc env s (Ext.embed_t t)
+    | t, TThis (TEmbed s) -> Ext.typ_assoc env (Ext.embed_t t) s
     | TEmbed s, t -> Ext.typ_assoc env s (Ext.embed_t t)
     | t, TEmbed s -> Ext.typ_assoc env (Ext.embed_t t) s
     | TId x, _ -> (add x typ2 IdMap.empty)

@@ -133,6 +133,7 @@ module type STROBE_ACTIONS = sig
   val rename_avoid_capture : IdSet.t -> id list -> typ -> (id list * typ)
   val equivalent_typ : env -> typ -> typ -> bool
   val canonical_type : typ -> typ
+  val collapse_if_possible : env -> typ -> typ
 
   val expose_twith : env -> typ -> typ
   val lookup_typ : env -> id -> typ * kind

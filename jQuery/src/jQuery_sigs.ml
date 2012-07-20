@@ -83,6 +83,7 @@ module type JQUERY_ACTIONS = sig
   val canonical_multiplicity : multiplicity -> multiplicity
   val canonical_type : typ -> typ
   val canonical_sigma : sigma -> sigma
+  val collapse_if_possible : env -> typ -> typ
   val mult_mult_subst : id -> multiplicity -> multiplicity -> multiplicity
   val mult_typ_subst : id -> multiplicity -> typ -> typ
   val typ_mult_subst : id -> typ -> multiplicity -> multiplicity
