@@ -244,8 +244,8 @@ struct
     | _ -> None
 
 
-  let trace (msg : string) (success : 'a -> bool) (thunk : exp -> 'a) (exp : exp) = (* thunk exp *)
-    Typ.trace msg (simpl_print exp) success (fun () -> thunk exp)
+  let trace (msg : string) (success : 'a -> bool) (thunk : exp -> 'a) (exp : exp) = thunk exp
+    (* Typ.trace msg (simpl_print exp) success (fun () -> thunk exp) *)
 
   let rec check (env : env) (default_typ : Typ.extTyp option) (exp : exp) (typ : Typ.typ) : unit =
     try trace "Check" (fun _ -> true) (fun exp -> check' env default_typ exp typ) exp
@@ -379,10 +379,10 @@ struct
     | _ -> 
       let synthed = Ext.extract_t (ExtTC.synth env default_typ exp) in
       let synth_typ = expose_simpl_typ env synthed in
-      traceMsg "synthed is: %s | synth_typ is: %s" 
-        (string_of_typ synthed)  (string_of_typ synth_typ);
-      traceMsg "About to subtype:  %s <?: %s" (string_of_typ synth_typ) 
-        (string_of_typ (expose_simpl_typ env typ));
+      (* traceMsg "synthed is: %s | synth_typ is: %s"  *)
+      (*   (string_of_typ synthed)  (string_of_typ synth_typ); *)
+      (* traceMsg "About to subtype:  %s <?: %s" (string_of_typ synth_typ)  *)
+      (*   (string_of_typ (expose_simpl_typ env typ)); *)
       if not (Sub.subtype env synth_typ (expose_simpl_typ env typ)) then begin
         (* Printf.printf "failed.\n"; *)
         Sub.typ_mismatch (Exp.pos exp)
@@ -476,9 +476,9 @@ struct
       end
     | EDeref (p, e) -> 
       let typ = (synth env default_typ e) in
-      traceMsg "In EDeref, synthed type of %s is %s" (string_of_exp e) (string_of_typ typ);
+      (* traceMsg "In EDeref, synthed type of %s is %s" (string_of_exp e) (string_of_typ typ); *)
       let typ = expose_simpl_typ env typ in
-      traceMsg "In EDeref, exposed type is %s" (string_of_typ typ);
+      (* traceMsg "In EDeref, exposed type is %s" (string_of_typ typ); *)
       let typ = 
         try ((check_kind p env typ)) 
         with _ -> traceMsg "Bad kind for %s!" (string_of_typ typ); typ in
@@ -653,13 +653,12 @@ struct
     | EPrefixOp (p, op, e) -> synth env default_typ (EApp (p, EId (p, op), [e]))
     | EInfixOp (p, op, e1, e2) -> synth env default_typ (EApp (p, EId (p, op), [e1; e2]))
     | EApp (p, f, args) -> 
-      traceMsg "Strobe_synth: EApp with function %s | args %s" (string_of_exp f)
-        (List.fold_left (fun acc a -> (acc ^ (string_of_exp a))) "" args);
+      (* traceMsg "Strobe_synth: EApp with function %s | args %s" (string_of_exp f) *)
+      (*   (List.fold_left (fun acc a -> (acc ^ (string_of_exp a))) "" args); *)
       let rec check_app tfun =
-        traceMsg "Checking EApp@%s with function type %s" (Pos.toString p) (string_of_typ tfun);
+        (* traceMsg "Checking EApp@%s with function type %s" (Pos.toString p) (string_of_typ tfun); *)
         begin match expose_simpl_typ env tfun with 
         | TArrow (expected_typs, None, result_typ) -> 
-          traceMsg "Got to TArrow, and args are: %s"
             (List.fold_left (fun acc a -> (acc ^ (string_of_exp a))) "" args);
           let args = fill (List.length expected_typs - List.length args) 
             (EConst (p, JavaScript_syntax.CUndefined)) args in
@@ -670,7 +669,7 @@ struct
                 (Sub.NumNum(sprintf "arity-mismatch:  %d args expected, but %d given",
                             (List.length expected_typs), (List.length args)))
           end;
-          traceMsg "Strobe_synth EApp TArrow: result_typ is %s"(string_of_typ result_typ);
+          (* traceMsg "Strobe_synth EApp TArrow: result_typ is %s"(string_of_typ result_typ); *)
           result_typ
         | TArrow (expected_typs, Some vararg_typ, result_typ) -> 
           if (List.length expected_typs > List.length args) then
@@ -722,10 +721,10 @@ struct
             (* let assumed_arg_exps =  *)
             (*   List.map2 (fun e t -> ECheat (p, Ext.embed_t t, e)) args arg_typs in *)
             traceMsg "In Epp, arg_typs are:";
-            List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs;
-            traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ);
-            traceMsg "2In Eapp, tarrow is    %s"
-              (string_of_typ (TArrow (arg_typs, None, r)));
+            (* List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs; *)
+            (* traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ); *)
+            (* traceMsg "2In Eapp, tarrow is    %s" *)
+            (*   (string_of_typ (TArrow (arg_typs, None, r))); *)
             let sub = ExtTC.assoc_sub env 
 	            (* NOTE: Can leave the return type out, because we're just
 		             copying it, so it will never yield any information *)
@@ -813,7 +812,7 @@ struct
       | TEmbed t ->
         Ext.extract_t (ExtTC.synth env default_typ exp)
       | t ->
-        traceMsg "In ETypApp, and things went badly wrong with %s" (string_of_typ t);
+        (* traceMsg "In ETypApp, and things went badly wrong with %s" (string_of_typ t); *)
         raise
           (Sub.Typ_error (p, Sub.TypTyp((fun t1 t2 -> 
             sprintf "expected forall-type in type application, got:\n%s\ntype argument is:\n%s"
@@ -821,9 +820,9 @@ struct
       end
     | ECheat (p, t, _) -> 
       let t = Ext.extract_t t in
-      traceMsg "Cheating to %s" (string_of_typ (replace_name None t));
+      (* traceMsg "Cheating to %s" (string_of_typ (replace_name None t)); *)
       let simpl_t = Typ.trace "Exposing type" "" (fun _ -> true) (fun () -> expose_simpl_typ env t) in
-      traceMsg "Exposed typ is %s" (string_of_typ (replace_name None simpl_t));
+      (* traceMsg "Exposed typ is %s" (string_of_typ (replace_name None simpl_t)); *)
       simpl_t
     | EParen (p, e) ->  synth env default_typ e
 

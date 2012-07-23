@@ -52,7 +52,7 @@ struct
       try
         IdMap.add id (List.filter (fun b -> match b with BStrobe (Strobe.BTermTyp _) -> false | _ -> true)
                         (IdMap.find id env)) acc
-      with Not_found -> (Strobe.traceMsg "Couldn't find %s" id; acc)) set map in
+      with Not_found -> ((* Strobe.traceMsg "Couldn't find %s" id; *) acc)) set map in
     let free_ids = add_id_bindings free_t (add_id_bindings free_m IdMap.empty) in
     (* let s = match s with *)
     (*   | SMult m -> string_of_mult m *)
@@ -137,7 +137,7 @@ struct
         let env' = project_typs simpl_t1 simpl_t2 env in
         try (cache, SPMap.find (env', STyps (simpl_t1, simpl_t2)) cache)
         with Not_found ->
-          Strobe.traceMsg "JQUERY ASSUMING %s <: %s, checking for consistency" (string_of_typ t1) (string_of_typ t2);
+          (* Strobe.traceMsg "JQUERY ASSUMING %s <: %s, checking for consistency" (string_of_typ t1) (string_of_typ t2); *)
           let cache = SPMap.add (env', STyps (t1, t2)) true cache in
           match unwrap_t simpl_t1, unwrap_t simpl_t2 with
           | TStrobe t1, TStrobe t2 -> 
@@ -147,7 +147,7 @@ struct
             subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
           | TDom _, _ -> subtype_typ env cache t1 (TDom(None, t2, Css.all))
           | _, TDom _ -> subtype_typ env cache (TDom(None, t1, Css.all)) t2
-          | TApp _, TApp _ -> Strobe.traceMsg "GOT HERE in subtype_typ'"; cache, false
+          | TApp _, TApp _ -> cache, false
           (* UNSOUND: Type constructor might not be covariant in its arguments *)
           (* | TApp(t1, args1), TApp(t2, args2) -> *)
           (*   if (List.length args1 <> List.length args2) then (cache, false) *)
@@ -185,7 +185,7 @@ struct
     | MOne (MPlain t1), MOnePlus (MPlain t2)
     | MOne (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
     | MOne (MPlain _), MZero _ -> (cache, false)
-    | MOne _, _ -> Strobe.traceMsg "Got here1"; (cache, false) (* not canonical! *)
+    | MOne _, _ -> (cache, false) (* not canonical! *)
     | MZero _, MZero _
     | MZero _, MZeroOne _
     | MZero _, MZeroPlus _ -> (cache, true)
@@ -195,18 +195,18 @@ struct
     | MZeroOne (MPlain _), MOne (MPlain _)
     | MZeroOne (MPlain _), MZero _
     | MZeroOne (MPlain _), MOnePlus (MPlain _) -> (cache, false)
-    | MZeroOne _, _ -> Strobe.traceMsg "Got here2"; (cache, false) (* not canonical! *)
+    | MZeroOne _, _ -> (cache, false) (* not canonical! *)
     | MOnePlus (MPlain t1), MOnePlus (MPlain t2)
     | MOnePlus (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
     | MOnePlus (MPlain _), MZero _
     | MOnePlus (MPlain _), MOne _
     | MOnePlus (MPlain _), MZeroOne _ -> (cache, false)
-    | MOnePlus _, _ -> Strobe.traceMsg "Got here3"; (cache, false) (* not canonical! *)
+    | MOnePlus _, _ -> (cache, false) (* not canonical! *)
     | MZeroPlus (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
     | MZeroPlus (MPlain _), _ -> (cache, false)
-    | MZeroPlus _, _ -> Strobe.traceMsg "Got here4"; (cache, false) (* not canonical! *)
+    | MZeroPlus _, _ -> (cache, false) (* not canonical! *)
     | MSum _, _
-    | MPlain _, _ -> Strobe.traceMsg "Got here5"; (cache, false) (* not canonical! *)
+    | MPlain _, _ -> (cache, false) (* not canonical! *)
     )
 
   and tc_cache : bool SPMap.t ref = ref SPMap.empty
@@ -245,8 +245,8 @@ struct
              (Env.expose_tdoms env (canonical_type t1))) in
     let t2' = (Env.resolve_special_functions env !Env.senv 
              (Env.expose_tdoms env (canonical_type t2))) in
-    Strobe.traceMsg "resolved t1: %s | t2: %s" 
-      (string_of_typ t1') (string_of_typ t2');
+    (* Strobe.traceMsg "resolved t1: %s | t2: %s" *)
+    (*   (string_of_typ t1') (string_of_typ t2'); *)
     let (c, r) = 
        (subtype_typ lax env !tc_cache t1' t2')
 

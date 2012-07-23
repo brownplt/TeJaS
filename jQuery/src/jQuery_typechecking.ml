@@ -45,7 +45,7 @@ struct
   open JQ
 
 
-  let trace msg success thunk exp = (* thunk exp *) StrobeTC.trace msg success thunk exp
+  let trace msg success thunk exp = thunk exp (* StrobeTC.trace msg success thunk exp *)
     
   let bind_sigma x s e = match s with
     | STyp t -> Env.bind_typ_id x t e
@@ -74,17 +74,17 @@ struct
     | _ -> None
 
   let assoc_sub env t1 t2 = 
-    Strobe.traceMsg "associating %s with %s" (string_of_typ t1) (string_of_typ t2);
+    (* Strobe.traceMsg "associating %s with %s" (string_of_typ t1) (string_of_typ t2); *)
     (* let t1' = (Env.resolve_special_functions env !Env.senv (Env.expose_tdoms env (canonical_type t1))) in *)
     (* let t2' = (Env.resolve_special_functions env !Env.senv (Env.expose_tdoms env (canonical_type t2))) in *)
     let assocmap = typ_assoc env t1 t2 in
-    Strobe.traceMsg "In assoc_sub, associations are:";
-    IdMap.iter (fun tvar b -> match b with
-    | BMultBound (m, _) -> 
-      Strobe.traceMsg "  %s => %s" tvar (string_of_mult m)
-    | BStrobe (Strobe.BTermTyp t) ->
-      Strobe.traceMsg "  %s => %s" tvar (string_of_typ (embed_t t))
-    | b -> Strobe.traceMsg "  %s => UNKNOWN BINDING!" tvar) assocmap;
+    (* Strobe.traceMsg "In assoc_sub, associations are:"; *)
+    (* IdMap.iter (fun tvar b -> match b with *)
+    (* | BMultBound (m, _) ->  *)
+    (*   Strobe.traceMsg "  %s => %s" tvar (string_of_mult m) *)
+    (* | BStrobe (Strobe.BTermTyp t) -> *)
+    (*   Strobe.traceMsg "  %s => %s" tvar (string_of_typ (embed_t t)) *)
+    (* | b -> Strobe.traceMsg "  %s => UNKNOWN BINDING!" tvar) assocmap; *)
     let do_substitution p typ_vars t =
       let apply_typ_var tacc (tvar, binding) =
         try
@@ -132,9 +132,9 @@ struct
       let substituted = List.fold_left apply_typ_var t typ_vars in
       let resolved = Env.resolve_special_functions env !Env.senv 
         (Env.expose_tdoms env (canonical_type substituted)) in
-      Strobe.traceMsg "In do_substitution: original typ is %s" (string_of_typ t);
-      Strobe.traceMsg "In do_substitution: subst'd is %s" (string_of_typ substituted);
-      Strobe.traceMsg "In do_substitution: resolved typ is %s" (string_of_typ resolved);
+      (* Strobe.traceMsg "In do_substitution: original typ is %s" (string_of_typ t); *)
+      (* Strobe.traceMsg "In do_substitution: subst'd is %s" (string_of_typ substituted); *)
+      (* Strobe.traceMsg "In do_substitution: resolved typ is %s" (string_of_typ resolved); *)
       resolved in
     do_substitution
 
@@ -152,7 +152,7 @@ struct
 
   and synth (env : env) (default_typ : typ option) (exp : exp) : typ = 
     let res = synth' env default_typ exp in
-    Strobe.traceMsg "Result of jQuery_synth is: %s"(string_of_typ res); res
+    (* Strobe.traceMsg "Result of jQuery_synth is: %s"(string_of_typ res); *) res
     (* trace "Synth" (fun _ -> true) (synth' env default_typ) exp *)
   and synth' env default_typ exp : typ = 
     let ret = match exp with

@@ -242,7 +242,7 @@ struct
         (* let _ = traceMsg "Not equivalent, so simplfying." in *)
         let simpl_s = expose env (simpl_typ env s) in
         let simpl_t = expose env (simpl_typ env t) in
-        traceMsg "STROBE ASSUMING %s <: %s, checking for consistency" (string_of_typ s) (string_of_typ t);
+        (* traceMsg "STROBE ASSUMING %s <: %s, checking for consistency" (string_of_typ s) (string_of_typ t); *)
         (* traceMsg "Is %s <?: %s?" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
         try (cache, TPMap.find (project_typs simpl_s simpl_t env, (simpl_s, simpl_t)) cache)
         with Not_found ->

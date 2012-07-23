@@ -119,7 +119,7 @@ struct
       (* TODO: is this ok? *)
       begin
       try IdMap.find id cm with Not_found -> 
-	Strobe.traceMsg "exception not_found with id %s" id;
+	(* Strobe.traceMsg "exception not_found with id %s" id; *)
 	raise Not_found
       end
     

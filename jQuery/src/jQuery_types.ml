@@ -388,6 +388,28 @@ struct
 
   let free_sigma_ids s = (free_sigma_typ_ids s, free_sigma_mult_ids s)
 
+
+  let rec extract_mult m = match m with
+    | MPlain t -> (t, fun m -> m)
+    | MOne m ->
+      let (t, m) = extract_mult m in
+      (t, fun t -> MOne (m t))
+    | MZero m ->
+      let (t, m) = extract_mult m in
+      (t, fun t -> MZero (m t))
+    | MOnePlus m ->
+      let (t, m) = extract_mult m in
+      (t, fun t -> MOnePlus (m t))
+    | MZeroOne m ->
+      let (t, m) = extract_mult m in
+      (t, fun t -> MZeroOne (m t))
+    | MZeroPlus m ->
+      let (t, m) = extract_mult m in
+      (t, fun t -> MZeroPlus (m t))
+    | MId m -> 
+      failwith ("can't handle MId(" ^ m ^ ") here")
+    | MSum _ -> failwith "can't handle MSums here"
+
   let rec rename_avoid_capture (free : IdSet.t) (ys : id list) (t : typ) =
     let fresh_var old = (* a, b, ... z, aa, bb, ..., zz, ... *)
       let rec try_ascii m n =
@@ -480,7 +502,7 @@ struct
   and typ_typ_subst x t typ = match subst x (STyp t) (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible2"
   and typ_mult_subst x t m = match subst x (STyp t) (SMult m) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible3"
   and sig_mult_subst x s mult = match subst x s (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible4"
-  and mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> canonical_type t | SMult m' -> Strobe.traceMsg "Mult_typ_subst %s[%s/%s] = %s??? failed" (string_of_typ t) (string_of_mult m) x (string_of_mult m'); failwith "impossible5"
+  and mult_typ_subst x m t = match subst x (SMult m) (STyp t) with STyp t -> canonical_type t | SMult m' -> (* Strobe.traceMsg "Mult_typ_subst %s[%s/%s] = %s??? failed" (string_of_typ t) (string_of_mult m) x (string_of_mult m'); *) failwith "impossible5"
   and mult_mult_subst x m mult = match subst x (SMult m) (SMult mult) with SMult m -> canonical_multiplicity m | _ -> failwith "impossible6"
   and typ_subst x t typ = typ_typ_subst x t typ
 
@@ -606,7 +628,10 @@ struct
     match m with
     | MPlain t -> MOne (MPlain (canonical_type t))
     | MId _ -> MOne m
-    | MZero _ -> MZero (MPlain (embed_t Strobe.TBot))
+    | MZero m -> 
+      (* let (t, f) = extract_mult (c m) in *)
+      (* MZero (MPlain t) *)
+    MZero (MPlain (embed_t Strobe.TBot))
     | MOne m -> c m
     | MZeroOne (MPlain t) -> MZeroOne (MPlain (canonical_type t))
     | MZeroOne (MId _) -> m
@@ -778,7 +803,7 @@ struct
   and typ_assoc' env t1 t2 : binding IdMap.t =
 
     let add_strobe x t m = 
-      Strobe.traceMsg "In JQ.add_strobe %s -> %s" x (string_of_typ (embed_t t));
+      (* Strobe.traceMsg "In JQ.add_strobe %s -> %s" x (string_of_typ (embed_t t)); *)
       IdMap.add x (embed_b (Strobe.BTermTyp t)) m in
 
     (* consumes TApp and a source TObject and produces (m1, m2), where
@@ -793,7 +818,7 @@ struct
     | TStrobe s, TStrobe t -> Strobe.typ_assoc add_strobe assoc_merge env s t
     | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]),
       TStrobe (Strobe.TSource (_, Strobe.TObject o)) ->
-      Strobe.traceMsg "TApp jQ 1";
+
       begin
         match embed_t (get_this o) with
         | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
@@ -802,7 +827,6 @@ struct
       end
     | TStrobe (Strobe.TSource (_, Strobe.TObject o)),
       TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]) ->
-      Strobe.traceMsg "TApp jQ 2";
       begin
         match embed_t (get_this o) with
         | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
@@ -810,7 +834,6 @@ struct
         | _ -> IdMap.empty
       end
     | TApp (s1, s2), TApp(t1, t2) ->
-      Strobe.traceMsg "TApp jQ 3";
       if List.length s2 <> List.length t2 then IdMap.empty else
       List.fold_left2 (fun acc t1 t2 -> 
         match t1, t2 with
@@ -820,13 +843,11 @@ struct
         (typ_assoc env s1 t1)
         s2 t2
     | TApp (s1, s2), t -> 
-      Strobe.traceMsg "TApp 4";
       typ_assoc env (simpl_typ env (TApp (s1, s2))) t
     | t, TApp (s1, s2) -> 
-      Strobe.traceMsg "TApp 5";
       let str_t1 = (string_of_typ t) in
       let str_t2 = (string_of_typ (TApp (s1, s2))) in
-      Strobe.traceMsg "in typ assoc', trying to associate %s with %s\n" str_t1 str_t2;
+      (* Strobe.traceMsg "JQtyp_assoc %s with %s\n" str_t1 str_t2; *)
       typ_assoc env t (simpl_typ env (TApp (s1, s2)))
     | TForall (_, x, STyp s1, s2), TForall (_, y, STyp t1, t2) ->
       assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
@@ -836,7 +857,7 @@ struct
       typ_assoc env s1 s2
     | _ -> IdMap.empty
   and mult_assoc env m1 m2 =
-    Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2);
+    (* Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2); *)
     match m1, m2 with
     | MId m, _ -> IdMap.singleton m (BMultBound(m2, KMult (KStrobe Strobe.KStar)))
     | MPlain t1, MPlain t2 -> typ_assoc env t1 t2

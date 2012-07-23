@@ -390,9 +390,10 @@ struct
 
       (* transform preClauseMap -> clauseMap *)
       let transformPCM (pcm : preClauseMap) (f : id option list -> multiplicity) = 
-        IdMap.fold (fun id ids cm -> IdMap.add id (f (ListExt.remove_dups ids)) cm)
-           pcm IdMap.empty in
-
+        IdMap.fold (fun id ids cm -> 
+          IdMap.add id (f (ListExt.remove_dups ids)) cm)
+          pcm IdMap.empty in
+      
       (* Functions for transforming lists of tids into multiplicities *)
 
       let wrap_id id = (JQ.MPlain (JQ.TStrobe (S.TId id))) in
@@ -403,7 +404,7 @@ struct
 
       let transform_children idos = let open JQ in match idos with 
         | [] -> MZero (wrap_id element)
-        | [Some id] -> MOne (wrap_id id) 
+        | [Some id] -> MOne (wrap_id id)
         | [None] -> MZeroPlus (wrap_id element)
         | hd::tail -> 
           MOnePlus (MPlain (TStrobe (List.fold_left (fun acc ido ->
@@ -411,7 +412,7 @@ struct
                                        (S.TId (extract_id hd)) tail))) in
 
       let transform_sibs idos = let open JQ in match idos with
-        | [] -> MZero (wrap_id element)
+        | [] -> Strobe.traceMsg "got here"; MZero (MPlain (TStrobe (S.TTop)))
         | [Some id] -> MOne (wrap_id id)
         | [None] -> MZeroOne (wrap_id element)
         | hd::tail -> MOne (MPlain (TStrobe (List.fold_left (fun acc ido ->
