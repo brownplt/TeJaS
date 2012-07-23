@@ -629,9 +629,8 @@ struct
     | MPlain t -> MOne (MPlain (canonical_type t))
     | MId _ -> MOne m
     | MZero m -> 
-      (* let (t, f) = extract_mult (c m) in *)
-      (* MZero (MPlain t) *)
-    MZero (MPlain (embed_t Strobe.TBot))
+      let (t, f) = extract_mult (c m) in
+      MZero (MPlain t)
     | MOne m -> c m
     | MZeroOne (MPlain t) -> MZeroOne (MPlain (canonical_type t))
     | MZeroOne (MId _) -> m
