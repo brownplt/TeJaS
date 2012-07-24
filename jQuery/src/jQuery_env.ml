@@ -418,25 +418,37 @@ struct
       | TApp(t, args) ->
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult m with
-          | (TApp ((TStrobe (Strobe.TPrim "childrenOf")), [SMult m]), m1) ->
-            let (t, m2) = extract_mult m in
-            SMult (canonical_multiplicity (m1 (m2 (children senv (rjq t)))))
-          | (TApp ((TStrobe (Strobe.TPrim "childrenOf")), _), _) ->
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "childrenOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (children senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "childrenOf")), _)), _) ->
             failwith "childrenOf not called with a single mult argument"
-          | (TApp ((TStrobe (Strobe.TPrim "parentOf")), [SMult m]), m1) ->
-            let (t, m2) = extract_mult m in
-            SMult (canonical_multiplicity (m1 (m2 (parent senv (rjq t)))))
-          | (TApp ((TStrobe (Strobe.TPrim "parentOf")), _), _) ->
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (parent senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), _)), _) ->
             failwith "parentOf not called with a single mult argument"
-          | (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), [SMult m]), m1) ->
-            let (t, m2) = extract_mult m in
-            SMult (canonical_multiplicity (m1 (m2 (prevsib senv (rjq t)))))
-          | (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), _), _) ->
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (prevsib senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), _)), _) ->
             failwith "prevSibOf not called with a single mult argument"
-          | (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), [SMult m]), m1) ->
-            let (t, m2) = extract_mult m in
-            SMult (canonical_multiplicity (m1 (m2 (nextsib senv (rjq t)))))
-          | (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), _), _) ->
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (nextsib senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), _)), _) ->
             failwith "nextSibOf not called with a single mult argument"
           | _ -> s
         end

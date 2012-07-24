@@ -390,25 +390,34 @@ struct
 
 
   let rec extract_mult m = match m with
-    | MPlain t -> (t, fun m -> m)
+    | MPlain t -> ((STyp t), fun s -> begin 
+      match s with
+      | STyp t -> MPlain t
+      | SMult m -> m
+    end)
     | MOne m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MOne (m t))
+      let (s, m) = extract_mult m in
+      (s, fun s -> MOne (m s))
     | MZero m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MZero (m t))
+      let (s, m) = extract_mult m in
+      (s, fun s -> MZero (m s))
     | MOnePlus m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MOnePlus (m t))
+      let (s, m) = extract_mult m in
+      (s, fun s -> MOnePlus (m s))
     | MZeroOne m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MZeroOne (m t))
+      let (s, m) = extract_mult m in
+      (s, fun s -> MZeroOne (m s))
     | MZeroPlus m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MZeroPlus (m t))
-    | MId m -> 
-      failwith ("can't handle MId(" ^ m ^ ") here")
-    | MSum _ -> failwith "can't handle MSums here"
+      let (s, m) = extract_mult m in
+      (s, fun s -> MZeroPlus (m s))
+    | MId _
+    | MSum _ ->
+      ((SMult m), fun s -> begin match s with
+      | STyp _ -> failwith "expected multiplicity, got typ"
+      | SMult m -> m
+      end)
+  (* failwith ("can't handle MId(" ^ m ^ ") here") *)
+  (* failwith "can't handle MSums here" *)
 
   let rec rename_avoid_capture (free : IdSet.t) (ys : id list) (t : typ) =
     let fresh_var old = (* a, b, ... z, aa, bb, ..., zz, ... *)
@@ -629,8 +638,11 @@ struct
     | MPlain t -> MOne (MPlain (canonical_type t))
     | MId _ -> MOne m
     | MZero m -> 
-      let (t, f) = extract_mult (c m) in
-      MZero (MPlain t)
+      let (s, f) = extract_mult (c m) in
+      begin match s with
+      | STyp t -> MZero (MPlain t)
+      | SMult m -> MZero m
+      end
     | MOne m -> c m
     | MZeroOne (MPlain t) -> MZeroOne (MPlain (canonical_type t))
     | MZeroOne (MId _) -> m
@@ -815,13 +827,13 @@ struct
 
     match t1, t2 with
     | TStrobe s, TStrobe t -> Strobe.typ_assoc add_strobe assoc_merge env s t
-    | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]),
+    | TApp ((TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s])), [STyp previous]),
       TStrobe (Strobe.TSource (_, Strobe.TObject o)) ->
 
       begin
         match embed_t (get_this o) with
-        | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
-          mult_assoc env (canonical_multiplicity s) (canonical_multiplicity m)
+        | TApp (TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]), [STyp previous']) ->
+          assoc_merge (mult_assoc env (canonical_multiplicity s) (canonical_multiplicity m)) (typ_assoc env previous previous')
         | _ -> IdMap.empty
       end
     | TStrobe (Strobe.TSource (_, Strobe.TObject o)),
@@ -856,7 +868,7 @@ struct
       typ_assoc env s1 s2
     | _ -> IdMap.empty
   and mult_assoc env m1 m2 =
-    (* Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2); *)
+    Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2);
     match m1, m2 with
     | MId m, _ -> IdMap.singleton m (BMultBound(m2, KMult (KStrobe Strobe.KStar)))
     | MPlain t1, MPlain t2 -> typ_assoc env t1 t2
