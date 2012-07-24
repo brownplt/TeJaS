@@ -390,26 +390,6 @@ struct
 
 
   let rec resolve_special_functions (env : env) (senv : structureEnv) (t : typ) =
-    let rec extract_mult m = match m with
-      | MPlain t -> (t, fun m -> m)
-      | MOne m ->
-        let (t, m) = extract_mult m in
-        (t, fun t -> MOne (m t))
-      | MZero m ->
-        let (t, m) = extract_mult m in
-        (t, fun t -> MZero (m t))
-      | MOnePlus m ->
-        let (t, m) = extract_mult m in
-        (t, fun t -> MOnePlus (m t))
-      | MZeroOne m ->
-        let (t, m) = extract_mult m in
-        (t, fun t -> MZeroOne (m t))
-      | MZeroPlus m ->
-        let (t, m) = extract_mult m in
-        (t, fun t -> MZeroPlus (m t))
-      | MId m -> 
-        failwith ("can't handle MId(" ^ m ^ ") here")
-      | MSum _ -> failwith "can't handle MSums here" in
     let rec resolve_sigma s = match s with
       | STyp t -> STyp (rjq t)
       | SMult m -> SMult (resolve_mult m) 
