@@ -467,19 +467,19 @@ struct
     Printf.eprintf ("%s*** " ^^ msg ^^ "\n") (String.make (!depth) ' ')
   let trace (prompt : string) (msg : string) (success : 'a -> bool) (thunk : unit -> 'a) = 
 
-    thunk ()
+    (* thunk () *)
 
-    (* Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg; *)
-    (* depth := !depth + 1; *)
-    (* try *)
-    (*   let ret = thunk () in *)
-    (*   depth := !depth - 1; *)
-    (*   Printf.eprintf "%s<%s-%s %s\n" (String.make (!depth) ' ') (if success ret then "-" else "X") prompt msg; *)
-    (*   ret *)
-    (* with e -> *)
-    (*   depth := !depth - 1; *)
-    (*   Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') prompt msg; *)
-    (*   raise e *)
+    Printf.eprintf "%s-->%s %s\n" (String.make (!depth) ' ') prompt msg;
+    depth := !depth + 1;
+    try
+      let ret = thunk () in
+      depth := !depth - 1;
+      Printf.eprintf "%s<%s-%s %s\n" (String.make (!depth) ' ') (if success ret then "-" else "X") prompt msg;
+      ret
+    with e ->
+      depth := !depth - 1;
+      Printf.eprintf "%s<X-%s %s\n" (String.make (!depth) ' ') prompt msg;
+      raise e
 
 
 

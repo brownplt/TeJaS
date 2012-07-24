@@ -59,7 +59,7 @@ module type JQUERY_ACTIONS = sig
   val extract_t : typ -> baseTyp
   val extract_k : kind -> baseKind
   val extract_b : binding -> baseBinding
-  val extract_mult : multiplicity -> (typ * (multiplicity -> multiplicity))
+  val extract_mult : multiplicity -> (sigma * (sigma -> multiplicity))
   val embed_t : baseTyp -> typ
   val embed_k : baseKind -> kind
   val embed_b : baseBinding -> binding

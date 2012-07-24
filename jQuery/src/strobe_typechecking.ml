@@ -718,17 +718,17 @@ struct
           | Some (typ_vars, (TArrow (expected_typs, _, r) as arrow_typ)) -> 
             (* guess-work breaks bidirectionality *)
             let arg_typs = map (synth env default_typ) args in
-            (* let assumed_arg_exps =  *)
-            (*   List.map2 (fun e t -> ECheat (p, Ext.embed_t t, e)) args arg_typs in *)
-            traceMsg "In Epp, arg_typs are:";
-            (* List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs; *)
-            (* traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ); *)
-            (* traceMsg "2In Eapp, tarrow is    %s" *)
-            (*   (string_of_typ (TArrow (arg_typs, None, r))); *)
+            let assumed_arg_exps =
+              List.map2 (fun e t -> ECheat (p, Ext.embed_t t, e)) args arg_typs in
+            traceMsg "In EApp, arg_typs are:";
+            List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs;
+            traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ);
+            traceMsg "2In Eapp, tarrow is    %s"
+              (string_of_typ (TArrow (arg_typs, None, r)));
             let sub = ExtTC.assoc_sub env 
 	            (* NOTE: Can leave the return type out, because we're just
 		             copying it, so it will never yield any information *)
-	            (Ext.embed_t (TArrow (expected_typs, None, TTop))) 
+	      (Ext.embed_t (TArrow (expected_typs, None, TTop))) 
               (Ext.embed_t (TArrow (arg_typs, None, TTop))) in
 	          traceMsg "3In Eapp, original return type is %s" (string_of_typ r);
             let ret = Ext.extract_t (sub p typ_vars (Ext.embed_t r)) in
