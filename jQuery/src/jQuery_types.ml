@@ -815,21 +815,33 @@ struct
 
     match t1, t2 with
     | TStrobe s, TStrobe t -> Strobe.typ_assoc add_strobe assoc_merge env s t
-    | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]),
-      TStrobe (Strobe.TSource (_, Strobe.TObject o)) ->
-
+      (* Cases for two-arg jq *)
+    | (TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult])), 
+               [STyp prev])), 
+      TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> 
+      Strobe.traceMsg "JQUERY_typ_assoc: associating jq with an obj";
       begin
         match embed_t (get_this o) with
-        | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
-          mult_assoc env (canonical_multiplicity s) (canonical_multiplicity m)
+        | (TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
+                       [SMult this_mult])), [STyp this_prev])) ->
+            assoc_merge 
+            (mult_assoc env (canonical_multiplicity mult)
+               (canonical_multiplicity this_mult))
+            (typ_assoc env prev this_prev)
         | _ -> IdMap.empty
       end
-    | TStrobe (Strobe.TSource (_, Strobe.TObject o)),
-      TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]) ->
+    |  (TStrobe (Strobe.TSource (_, Strobe.TObject o))),
+        (TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult])), 
+              [STyp prev])) -> 
+      Strobe.traceMsg "JQuery_typ_assoc: associating an obj with a jq";
       begin
         match embed_t (get_this o) with
-        | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
-          mult_assoc env (canonical_multiplicity m) (canonical_multiplicity s)
+        | (TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
+                       [SMult this_mult])), [STyp this_prev])) ->
+            assoc_merge 
+            (mult_assoc env (canonical_multiplicity this_mult)
+               (canonical_multiplicity mult))
+            (typ_assoc env this_prev prev)
         | _ -> IdMap.empty
       end
     | TApp (s1, s2), TApp(t1, t2) ->
