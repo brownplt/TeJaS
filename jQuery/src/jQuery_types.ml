@@ -782,7 +782,7 @@ struct
           Pat.is_equal p (Pat.singleton "__this__")) ofields in
         begin
           match embed_t thisTyp with
-          | (TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m])) as collapsed ->
+          | (TApp (TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]), prev)) as collapsed ->
             if typ = (simpl_typ env collapsed)
             then collapsed else typ
           | _ -> typ

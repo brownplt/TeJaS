@@ -138,7 +138,11 @@ struct
         | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "childrenOf"), _)) as a)
         | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "parentOf"), _)) as a) 
         | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "prevSibOf"), _)) as a) 
-        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "nextSibOf"), _)) as a) -> 
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "nextSibOf"), _)) as a)
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "findOf"), _)) as a)
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "parentsOf"), _)) as a) 
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "prevAllOf"), _)) as a) 
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "nextAllOf"), _)) as a) -> 
           JQ.SMult (JQ.MPlain a)
         | s -> s) t2s))
     end
@@ -441,7 +445,7 @@ struct
           list with more than one entries ==> 1+<union of all entries in the list>
       **)
       let transform_children idos = let open JQ in match idos with 
-        | [] -> MZero (wrap_id element)
+        | [] -> MZero (MPlain (TStrobe (S.TTop)))
         | [Some id] -> MOne (wrap_id id)
         | [None] -> MZeroPlus (wrap_id element)
         | hd::tail -> 

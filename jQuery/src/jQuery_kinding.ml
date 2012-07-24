@@ -100,7 +100,11 @@ struct
         | Strobe.TPrim ("childrenOf" as p)
         | Strobe.TPrim ("parentOf" as p)
         | Strobe.TPrim ("nextSibOf" as p)
-        | Strobe.TPrim ("prevSibOf" as p) ->
+        | Strobe.TPrim ("prevSibOf" as p)
+        | Strobe.TPrim ("findOf" as p)
+        | Strobe.TPrim ("parentsOf" as p)
+        | Strobe.TPrim ("prevAllOf" as p)
+        | Strobe.TPrim ("nextAllOf" as p) ->
           begin
             try List.iter2 check [Strobe.KEmbed (KMult (KStrobe Strobe.KStar))] s_args
             with Invalid_argument _ -> 
