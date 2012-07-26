@@ -82,6 +82,8 @@ kind :
   | STAR { W.KStar }
   | LPAREN kind RPAREN { $2 }
   | MULT LANGLE kind RANGLE { W.KMult $3 }
+  | LPAREN k1=kind COMMA ks=separated_nonempty_list(COMMA, kind) RPAREN THICKARROW ret=kind 
+    { W.KArrow (k1 :: ks, ret) }
   | kind THICKARROW kind { W.KArrow ([$1], $3) }
 
 args

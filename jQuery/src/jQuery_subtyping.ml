@@ -129,18 +129,9 @@ struct
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
       else match unwrap_t t1, unwrap_t t2 with
         (* Case for handling two-arg jQ types *)
-      | ((TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), pargs1)), 
-               cargs1)) as jq1),
-    ((TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), pargs2)), 
-           cargs2)) as jq2) -> (match (List.length pargs1, List.length pargs2,
-                                       List.length cargs1, List.length cargs2) with
-           | 1, 1, 1, 1 -> 
-             Strobe.traceMsg "JQUERY_subtype_typ: attempting to subtype jQ: %s <?: %s" 
-               (string_of_typ jq1) (string_of_typ jq2);
-             let subt_cargs = List.fold_left2 subtype_sigma_list (cache, true) cargs1 cargs2 in 
-             List.fold_left2 subtype_sigma_list subt_cargs pargs1 pargs2
-           | _, _, _, _ -> (cache, false))
-
+      | ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m1; p1])) as jq1),
+        ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m2; p2])) as jq2) ->
+        List.fold_left2 subtype_sigma_list (cache, true) [m1;p1] [m2;p2]
       (* | TApp(TStrobe (Strobe.TFix(Some "jQ", "jq", _, _)), args1), TApp(TStrobe (Strobe.TFix(Some "jQ", "jq", _, _)), args2) -> *)
       (*   if (List.length args1 <> List.length args2) then (cache, false) *)
       (*   else List.fold_left2 subtype_sigma_list (cache, true) args1 args2 *)
