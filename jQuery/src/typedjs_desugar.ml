@@ -364,11 +364,21 @@ struct
                pce_next = next; } tail
             (* nested/id and placeholder ==> add binding from parentId to id in kidMap, from id to parentId in parentMap, and from id to None in nextSibMap *)
             | W.DNested (name, _, _, _, _), W.DPlaceholder
-            | W.DId name, W.DPlaceholder -> compPreClauses 
-              {pce_children = (update pname (Some name) children);
-               pce_parent = (update name (Some pname) parent);
-               pce_prev = prev;
-               pce_next = (update name None next); } tail
+            | W.DId name, W.DPlaceholder -> 
+              begin match rest with
+              | []
+              | W.DPlaceholder :: _ -> compPreClauses 
+                {pce_children = (update pname (Some name) children);
+                 pce_parent = (update name (Some pname) parent);
+                 pce_prev = prev;
+                 pce_next = (update name None next); } tail
+              | W.DNested (name2, _, _, _, _)::_
+              | W.DId name2 :: _ -> compPreClauses
+                {pce_children = (update pname (Some name) children);
+                 pce_parent = (update name (Some pname) parent);
+                 pce_prev = (update name2 (Some name) prev);
+                 pce_next = (update name None (update name (Some name2) next)); } tail
+              end
             (* nested/id and nested/id ==> add binding from parentId to id1 and id2 in kidMap, from id1 and id2 to parentId in parentMap, from id1 to id2 in nextSibMap, from id2 to id1 in prevSibMap *)
             | W.DNested (name1, _, _, _, _), W.DNested (name2, _, _, _, _)
             | W.DNested (name1, _, _, _, _), W.DId name2
