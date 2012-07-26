@@ -128,13 +128,18 @@ struct
     try incr cache_hits; (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
       else match unwrap_t t1, unwrap_t t2 with
-        (* Case for handling two-arg jQ types *)
+      (* Case for handling two-arg jQ types *)
       | ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m1; p1])) as jq1),
         ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m2; p2])) as jq2) ->
         List.fold_left2 subtype_sigma_list (cache, true) [m1;p1] [m2;p2]
-      (* | TApp(TStrobe (Strobe.TFix(Some "jQ", "jq", _, _)), args1), TApp(TStrobe (Strobe.TFix(Some "jQ", "jq", _, _)), args2) -> *)
-      (*   if (List.length args1 <> List.length args2) then (cache, false) *)
-      (*   else List.fold_left2 subtype_sigma_list (cache, true) args1 args2 *)
+      (* convenience for AnyJQ *)
+      | t1, TStrobe ((Strobe.TId "AnyJQ") as anyJQ) ->
+        subtype_typ env cache t1 (embed_t (Strobe.expose env anyJQ))
+      | ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m1; p1])) as jq1),
+        TForall (Some "AnyJQ", x, _, t) ->
+        let t2 = (replace_name None (sig_typ_subst x p1 t)) in
+        subtype_typ env cache jq1 t2
+      (* default cases *)
       | t1, t2 ->
         let simpl_t1 = simpl_typ env t1 in
         let simpl_t2 = simpl_typ env t2 in
