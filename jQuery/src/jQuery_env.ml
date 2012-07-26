@@ -454,6 +454,12 @@ struct
     and  rjq t = match t with
       | TForall (s,id,sigma,t) -> TForall(s,id,resolve_sigma sigma, t)
       | TLambda _ -> t
+      | TApp (TStrobe (Strobe.TPrim "selector"), [STyp (TStrobe (Strobe.TRegex pat))]) ->
+        Strobe.traceMsg "resolving selector primitive";
+        begin match Strobe.Pat.singleton_string pat with
+        | Some s -> TApp (TStrobe (Strobe.TId "jQ"), [(SMult (jQuery (fst senv) s)); STyp (TStrobe (Strobe.TId "DefaultPrev"))])
+        | None -> failwith "pattern cannot be converted to string??"
+        end
       | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]) ->
         failwith "childrenOf at outermost level"
       | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]) ->
