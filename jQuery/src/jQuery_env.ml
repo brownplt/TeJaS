@@ -180,12 +180,26 @@ struct
   let find (senv : structureEnv) (t : typ) : multiplicity =
     transitive senv t children
 
+  let filterSel (senv : structureEnv) (t : typ) (sel : string) : multiplicity =
+    let open JQuery in
+    (* parse the selector *)
+    (* match t with *)
+    (* | TDom (s,t,sels) *)
+    (* backform from the selector *)
+    MZero (MPlain (TStrobe (Strobe.TTop)))
 
-    (* | MOne (MPlain (TStrobe (Strobe.TId "element"))) *)
-    (* | MOnePlus (MPlain (TStrobe (Strobe.TId "element"))) *)
+  let filterJQ (senv : structureEnv) (typ : typ) : multiplicity =
+    let open JQuery in
+    MZero (MPlain (TStrobe (Strobe.TTop)))
 
-
-
+  let jQuery (benv : Desugar.backformEnv) (sel : string) : multiplicity =
+    let open JQuery in
+    let s = Css.singleton sel in
+    let idset = backform benv s in
+    IdSet.fold (fun id acc -> MSum (MOnePlus (MPlain (TStrobe (Strobe.TId id))), acc)) idset (MZero (MPlain (TStrobe (Strobe.TTop))))
+    (* parse the selector *)
+    (* backform from the selector *)
+    (* return a TUnion of the TIds *)
 
   (**** End Local Structure ***)
 
