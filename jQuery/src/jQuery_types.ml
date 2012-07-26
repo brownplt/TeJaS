@@ -216,7 +216,9 @@ struct
       | TApp (t, ts) ->
         (match ts with
         | [] -> horz [typ t; text "<>"]
-        | _ -> parens [squish [typ t; angles (intersperse (text ",") (map sigma ts))]])
+        | _ -> parens
+          [squish [typ t; 
+                   angles (add_sep_between (text ",") (map sigma ts))]])
       | TDom (name, t, sel) ->
         namedType name (horzOrVert [horz [typ t; text "@"]; Css.p_css sel])
     and multiplicity m =
@@ -782,7 +784,7 @@ struct
           Pat.is_equal p (Pat.singleton "__this__")) ofields in
         begin
           match embed_t thisTyp with
-          | (TApp (TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]), prev)) as collapsed ->
+          | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m; prev]) as collapsed ->
             if typ = (simpl_typ env collapsed)
             then collapsed else typ
           | _ -> typ
@@ -828,14 +830,13 @@ struct
     match t1, t2 with
     | TStrobe s, TStrobe t -> Strobe.typ_assoc add_strobe assoc_merge env s t
       (* Cases for two-arg jq *)
-    | (TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult])), 
-               [STyp prev])), 
+    | TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult; STyp prev]), 
       TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> 
       Strobe.traceMsg "JQUERY_typ_assoc: associating jq with an obj";
       begin
         match embed_t (get_this o) with
-        | (TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
-                       [SMult this_mult])), [STyp this_prev])) ->
+        | (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
+                       [SMult this_mult; STyp this_prev])) ->
             assoc_merge 
             (mult_assoc env (canonical_multiplicity mult)
                (canonical_multiplicity this_mult))
@@ -843,13 +844,12 @@ struct
         | _ -> IdMap.empty
       end
     |  (TStrobe (Strobe.TSource (_, Strobe.TObject o))),
-        (TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult])), 
-              [STyp prev])) -> 
+        (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult; STyp prev])) -> 
       Strobe.traceMsg "JQuery_typ_assoc: associating an obj with a jq";
       begin
         match embed_t (get_this o) with
-        | (TApp((TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
-                       [SMult this_mult])), [STyp this_prev])) ->
+        | (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
+                       [SMult this_mult; STyp this_prev])) ->
             assoc_merge 
             (mult_assoc env (canonical_multiplicity this_mult)
                (canonical_multiplicity mult))
