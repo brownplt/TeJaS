@@ -163,7 +163,7 @@ struct
           | TStrobe t1, TStrobe t2 -> 
             tc_cache := cache; (* checkpoint state *)
             cache, StrobeSub.subtype env t1 t2
-          | ((TDom (_, t1, sel1)) as td1), ((TDom (_, t2, sel2)) as td2) ->
+          | TDom (_, t1, sel1), TDom (_, t2, sel2) ->
             subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
           | TDom _, _ -> subtype_typ env cache t1 (Env.expose_tdoms env (TDom(None, t2, Css.all)))
           | _, TDom _ -> subtype_typ env cache (Env.expose_tdoms env (TDom(None, t1, Css.all))) t2

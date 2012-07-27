@@ -513,14 +513,35 @@ struct
       
       
       (* return final structureEnv, adding bindings for element in each of the maps *)
-      (benv_complete, 
-       {children = IdMap.add element (JQ.MZeroPlus (wrap_id element)) (transformPCM pcenv.pce_children transform_children);
-        parent = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_parent transform_parent);
-        prev = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_prev transform_sibs);
-        next = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_next transform_sibs)}) in
+      let new_benv = benv_complete in
+      let new_cenv = {children = IdMap.add element (JQ.MZeroPlus (wrap_id element)) (transformPCM pcenv.pce_children transform_children);
+                      parent = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_parent transform_parent);
+                      prev = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_prev transform_sibs);
+                      next = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_next transform_sibs)} in
 
+      let (old_benv, old_cenv) = senv in
+      let bMap_merge (map1 : backformMap) (map2 : backformMap) : backformMap =
+        StringMap.merge (fun (k : string) (v1 : id list option) (v2 : id list option) -> 
+          match v1,v2 with
+          | Some ids1, Some ids2 -> Some (ids1 @ ids2)
+          | _, None -> v1
+          | None, _ -> v2) map1 map2 in
+      let cMap_merge (map1 : clauseMap) (map2 : clauseMap) : clauseMap =
+        IdMap.merge (fun (key : id) (v1 : multiplicity option) (v2 : multiplicity option) ->
+          match v1, v2 with
+          | Some m1, Some m2 -> Some (JQ.MSum (m1, m2))
+          | _, None -> v1
+          | None, _ -> v2) map1 map2 in
+      ({classes = bMap_merge old_benv.classes new_benv.classes;
+        optClasses = bMap_merge old_benv.optClasses new_benv.optClasses;
+        ids = bMap_merge old_benv.ids new_benv.ids;},
+       {children = cMap_merge old_cenv.children new_cenv.children;
+        parent = cMap_merge old_cenv.parent new_cenv.parent;
+        prev = cMap_merge old_cenv.prev new_cenv.prev;
+        next = cMap_merge old_cenv.next new_cenv.next}) in
+    
     (* Body of desugar_structure *)
     (gen_bindings dc, compile senv dc)
-
+      
 
 end
