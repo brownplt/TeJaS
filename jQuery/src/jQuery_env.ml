@@ -61,6 +61,10 @@ struct
       expose_tdoms env (TDom (s, t, Css.intersect sel2 sel1))
     | TDom (s, (TStrobe (Strobe.TId id)), sel) ->
       expose_tdoms env (TDom (s, fst (lookup_typ_id id env), sel))
+    | TDom (s, (TStrobe (Strobe.TUnion (s2, t1 ,t2))), sel) ->
+      TStrobe (Strobe.TUnion (s2, 
+                              Strobe.TEmbed (expose_tdoms env (TDom (s, TStrobe t1, sel))),
+                              Strobe.TEmbed (expose_tdoms env (TDom (s, TStrobe t2, sel)))))
     | _ -> t
 
   let backform (benv : Desugar.backformEnv) (sels : sel) : IdSet.t = (* IdSet.singleton "test" *)
@@ -192,14 +196,15 @@ struct
     let open JQuery in
     MZero (MPlain (TStrobe (Strobe.TTop)))
 
-  let jQuery (benv : Desugar.backformEnv) (sel : string) : multiplicity =
+
+  (* returns an MSum of TDoms *)
+  let jQuery (env : env) (benv : Desugar.backformEnv) (sel : string) : multiplicity =
     let open JQuery in
     let s = Css.singleton sel in
     let idset = backform benv s in
-    IdSet.fold (fun id acc -> MSum (MOnePlus (MPlain (TStrobe (Strobe.TId id))), acc)) idset (MZero (MPlain (TStrobe (Strobe.TTop))))
-    (* parse the selector *)
-    (* backform from the selector *)
-    (* return a TUnion of the TIds *)
+    if IdSet.is_empty idset
+    then MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "element")), s)))
+    else IdSet.fold (fun id acc -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) idset (MZero (MPlain (TStrobe (Strobe.TTop))))
 
   (**** End Local Structure ***)
 
@@ -457,7 +462,7 @@ struct
       | TApp (TStrobe (Strobe.TPrim "selector"), [STyp (TStrobe (Strobe.TRegex pat))]) ->
         Strobe.traceMsg "resolving selector primitive";
         begin match Strobe.Pat.singleton_string pat with
-        | Some s -> TApp (TStrobe (Strobe.TId "jQ"), [(SMult (jQuery (fst senv) s)); STyp (TStrobe (Strobe.TId "DefaultPrev"))])
+        | Some s -> TApp (TStrobe (Strobe.TId "jQ"), [(SMult (canonical_multiplicity (jQuery env (fst senv) s))); STyp (TStrobe (Strobe.TId "AnyJQ"))])
         | None -> failwith "pattern cannot be converted to string??"
         end
       | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]) ->
