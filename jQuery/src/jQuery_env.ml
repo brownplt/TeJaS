@@ -61,6 +61,10 @@ struct
       expose_tdoms env (TDom (s, t, Css.intersect sel2 sel1))
     | TDom (s, (TStrobe (Strobe.TId id)), sel) ->
       expose_tdoms env (TDom (s, fst (lookup_typ_id id env), sel))
+    | TDom (s, (TStrobe (Strobe.TUnion (s2, t1 ,t2))), sel) ->
+      TStrobe (Strobe.TUnion (s2, 
+                              Strobe.TEmbed (expose_tdoms env (TDom (s, TStrobe t1, sel))),
+                              Strobe.TEmbed (expose_tdoms env (TDom (s, TStrobe t2, sel)))))
     | _ -> t
 
   let backform (benv : Desugar.backformEnv) (sels : sel) : IdSet.t = (* IdSet.singleton "test" *)
@@ -129,11 +133,6 @@ struct
     (* This is bad, but let it through so it can be caught elsewhere (it
        probably already was, in association *)
     | _ ->  MOne (MPlain t)
-  (* failwith  *)
-  (* (Printf.sprintf  *)
-  (*    "impossible: x_of can only be called on TDom, TId, TUnion, got %s" *)
-  (*    (string_of_typ t)) *)
-
 
   let children (senv : structureEnv) (t : typ) : multiplicity =
     let (_,cenv) = senv in
@@ -153,6 +152,59 @@ struct
     let (_,cenv) = senv in
     x_of (fst senv) cenv.Desugar.next t
 
+  let rec transitive (senv : structureEnv) (t : typ) (f : structureEnv -> typ -> multiplicity) : multiplicity =
+    Strobe.traceMsg "In transitive, ";
+    let open JQuery in
+    let next = canonical_multiplicity (f senv t) in
+    match next with
+    | MZero _
+    | MSum (_, _)
+    | MId _
+    | MZeroPlus _ (* (MPlain (TStrobe (Strobe.TId "element"))) *)
+    | MZeroOne _ (* (MPlain (TStrobe (Strobe.TId "element"))) *) -> 
+      Strobe.traceMsg "got to the end of transitive calls, returning next";
+      next
+    | _ -> let (s, fs) = extract_mult next in 
+           begin
+           match s with
+           | STyp t -> Strobe.traceMsg "recursively calling transitive"; 
+             MSum (next, fs (SMult (transitive senv t f))) 
+           | SMult m -> next
+           end
+
+  let nextall (senv : structureEnv) (t : typ) : multiplicity =
+    transitive senv t nextsib
+
+  let prevall (senv : structureEnv) (t : typ) : multiplicity =
+    transitive senv t prevsib
+
+  let parents (senv : structureEnv) (t : typ) : multiplicity =
+    transitive senv t parent
+
+  let find (senv : structureEnv) (t : typ) : multiplicity =
+    transitive senv t children
+
+  let filterSel (senv : structureEnv) (t : typ) (sel : string) : multiplicity =
+    let open JQuery in
+    (* parse the selector *)
+    (* match t with *)
+    (* | TDom (s,t,sels) *)
+    (* backform from the selector *)
+    MZero (MPlain (TStrobe (Strobe.TTop)))
+
+  let filterJQ (senv : structureEnv) (typ : typ) : multiplicity =
+    let open JQuery in
+    MZero (MPlain (TStrobe (Strobe.TTop)))
+
+
+  (* returns an MSum of TDoms *)
+  let jQuery (env : env) (benv : Desugar.backformEnv) (sel : string) : multiplicity =
+    let open JQuery in
+    let s = Css.singleton sel in
+    let idset = backform benv s in
+    if IdSet.is_empty idset
+    then MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "element")), s)))
+    else IdSet.fold (fun id acc -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) idset (MZero (MPlain (TStrobe (Strobe.TTop))))
 
   (**** End Local Structure ***)
 
@@ -407,6 +459,12 @@ struct
     and  rjq t = match t with
       | TForall (s,id,sigma,t) -> TForall(s,id,resolve_sigma sigma, t)
       | TLambda _ -> t
+      | TApp (TStrobe (Strobe.TPrim "selector"), [STyp (TStrobe (Strobe.TRegex pat))]) ->
+        Strobe.traceMsg "resolving selector primitive";
+        begin match Strobe.Pat.singleton_string pat with
+        | Some s -> TApp (TStrobe (Strobe.TId "jQ"), [(SMult (canonical_multiplicity (jQuery env (fst senv) s))); STyp (TStrobe (Strobe.TId "AnyJQ"))])
+        | None -> failwith "pattern cannot be converted to string??"
+        end
       | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]) ->
         failwith "childrenOf at outermost level"
       | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]) ->
@@ -415,32 +473,87 @@ struct
         failwith "prevSibOf at outermost level"
       | TApp(TStrobe (Strobe.TPrim "nextSibOf"), [STyp t]) ->
         failwith "nextSibOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "findOf"), [STyp t]) ->
+        failwith "findOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "parentsOf"), [STyp t]) ->
+        failwith "parentAllOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "prevAllOf"), [STyp t]) ->
+        failwith "prevAllOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "nextAllOf"), [STyp t]) ->
+        failwith "nextAllOf at outermost level"
       | TApp(t, args) ->
+        Strobe.traceMsg "rjq called with TApp : %s" (string_of_typ t);
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult m with
-          | (TApp ((TStrobe (Strobe.TPrim "childrenOf")), [SMult m]), m1) ->
-            let (t, m2) = extract_mult m in
-            SMult (canonical_multiplicity (m1 (m2 (children senv (rjq t)))))
-          | (TApp ((TStrobe (Strobe.TPrim "childrenOf")), _), _) ->
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "childrenOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (children senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "childrenOf")), _)), _) ->
             failwith "childrenOf not called with a single mult argument"
-          | (TApp ((TStrobe (Strobe.TPrim "parentOf")), [SMult m]), m1) ->
-            let (t, m2) = extract_mult m in
-            SMult (canonical_multiplicity (m1 (m2 (parent senv (rjq t)))))
-          | (TApp ((TStrobe (Strobe.TPrim "parentOf")), _), _) ->
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (parent senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), _)), _) ->
             failwith "parentOf not called with a single mult argument"
-          | (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), [SMult m]), m1) ->
-            let (t, m2) = extract_mult m in
-            SMult (canonical_multiplicity (m1 (m2 (prevsib senv (rjq t)))))
-          | (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), _), _) ->
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (prevsib senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), _)), _) ->
             failwith "prevSibOf not called with a single mult argument"
-          | (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), [SMult m]), m1) ->
-            let (t, m2) = extract_mult m in
-            SMult (canonical_multiplicity (m1 (m2 (nextsib senv (rjq t)))))
-          | (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), _), _) ->
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (nextsib senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), _)), _) ->
             failwith "nextSibOf not called with a single mult argument"
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), [SMult m])), m1) ->
+            Strobe.traceMsg "resolving findOf";
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> 
+              SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (find senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), _)), _) ->
+            failwith "findOf not called with a single mult argument"
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (parents senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), _)), _) ->
+            failwith "parentsOf not called with a single mult argument"
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (prevall senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), _)), _) ->
+            failwith "prevAllOf not called with a single mult argument"
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), [SMult m])), m1) ->
+            let (s, m2) = extract_mult m in
+            begin match s with
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (nextall senv (rjq t)))))))
+            | SMult _ -> s
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), _)), _) ->
+            failwith "nextAllOf not called with a single mult argument"
           | _ -> s
         end
-        | STyp _ -> s
+        | STyp t -> s
         ) args)
       | TDom (s, t, sel) -> TDom (s, rjq t, sel)
       | TStrobe t -> TStrobe (rs t)

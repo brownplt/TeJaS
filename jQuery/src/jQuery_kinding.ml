@@ -100,7 +100,11 @@ struct
         | Strobe.TPrim ("childrenOf" as p)
         | Strobe.TPrim ("parentOf" as p)
         | Strobe.TPrim ("nextSibOf" as p)
-        | Strobe.TPrim ("prevSibOf" as p) ->
+        | Strobe.TPrim ("prevSibOf" as p)
+        | Strobe.TPrim ("findOf" as p)
+        | Strobe.TPrim ("parentsOf" as p)
+        | Strobe.TPrim ("prevAllOf" as p)
+        | Strobe.TPrim ("nextAllOf" as p) ->
           begin
             try List.iter2 check [Strobe.KEmbed (KMult (KStrobe Strobe.KStar))] s_args
             with Invalid_argument _ -> 
@@ -109,6 +113,15 @@ struct
                           p (List.length s_args)))
           end;
           KMult (KStrobe Strobe.KStar)
+        | Strobe.TPrim ("selector" as p) ->
+          begin
+            try List.iter2 check [Strobe.KStar] s_args
+            with Invalid_argument _ ->
+              raise (Strobe.Kind_error
+                       (sprintf "%s<> expects one argument, got %d"
+                          p (List.length s_args)))
+          end;
+          KStrobe Strobe.KStar
         | _ -> match extract_k (kind_check_typ env recIds t_op) with
           | Strobe.KArrow (k_args, k_result) ->
             begin 

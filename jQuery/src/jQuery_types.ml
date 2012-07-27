@@ -216,7 +216,9 @@ struct
       | TApp (t, ts) ->
         (match ts with
         | [] -> horz [typ t; text "<>"]
-        | _ -> parens [squish [typ t; angles (intersperse (text ",") (map sigma ts))]])
+        | _ -> parens
+          [squish [typ t; 
+                   angles (add_sep_between (text ",") (map sigma ts))]])
       | TDom (name, t, sel) ->
         namedType name (horzOrVert [horz [typ t; text "@"]; Css.p_css sel])
     and multiplicity m =
@@ -390,25 +392,34 @@ struct
 
 
   let rec extract_mult m = match m with
-    | MPlain t -> (t, fun m -> m)
+    | MPlain t -> ((STyp t), fun s -> begin 
+      match s with
+      | STyp t -> MPlain t
+      | SMult m -> m
+    end)
     | MOne m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MOne (m t))
+      let (s, m) = extract_mult m in
+      (s, fun s -> MOne (m s))
     | MZero m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MZero (m t))
+      let (s, m) = extract_mult m in
+      (s, fun s -> MZero (m s))
     | MOnePlus m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MOnePlus (m t))
+      let (s, m) = extract_mult m in
+      (s, fun s -> MOnePlus (m s))
     | MZeroOne m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MZeroOne (m t))
+      let (s, m) = extract_mult m in
+      (s, fun s -> MZeroOne (m s))
     | MZeroPlus m ->
-      let (t, m) = extract_mult m in
-      (t, fun t -> MZeroPlus (m t))
-    | MId m -> 
-      failwith ("can't handle MId(" ^ m ^ ") here")
-    | MSum _ -> failwith "can't handle MSums here"
+      let (s, m) = extract_mult m in
+      (s, fun s -> MZeroPlus (m s))
+    | MId _
+    | MSum _ ->
+      ((SMult m), fun s -> begin match s with
+      | STyp _ -> failwith "expected multiplicity, got typ"
+      | SMult m -> m
+      end)
+  (* failwith ("can't handle MId(" ^ m ^ ") here") *)
+  (* failwith "can't handle MSums here" *)
 
   let rec rename_avoid_capture (free : IdSet.t) (ys : id list) (t : typ) =
     let fresh_var old = (* a, b, ... z, aa, bb, ..., zz, ... *)
@@ -629,8 +640,11 @@ struct
     | MPlain t -> MOne (MPlain (canonical_type t))
     | MId _ -> MOne m
     | MZero m -> 
-      let (t, f) = extract_mult (c m) in
-      MZero (MPlain t)
+      let (s, f) = extract_mult (c m) in
+      begin match s with
+      | STyp t -> MZero (MPlain t)
+      | SMult m -> MZero m
+      end
     | MOne m -> c m
     | MZeroOne (MPlain t) -> MZeroOne (MPlain (canonical_type t))
     | MZeroOne (MId _) -> m
@@ -770,7 +784,7 @@ struct
           Pat.is_equal p (Pat.singleton "__this__")) ofields in
         begin
           match embed_t thisTyp with
-          | (TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m])) as collapsed ->
+          | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m; prev]) as collapsed ->
             if typ = (simpl_typ env collapsed)
             then collapsed else typ
           | _ -> typ
@@ -815,21 +829,31 @@ struct
 
     match t1, t2 with
     | TStrobe s, TStrobe t -> Strobe.typ_assoc add_strobe assoc_merge env s t
-    | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]),
-      TStrobe (Strobe.TSource (_, Strobe.TObject o)) ->
-
+      (* Cases for two-arg jq *)
+    | TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult; STyp prev]), 
+      TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> 
+      Strobe.traceMsg "JQUERY_typ_assoc: associating jq with an obj";
       begin
         match embed_t (get_this o) with
-        | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
-          mult_assoc env (canonical_multiplicity s) (canonical_multiplicity m)
+        | (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
+                       [SMult this_mult; STyp this_prev])) ->
+            assoc_merge 
+            (mult_assoc env (canonical_multiplicity mult)
+               (canonical_multiplicity this_mult))
+            (typ_assoc env prev this_prev)
         | _ -> IdMap.empty
       end
-    | TStrobe (Strobe.TSource (_, Strobe.TObject o)),
-      TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult s]) ->
+    |  (TStrobe (Strobe.TSource (_, Strobe.TObject o))),
+        (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult; STyp prev])) -> 
+      Strobe.traceMsg "JQuery_typ_assoc: associating an obj with a jq";
       begin
         match embed_t (get_this o) with
-        | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m]) ->
-          mult_assoc env (canonical_multiplicity m) (canonical_multiplicity s)
+        | (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
+                       [SMult this_mult; STyp this_prev])) ->
+            assoc_merge 
+            (mult_assoc env (canonical_multiplicity this_mult)
+               (canonical_multiplicity mult))
+            (typ_assoc env this_prev prev)
         | _ -> IdMap.empty
       end
     | TApp (s1, s2), TApp(t1, t2) ->
@@ -856,7 +880,7 @@ struct
       typ_assoc env s1 s2
     | _ -> IdMap.empty
   and mult_assoc env m1 m2 =
-    (* Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2); *)
+    Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2);
     match m1, m2 with
     | MId m, _ -> IdMap.singleton m (BMultBound(m2, KMult (KStrobe Strobe.KStar)))
     | MPlain t1, MPlain t2 -> typ_assoc env t1 t2

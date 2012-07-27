@@ -128,9 +128,18 @@ struct
     try incr cache_hits; (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
       else match unwrap_t t1, unwrap_t t2 with
-      | TApp(TStrobe (Strobe.TFix(Some "jQ", "jq", _, _)), args1), TApp(TStrobe (Strobe.TFix(Some "jQ", "jq", _, _)), args2) ->
-        if (List.length args1 <> List.length args2) then (cache, false)
-        else List.fold_left2 subtype_sigma_list (cache, true) args1 args2
+      (* Case for handling two-arg jQ types *)
+      | ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m1; p1])) as jq1),
+        ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m2; p2])) as jq2) ->
+        List.fold_left2 subtype_sigma_list (cache, true) [m1;p1] [m2;p2]
+      (* convenience for AnyJQ *)
+      | t1, TStrobe ((Strobe.TId "AnyJQ") as anyJQ) ->
+        subtype_typ env cache t1 (embed_t (Strobe.expose env anyJQ))
+      | ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m1; p1])) as jq1),
+        TForall (Some "AnyJQ", x, _, t) ->
+        let t2 = (replace_name None (sig_typ_subst x p1 t)) in
+        subtype_typ env cache jq1 t2
+      (* default cases *)
       | t1, t2 ->
         let simpl_t1 = simpl_typ env t1 in
         let simpl_t2 = simpl_typ env t2 in
@@ -139,14 +148,25 @@ struct
         with Not_found ->
           (* Strobe.traceMsg "JQUERY ASSUMING %s <: %s, checking for consistency" (string_of_typ t1) (string_of_typ t2); *)
           let cache = SPMap.add (env', STyps (t1, t2)) true cache in
+          let (|||) c thunk = if (snd c) then c else thunk (fst c) in
+          let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
           match unwrap_t simpl_t1, unwrap_t simpl_t2 with
+          | TStrobe (Strobe.TUnion(_, t11, t12)), t2 -> (* order matters -- left side must be split first! *)
+            subtype_typ env cache (embed_t t11) t2 &&& (fun c -> subtype_typ env c (embed_t t12) t2)
+          | t1, TStrobe (Strobe.TUnion(_, t21, t22)) ->
+            subtype_typ env cache t1 (embed_t t21) ||| (fun c -> subtype_typ env c t1 (embed_t t22))
+          | t1, TStrobe (Strobe.TInter(_, t21, t22)) -> (* order matters -- right side must be split first! *)
+            subtype_typ env cache t1 (embed_t t21) &&& (fun c -> subtype_typ env c t1 (embed_t t22))
+          | TStrobe (Strobe.TInter(_, t11, t12)), t2 ->
+            subtype_typ env cache (TStrobe t11) t2 ||| (fun c -> subtype_typ env c (TStrobe t12) t2)
+
           | TStrobe t1, TStrobe t2 -> 
             tc_cache := cache; (* checkpoint state *)
             cache, StrobeSub.subtype env t1 t2
-          | TDom (_, t1, sel1), TDom (_, t2, sel2) ->
+          | ((TDom (_, t1, sel1)) as td1), ((TDom (_, t2, sel2)) as td2) ->
             subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
-          | TDom _, _ -> subtype_typ env cache t1 (TDom(None, t2, Css.all))
-          | _, TDom _ -> subtype_typ env cache (TDom(None, t1, Css.all)) t2
+          | TDom _, _ -> subtype_typ env cache t1 (Env.expose_tdoms env (TDom(None, t2, Css.all)))
+          | _, TDom _ -> subtype_typ env cache (Env.expose_tdoms env (TDom(None, t1, Css.all))) t2
           | TApp _, TApp _ -> cache, false
           (* UNSOUND: Type constructor might not be covariant in its arguments *)
           (* | TApp(t1, args1), TApp(t2, args2) -> *)
