@@ -85,9 +85,8 @@ struct
     | Typ.Kind_error msg ->
       traceMsg "Couldn't check type for %s" (string_of_typ typ);
       raise (Typ.Kind_error (Pos.toString p ^ ": " ^ msg))
-        
+         
   let expose_simpl_typ env typ = expose env (simpl_typ env typ)
-
 
   let rec bind_forall_vars (env : env) (typ : Typ.typ) : env * Typ.typ = match typ with
     | TForall (n, x, s, t) -> bind_forall_vars (Env.bind_typ_id x (Ext.embed_t s) env) (apply_name n t)
@@ -722,11 +721,14 @@ struct
             traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ);
             traceMsg "2In Eapp, tarrow is    %s"
               (string_of_typ (TArrow (arg_typs, None, r)));
-            let sub = ExtTC.assoc_sub env 
+            let sub = (ExtTC.assoc_sub env 
 	            (* NOTE: Can leave the return type out, because we're just
 		             copying it, so it will never yield any information *)
 	            (Ext.embed_t (TArrow (expected_typs, None, TTop)))
-              (Ext.embed_t (TArrow (arg_typs, None, TTop))) in
+              (* Need to expose arg_typs before association to eliminate TIds *)
+              (Ext.embed_t (TArrow ((List.map (fun t -> 
+                expose_simpl_typ env t) arg_typs), 
+                                    None, TTop)))) in
 	          traceMsg "3In Eapp, original return type is %s" (string_of_typ r);
             let ret = Ext.extract_t (sub p typ_vars (Ext.embed_t r)) in
 	          traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret);
