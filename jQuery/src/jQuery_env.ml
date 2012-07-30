@@ -138,7 +138,7 @@ struct
     let (_,cenv) = senv in
     x_of (fst senv) cenv.Desugar.children t
 
-
+  (* TODO: In the example $("p>.tweet").parent(), the return type should be made to be 'p's, not Element *)
   let parent (senv : structureEnv) (t : typ) : multiplicity =
     let (_,cenv) = senv in
     x_of (fst senv) cenv.Desugar.parent t
@@ -156,21 +156,35 @@ struct
     Strobe.traceMsg "In transitive, ";
     let open JQuery in
     let next = canonical_multiplicity (f senv t) in
+    Strobe.traceMsg "next is: %s" (string_of_mult next);
+    let recur () : multiplicity = 
+      let (s, fs) = extract_mult next in
+      begin
+        match s with
+        | STyp t ->
+          MSum (next, fs (SMult (transitive senv t f))) 
+        | SMult m -> next
+      end in
     match next with
     | MZero _
     | MSum (_, _)
     | MId _
-    | MZeroPlus _ (* (MPlain (TStrobe (Strobe.TId "element"))) *)
-    | MZeroOne _ (* (MPlain (TStrobe (Strobe.TId "element"))) *) -> 
-      Strobe.traceMsg "got to the end of transitive calls, returning next";
-      next
-    | _ -> let (s, fs) = extract_mult next in 
-           begin
-           match s with
-           | STyp t -> Strobe.traceMsg "recursively calling transitive"; 
-             MSum (next, fs (SMult (transitive senv t f))) 
-           | SMult m -> next
-           end
+    | _ -> if (t = TStrobe (Strobe.TId "Element")) || (t = TStrobe (Strobe.TTop))
+      then begin match next with
+      (* two consecutive results wrapping an Element stops the recursion *)
+      | MZeroPlus (MPlain (TStrobe (Strobe.TId "Element")))
+      | MZeroPlus (MPlain (TStrobe Strobe.TTop))
+      | MZeroOne (MPlain (TStrobe (Strobe.TId "Element")))
+      | MZeroOne (MPlain (TStrobe Strobe.TTop))
+      | MZero (MPlain (TStrobe (Strobe.TId "Element")))
+      | MZero (MPlain (TStrobe Strobe.TTop))
+      | MOnePlus (MPlain (TStrobe (Strobe.TId "Element")))
+      | MOnePlus (MPlain (TStrobe Strobe.TTop))
+      | MOne (MPlain (TStrobe (Strobe.TId "Element")))
+      | MOne (MPlain (TStrobe Strobe.TTop)) -> next
+      | _ -> recur ()
+      end
+      else recur ()
 
   let nextall (senv : structureEnv) (t : typ) : multiplicity =
     transitive senv t nextsib
@@ -184,15 +198,20 @@ struct
   let find (senv : structureEnv) (t : typ) : multiplicity =
     transitive senv t children
 
-  let filterSel (senv : structureEnv) (t : typ) (sel : string) : multiplicity =
+  let filterSel (env : env) (benv : Desugar.backformEnv) (t : typ) (sel : string) : multiplicity =
     let open JQuery in
-    (* parse the selector *)
-    (* match t with *)
-    (* | TDom (s,t,sels) *)
-    (* backform from the selector *)
+    let s = Css.singleton sel in
+    match t with
+    | TDom (_,t,sels) -> 
+      let idset = backform benv (Css.intersect sels s) in
+      if IdSet.is_empty idset
+      then MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s)))
+      else IdSet.fold (fun id acc -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) idset (MZero (MPlain (TStrobe (Strobe.TTop))))
+      
+    | _ ->
     MZero (MPlain (TStrobe (Strobe.TTop)))
 
-  let filterJQ (senv : structureEnv) (typ : typ) : multiplicity =
+  let filterJQ (benv : Desugar.backformEnv) (typ : typ) : multiplicity =
     let open JQuery in
     MZero (MPlain (TStrobe (Strobe.TTop)))
 
@@ -203,7 +222,7 @@ struct
     let s = Css.singleton sel in
     let idset = backform benv s in
     if IdSet.is_empty idset
-    then MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "element")), s)))
+    then MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s)))
     else IdSet.fold (fun id acc -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) idset (MZero (MPlain (TStrobe (Strobe.TTop))))
 
   (**** End Local Structure ***)
@@ -481,10 +500,21 @@ struct
         failwith "prevAllOf at outermost level"
       | TApp(TStrobe (Strobe.TPrim "nextAllOf"), [STyp t]) ->
         failwith "nextAllOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "oneOf"), [STyp t]) ->
+        failwith "oneOf at outermost level"
       | TApp(t, args) ->
         Strobe.traceMsg "rjq called with TApp : %s" (string_of_typ t);
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult m with
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), [SMult m])), m1) ->
+            let (s, _) = extract_mult m in SMult (
+              begin 
+                match s with
+                | STyp t -> MOne (MPlain t)
+                | SMult m -> (canonical_multiplicity (MOne m))
+              end)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), _)), _) ->
+            failwith "oneOf not called with a single mult argument"
           | (STyp (TApp ((TStrobe (Strobe.TPrim "childrenOf")), [SMult m])), m1) ->
             let (s, m2) = extract_mult m in
             begin match s with
