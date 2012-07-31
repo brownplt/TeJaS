@@ -267,14 +267,19 @@ struct
 
   let bind x b (env : env) : env = 
     let bs = try IdMap.find x env with Not_found -> [] in
-    let bs = List.filter (fun b' -> match unwrap_b b', b with
-      | BMultBound _, BMultBound _
-      | BStrobe (Strobe.BTermTyp _), BStrobe (Strobe.BTermTyp _)
-      | BStrobe (Strobe.BTypBound _), BStrobe (Strobe.BTypBound _)
-      | BStrobe (Strobe.BTyvar _), BStrobe (Strobe.BTyvar _)
-      | BStrobe (Strobe.BLabelTyp _), BStrobe (Strobe.BLabelTyp _) -> false
-      | _ -> true) bs in
-    IdMap.add x (b::bs) env
+    match bs, b with
+    (* hack to make sure that when adding bindings of TDoms to the environment, the new binding gets unioned with existing ones *)
+    | [BStrobe (Strobe.BTypBound ((Strobe.TEmbed (TDom (name1, node1, sel1))), k1))], BStrobe (Strobe.BTypBound ((Strobe.TEmbed (TDom (name2, node2, sel2))), k2)) -> 
+      if name1 = name2 then IdMap.add x [(BStrobe (Strobe.BTypBound ((Strobe.TEmbed (TDom (name1, node1, Css.union sel1 sel2))), k1)))] env else failwith "trying to bind two TDoms with different TIds to the same TId"
+    | _ ->
+      let bs = List.filter (fun b' -> match unwrap_b b', b with
+        | BMultBound _, BMultBound _
+        | BStrobe (Strobe.BTermTyp _), BStrobe (Strobe.BTermTyp _)
+        | BStrobe (Strobe.BTypBound _), BStrobe (Strobe.BTypBound _)
+        | BStrobe (Strobe.BTyvar _), BStrobe (Strobe.BTyvar _)
+        | BStrobe (Strobe.BLabelTyp _), BStrobe (Strobe.BLabelTyp _) -> false
+        | _ -> true) bs in
+      IdMap.add x (b::bs) env
   let bind' x b (env : env) = bind x (JQuery.embed_b b) env
   let bind_id x t (env : env) = bind' x (Strobe.BTermTyp (JQuery.extract_t t)) env
   let bind_lbl x t env = bind' x (Strobe.BLabelTyp (JQuery.extract_t t)) env
@@ -356,7 +361,9 @@ struct
     let desugar_typ p t = JQuery.extract_t (Desugar.desugar_typ p t) in
     let rec add recIds env decl = match decl with
       | Decl (p, dc) -> 
-        let (tdoms, structure) = Desugar.desugar_structure p !senv dc in
+        let (tdoms, structure) = Desugar.desugar_structure p !senv (collect_decls (List.fold_left (fun acc env_decl -> match env_decl with
+          | Decl (_, dc) -> dc::acc
+          | _ -> acc) [] lst)) dc in
         senv := structure;
         IdMap.fold bind_typ_id tdoms env
       | EnvBind (p, x, typ) ->
