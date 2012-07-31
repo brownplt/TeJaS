@@ -32,5 +32,6 @@ module MakeExt :
   with type multiplicity = JQuery.multiplicity
   with type binding = Env.binding
   with type sigma = JQuery.sigma
+  with type structureEnv = Desugar.structureEnv
   with type env = Env.env
   with type env_decl = Env.env_decl)

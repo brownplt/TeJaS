@@ -25,6 +25,7 @@ module type DESUGAR = sig
   val desugar_typ : Pos.t -> W.t -> typ
   val desugar_structure : Pos.t -> structureEnv ->  W.declComp -> (typ IdMap.t * structureEnv) 
   val empty_structureEnv : structureEnv
+  exception Local_structure_error of string
 end
 
 module Make
@@ -43,7 +44,7 @@ struct
   type kind = JQ.kind
   type multiplicity = JQ.multiplicity
   module Css = JQ.Css
-
+    
   exception Typ_stx_error of string
 
   (* Local Structure types *)
@@ -67,6 +68,8 @@ struct
   type preStructureEnv = backformEnv * preClauseEnv
 
   type structureEnv = backformEnv * clauseEnv  (* Exposed *)
+
+  exception Local_structure_error of string
 
   (* END Local Structure types *)
 
