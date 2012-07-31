@@ -28,7 +28,8 @@ module MakeExt
   (Desugar : Typedjs_desugar.DESUGAR
    with type typ = JQuery.typ
   with type kind = JQuery.kind
-  with type multiplicity = JQuery.multiplicity)
+  with type multiplicity = JQuery.multiplicity
+  with type backformSel = JQuery.sel)
   : (JQUERY_TYP_ENV
      with type typ = JQuery.typ
   with type kind = JQuery.kind
@@ -68,27 +69,31 @@ struct
     | _ -> t
 
   let backform (benv : Desugar.backformEnv) (sels : sel) : IdSet.t = (* IdSet.singleton "test" *)
-    let open Typedjs_desugar in let open Desugar in 
-    let rec list2lsidset l = (match l with
-      | [] -> IdSet.empty
-      | h::t -> IdSet.add h (list2lsidset t)) in
-    let simples = Css.targets sels in
-    let classes = SimpleSelSet.fold (fun (a,specs) (acc : string list)->
-      (acc @ (List.fold_left (fun acc s -> match s with
-      | SpClass s -> s::acc
-      | _ -> acc) [] specs))) simples [] in
-    let classMap = benv.classes in
-    let classMatches = match classes with
-      | [] -> IdSet.empty
-      | hd::tl -> List.fold_left (fun acc c ->
-        try IdSet.inter acc (list2lsidset (StringMap.find c classMap))
-        with Not_found -> IdSet.empty)
-        (try (list2lsidset (StringMap.find
-                              hd
-                              classMap))
-         with Not_found -> IdSet.empty)
-        tl in
-    classMatches
+    let open Typedjs_desugar in 
+    let open Desugar in
+    IdMap.fold (fun (id : id) (s : sel) (acc : IdSet.t) -> 
+    if Css.is_overlapped s sels then IdSet.add id acc else acc)
+      benv IdSet.empty
+  (* let rec list2lsidset l = (match l with *)
+  (*   | [] -> IdSet.empty *)
+  (*   | h::t -> IdSet.add h (list2lsidset t)) in *)
+  (* let simples = Css.targets sels in *)
+  (* let classes = SimpleSelSet.fold (fun (a,specs) (acc : string list)-> *)
+  (*   (acc @ (List.fold_left (fun acc s -> match s with *)
+  (*   | SpClass s -> s::acc *)
+  (*   | _ -> acc) [] specs))) simples [] in *)
+  (* let classMap = benv.classes in *)
+  (* let classMatches = match classes with *)
+  (*   | [] -> IdSet.empty *)
+  (*   | hd::tl -> List.fold_left (fun acc c -> *)
+  (*     try IdSet.inter acc (list2lsidset (StringMap.find c classMap)) *)
+  (*     with Not_found -> IdSet.empty) *)
+  (*     (try (list2lsidset (StringMap.find *)
+  (*                           hd *)
+  (*                           classMap)) *)
+  (*      with Not_found -> IdSet.empty) *)
+  (*     tl in *)
+  (* classMatches *)
 
   (* let children_of (senv : structureEnv) (t : typ) : multiplicity =  *)
   (*   let ClauseEnv (chxildMap, _, _, _) = (snd senv) in  *)
@@ -234,17 +239,12 @@ struct
     let (benv, cenv) = senv in
     let print_id id= text id in
     let print_benv_key = text in
-    let print_benv_val ids = 
-      horzOrVert (List.fold_left (fun a id -> (print_id id)::a) [] ids) in
+    let print_benv_val = Css.p_css in
     let print_cenv_key = print_id in
     let print_cenv_val = JQuery.Pretty.multiplicity in
     label lbl [text "Backform Environment";
-               (Typedjs_desugar.StringMapExt.p_map "Classes" empty 
-                  print_benv_key print_benv_val benv.classes);
-               (Typedjs_desugar.StringMapExt.p_map "Optional Classes" 
-                  empty print_benv_key print_benv_val benv.optClasses);
-               (Typedjs_desugar.StringMapExt.p_map "Ids" 
-                  empty print_benv_key print_benv_val benv.ids);
+               (IdMapExt.p_map ""
+                  empty print_benv_key print_benv_val benv);
                text "Clause Environment";
                (IdMapExt.p_map "Children Clause" 
                   empty print_cenv_key print_cenv_val cenv.children);

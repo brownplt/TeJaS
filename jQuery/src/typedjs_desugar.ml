@@ -10,11 +10,10 @@ module type DESUGAR = sig
   type typ
   type kind
   type multiplicity
+  type backformSel
   type clauseMap = multiplicity IdMap.t
-  type backformMap = id list StringMap.t
-  type backformEnv = { classes : backformMap;
-                       optClasses : backformMap;
-                       ids :  backformMap }
+
+  type backformEnv = backformSel IdMap.t
 
   type clauseEnv = { children : clauseMap; 
                      parent : clauseMap; 
@@ -37,23 +36,22 @@ module Make
   : (DESUGAR 
      with type typ = JQ.typ
   with type kind = JQ.kind
-  with type multiplicity = JQ.multiplicity) =
+  with type multiplicity = JQ.multiplicity
+  with type backformSel = JQ.sel) =
 struct
   type typ = JQ.typ
   type kind = JQ.kind
   type multiplicity = JQ.multiplicity
   module Css = JQ.Css
+  type backformSel = JQ.sel
 
   exception Typ_stx_error of string
 
   (* Local Structure types *)
   type preClauseMap = id option list IdMap.t
   type clauseMap = multiplicity IdMap.t
-  type backformMap = id list StringMap.t
 
-  type backformEnv = { classes : backformMap;
-                       optClasses : backformMap;
-                       ids :  backformMap }
+  type backformEnv = Css.t IdMap.t
 
   type clauseEnv = { children : clauseMap; 
                      parent : clauseMap; 
@@ -229,9 +227,7 @@ struct
 
 
   let empty_structureEnv = 
-    ({classes = StringMap.empty;
-      optClasses = StringMap.empty;
-      ids = StringMap.empty;},
+    (IdMap.empty,
      {children = IdMap.empty;
       parent = IdMap.empty;
       prev = IdMap.empty;
@@ -253,6 +249,7 @@ struct
     **)
     let gen_bindings (dc : W.declComp) : typ IdMap.t =
       let generateSels ((classes, optClasses, ids) : W.attribs) (comb : Css.combinator) (sel : Css.t) (node : string) : Css.t =
+        let nodesel = node in
         let clsel = "." ^ (String.concat "." classes) in
         (* TODO: Account for ids and optional classes
            let optclsels = clsel :: (List.map ((^) (clsel ^ ".")) optClasses) in
@@ -260,7 +257,7 @@ struct
            (List.map (fun id -> List.map ((^) ("#" ^ id)) optclsels) ids) in *)
         match comb with
         (* The Desc combinator should only be used as a dummy value *)
-        | Css_syntax.Desc -> (Css.singleton clsel)
+        | Css_syntax.Desc -> (Css.singleton (nodesel ^ clsel))
         | _ -> Css.concat_selectors sel comb (Css.singleton clsel) in
       let rec compileComp (ids : typ IdMap.t) (dc : W.declComp) (comb : Css.combinator) (prev : Css.t) = 
         let (name,_,nodeType,attribs, content) = dc in
@@ -303,7 +300,6 @@ struct
         Compile takes a structure environment (the accumulator) and a declaration component, compiles structure information from the declComp and adds it to the existing structureEnv.
     **)
     let compile (senv : structureEnv) (dc : W.declComp)  : structureEnv = 
-      
       let element = "Element" in
       
       (** Function: enforcePresence
@@ -329,19 +325,8 @@ struct
 
         (* parts of dc, which is the 'parent' *)
         let (pname, _, nodeType, (classes, optClasses, ids), pcontents) = dc in
+
         (*** Helper functions *)
-        (** Function: add2backfromMap
-            ==================================================
-            add2backfromMap takes an id, a list of strings (required classes, ids, optional classes), a backformMap, and adds the bindings from each of the strings to the id into backformMap.
-        **)
-        let add2backformMap (id : id) (strs : string list) (bm : backformMap) 
-            : backformMap =
-          List.fold_left (fun bm s ->
-            let toAdd = 
-              if StringMap.mem s bm then (id::(StringMap.find s bm)) else [id] in
-            StringMap.add s toAdd bm) bm strs in
-
-
         (** Function: update
             ==================================================
             update takes a source id, a target id option, a preClauseMap and adds the binding from source id to target id option to the preClauseMap. It assumes that the presence of source id is already enforced in the preClauseMap.
@@ -414,12 +399,6 @@ struct
                pce_prev = (update name2 (Some name1) prev);
                pce_next = (update name1 (Some name2) next)} tail) in
 
-        
-        (* backformEnv updated for this W.declComp *)
-        let newBackformEnv = 
-          {classes = (add2backformMap pname classes benv.classes);
-           optClasses = (add2backformMap pname optClasses benv.optClasses);
-           ids = (add2backformMap pname ids benv.ids) } in
 
         (* Enforce all ids that show up (regardless of whether or not it has been declared before) in the W.declComp *)
         let enforcedPreClauseEnv = List.fold_left (fun pcenv dcc -> match dcc with
@@ -436,22 +415,20 @@ struct
           match dcc with
           | W.DNested dc -> compileComp psenv dc
           | _ -> psenv)
-          (newBackformEnv, newPreClauseEnv)
+          (benv, newPreClauseEnv)
           pcontents in
 
       (*** Body of compile ***)
 
       (* start with empty preStructureEnv *)
       let empty_psenv =
-        ({classes = StringMap.empty;
-          optClasses = StringMap.empty;
-          ids = StringMap.empty;},
+        (IdMap.empty,
          {pce_children = IdMap.empty;
           pce_parent = IdMap.empty;
           pce_prev = IdMap.empty;
           pce_next = IdMap.empty}) in
 
-      let (benv_complete, pcenv) = compileComp empty_psenv dc in
+      let (_, pcenv) = compileComp empty_psenv dc in
 
       (** Function: transformPCM
           ==================================================
@@ -538,35 +515,39 @@ struct
       
       
       (* return final structureEnv, adding bindings for element in each of the maps *)
-      let new_benv = benv_complete in
       let new_cenv = {children = IdMap.add element (JQ.MZeroPlus (wrap_id element)) (transformPCM pcenv.pce_children transform_children);
                       parent = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_parent transform_parent);
                       prev = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_prev transform_sibs);
                       next = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_next transform_sibs)} in
 
-      let (old_benv, old_cenv) = senv in
-      let bMap_merge (map1 : backformMap) (map2 : backformMap) : backformMap =
-        StringMap.merge (fun (k : string) (v1 : id list option) (v2 : id list option) -> 
-          match v1,v2 with
-          | Some ids1, Some ids2 -> Some (ids1 @ ids2)
-          | _, None -> v1
-          | None, _ -> v2) map1 map2 in
+      let (benv, old_cenv) = senv in
+
       let cMap_merge (map1 : clauseMap) (map2 : clauseMap) : clauseMap =
         IdMap.merge (fun (key : id) (v1 : multiplicity option) (v2 : multiplicity option) ->
           match v1, v2 with
           | Some m1, Some m2 -> Some (JQ.MSum (m1, m2))
           | _, None -> v1
           | None, _ -> v2) map1 map2 in
-      ({classes = bMap_merge old_benv.classes new_benv.classes;
-        optClasses = bMap_merge old_benv.optClasses new_benv.optClasses;
-        ids = bMap_merge old_benv.ids new_benv.ids;},
+      (benv,
        {children = cMap_merge old_cenv.children new_cenv.children;
         parent = cMap_merge old_cenv.parent new_cenv.parent;
         prev = cMap_merge old_cenv.prev new_cenv.prev;
         next = cMap_merge old_cenv.next new_cenv.next}) in
     
     (* Body of desugar_structure *)
-    (gen_bindings dc, compile senv dc)
+    let bEnv_merge (env1 : backformEnv) (env2 : backformEnv) : backformEnv =
+      IdMap.merge (fun (key : id) (v1 : Css.t option) (v2 : Css.t option) -> match v1, v2 with
+      | Some sel1, Some sel2 -> Some (Css.union sel1 sel2)
+      | _, None -> v1
+      | None, _ -> v2) env1 env2 in
+    
+    let bindings = gen_bindings dc in
+    let (old_benv, new_cenv) = compile senv dc in
+    let new_benv = IdMap.map (fun t -> match t with
+      | JQ.TDom (_, _, sel) -> sel
+      | _ -> failwith "impossible: gen_bindings should only produce bindings from ids to TDoms") bindings in
+
+    (bindings, (bEnv_merge new_benv old_benv, new_cenv))
       
 
 end
