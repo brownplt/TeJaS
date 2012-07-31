@@ -73,8 +73,6 @@ and JQueryTC : (JQuery_sigs.JQUERY_TYPECHECKING
   with type exp = Exp.exp) =
   JQuery_typechecking.Make (JQueryMod) (Exp) (JQEnv) (JQuerySub) (JQuery_kind) (StrobeTC)
 
-
-
 type arith = 
   | Var of int
   | Zero
@@ -137,8 +135,6 @@ let random_mult closed =
   helper
 
 
-
-
 let text t = text t std_formatter
 let int n = int n std_formatter
 let print_arith a = print_arith a std_formatter
@@ -152,18 +148,23 @@ let print_env env : unit =
   JQEnv.print_env env std_formatter;
   Format.print_newline ()
 
-let test_harness test =
+
+(********************************* Tests **************************************)
+
+exception STest_failure of string
+
+let test_harness test fail_msg =
   let margin = pp_get_margin std_formatter () in
   let max_indent = pp_get_max_indent std_formatter () in
   try
     pp_set_margin std_formatter 120;
     pp_set_max_indent std_formatter 10000;
     test ()
-  with e ->
-    Printf.eprintf "got an error\n";
+  with e -> 
     pp_set_margin std_formatter margin;
     pp_set_max_indent std_formatter max_indent;
-    (* Printf.eprintf (Printexc.to_string e); *)
+    let emsg = Printexc.to_string e in
+    Printf.eprintf "%s, exception: %s" fail_msg emsg; 
     raise e
 
 let test1 n =
@@ -180,7 +181,7 @@ let test1 n =
     test1_help n (arith 6);
     test1 (n-1)
   end in
-  test_harness (fun _ -> test1 n)
+  test_harness (fun _ -> test1 n) "test1 failed"
 
 let test2 n =
   let test2_help n a1 a2 = 
@@ -211,7 +212,7 @@ let test2 n =
     test2_help n (arith 6) (arith 6);
     test2 (n-1)
   end in
-  test_harness (fun _ -> test2 n)
+  test_harness (fun _ -> test2 n) "test2 failed"
 
 let test3 n =
   let test3_help n m1 m2 =
@@ -232,7 +233,7 @@ let test3 n =
     test3_help n (random_mult true 3) (random_mult false 6);
     test3 (n-1)
   end in
-  test_harness (fun _ -> test3 n)
+  test_harness (fun _ -> test3 n) "test3 failed"
 
 (* let test4 () = *)
 (*   let test4 () = begin *)
@@ -310,7 +311,7 @@ let test3 n =
 (*     (\* text "Cache misses: "; int !JQuery_subtyping.cache_misses; newline (); *\) *)
 (*     (\* JQuery_subtyping.print_cache "Cache is: " std_formatter; newline() *\) *)
 (*   end in *)
-(*   test_harness test4 *)
+(*   test_harness test4 "test4 failed"*)
 
 let test5 () = 
   let open Typedjs_writtyp.WritTyp in
@@ -337,12 +338,12 @@ let test5 () =
       Format.print_newline ();
       print_env env;
     end in
-  test_harness helper
+  test_harness helper "test5 failed"
 
 let test6 n =
   let test6 n =
     Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels n);
-  in test_harness (fun _ -> test6 n)
+  in test_harness (fun _ -> test6 n) "test6_failed"
 
 let test7 () =
   let helper () =
@@ -382,7 +383,7 @@ type y = jQ<1+<abDom>>;
     Printf.eprintf "%s\n" (FormatExt.to_string JQEnv.print_env env);
     Printf.eprintf "Subtyping success: %b\n" 
       (JQuerySub.subtype env (JQ.TStrobe (S.TId "x")) (JQ.TStrobe (S.TId "y")))
-  in test_harness helper
+  in test_harness helper "test7 failed"
 
 let well_formed_test () =
   let check_well_formed t b = match (JQ.well_formed t, b) with
@@ -429,7 +430,7 @@ let well_formed_test () =
   end
 
 let run_tests () =
-  (* try *)
+  try
     (* Random.self_init(); *)
     (* test1 500; *)
     (* test2 500; *)
@@ -438,8 +439,9 @@ let run_tests () =
     (* test5 (); *)
     (* test6 1000; *)
     (* test7 (); *)
-    (* well_formed_test (); *)
-    test5 ();
+    well_formed_test ();
+    (* test5 (); *)
+    Printf.eprintf "All tests passed!";
     0
-  (* with _ -> 2 *)
+  with _ -> 2
 ;;
