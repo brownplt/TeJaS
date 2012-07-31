@@ -91,7 +91,7 @@ struct
     classMatches
 
   (* let children_of (senv : structureEnv) (t : typ) : multiplicity =  *)
-  (*   let ClauseEnv (childMap, _, _, _) = (snd senv) in  *)
+  (*   let ClauseEnv (chxildMap, _, _, _) = (snd senv) in  *)
   (*   let rec get_children_of t =  *)
   (*     match t with *)
   (*     | TDom (s,t,sels) -> *)
@@ -339,8 +339,21 @@ struct
 
 
   let extend_global_env env lst =
-    let desugar_typ p t = JQuery.extract_t (Desugar.desugar_typ p t) in
     let open Typedjs_writtyp.WritTyp in
+    let rec collect_decls (lst : declComp list) : declComp IdMap.t =
+      List.fold_left (fun acc decl -> 
+        let (name, _, _, _, contents) = decl in
+        let compList = 
+          List.fold_left (fun l dcc -> match dcc with
+          | DNested d -> d::l
+          | _ -> l) [] contents in
+        IdMap.merge (fun k d1 d2 -> match (d1,d2) with
+        | Some _, Some _ -> failwith "malformed declaration: same id bound multiple times"
+        | d, None
+        | None, d -> d)
+          acc (IdMap.add name decl (collect_decls compList))
+      ) IdMap.empty lst in
+    let desugar_typ p t = JQuery.extract_t (Desugar.desugar_typ p t) in
     let rec add recIds env decl = match decl with
       | Decl (p, dc) -> 
         let (tdoms, structure) = Desugar.desugar_structure p !senv dc in
