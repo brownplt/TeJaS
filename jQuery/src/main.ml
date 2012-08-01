@@ -397,4 +397,6 @@ with
   | Strobe.Kind_error s ->
       eprintf "type error (kinding): %s\n" s; exit 2
   | Desugar.Typ_stx_error s ->
-      eprintf "type error (annotation): %s\n" s; exit 2
+      eprintf "type error (annotation): %s\n" s; exit 2 
+  | Desugar.Local_structure_error s ->
+    eprintf "local structure error: %s\n" s; exit 2

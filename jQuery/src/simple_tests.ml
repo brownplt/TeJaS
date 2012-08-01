@@ -73,8 +73,6 @@ and JQueryTC : (JQuery_sigs.JQUERY_TYPECHECKING
   with type exp = Exp.exp) =
   JQuery_typechecking.Make (JQueryMod) (Exp) (JQEnv) (JQuerySub) (JQuery_kind) (StrobeTC)
 
-
-
 type arith = 
   | Var of int
   | Zero
@@ -137,8 +135,6 @@ let random_mult closed =
   helper
 
 
-
-
 let text t = text t std_formatter
 let int n = int n std_formatter
 let print_arith a = print_arith a std_formatter
@@ -152,18 +148,23 @@ let print_env env : unit =
   JQEnv.print_env env std_formatter;
   Format.print_newline ()
 
-let test_harness test =
+
+(********************************* Tests **************************************)
+
+exception STest_failure of string
+
+let test_harness test fail_msg =
   let margin = pp_get_margin std_formatter () in
   let max_indent = pp_get_max_indent std_formatter () in
   try
     pp_set_margin std_formatter 120;
     pp_set_max_indent std_formatter 10000;
     test ()
-  with e ->
-    Printf.eprintf "got an error\n";
+  with e -> 
     pp_set_margin std_formatter margin;
     pp_set_max_indent std_formatter max_indent;
-    (* Printf.eprintf (Printexc.to_string e); *)
+    let emsg = Printexc.to_string e in
+    Printf.eprintf "%s, EXCEPTION: %s" fail_msg emsg; 
     raise e
 
 let test1 n =
@@ -180,7 +181,7 @@ let test1 n =
     test1_help n (arith 6);
     test1 (n-1)
   end in
-  test_harness (fun _ -> test1 n)
+  test_harness (fun _ -> test1 n) "test1 failed"
 
 let test2 n =
   let test2_help n a1 a2 = 
@@ -211,7 +212,7 @@ let test2 n =
     test2_help n (arith 6) (arith 6);
     test2 (n-1)
   end in
-  test_harness (fun _ -> test2 n)
+  test_harness (fun _ -> test2 n) "test2 failed"
 
 let test3 n =
   let test3_help n m1 m2 =
@@ -232,7 +233,7 @@ let test3 n =
     test3_help n (random_mult true 3) (random_mult false 6);
     test3 (n-1)
   end in
-  test_harness (fun _ -> test3 n)
+  test_harness (fun _ -> test3 n) "test3 failed"
 
 (* let test4 () = *)
 (*   let test4 () = begin *)
@@ -310,7 +311,7 @@ let test3 n =
 (*     (\* text "Cache misses: "; int !JQuery_subtyping.cache_misses; newline (); *\) *)
 (*     (\* JQuery_subtyping.print_cache "Cache is: " std_formatter; newline() *\) *)
 (*   end in *)
-(*   test_harness test4 *)
+(*   test_harness test4 "test4 failed"*)
 
 let test5 () = 
   let open Typedjs_writtyp.WritTyp in
@@ -337,12 +338,12 @@ let test5 () =
       Format.print_newline ();
       print_env env;
     end in
-  test_harness helper
+  test_harness helper "test5 failed"
 
 let test6 n =
   let test6 n =
     Printf.printf "All CSS succeeded: %b\n" (TestRealCSS.testSels n);
-  in test_harness (fun _ -> test6 n)
+  in test_harness (fun _ -> test6 n) "test6_failed"
 
 let test7 () =
   let helper () =
@@ -382,7 +383,7 @@ type y = jQ<1+<abDom>>;
     Printf.eprintf "%s\n" (FormatExt.to_string JQEnv.print_env env);
     Printf.eprintf "Subtyping success: %b\n" 
       (JQuerySub.subtype env (JQ.TStrobe (S.TId "x")) (JQ.TStrobe (S.TId "y")))
-  in test_harness helper
+  in test_harness helper "test7 failed"
 
 let well_formed_test () =
   let check_well_formed t b = match (JQ.well_formed t, b) with
@@ -428,8 +429,225 @@ let well_formed_test () =
     check_well_formed t8 false
   end
 
+
+(* TEST: structure_well_formed_test 
+   - Tests that the local structure well-formedness function is working
+     properly *)
+let structure_well_formed_test () = 
+  let module D = Desugar in
+  let module W = Typedjs_writtyp.WritTyp in
+
+  (* consumes: 
+     d (string): the local structure declarations
+     fail (bool): indicates whether or not a Local_structure_exception
+                  is expected
+     produces: unit
+     
+     1) empty JQEnv.senv
+     2) parse d
+     3) extend_global_env with parsed decls and some dummy element types
+     4) empty JQEnv.senv *)
+  let well_formed_wrapper d pass = 
+    let old_env = !JQEnv.senv in
+    JQEnv.senv := D.empty_structureEnv;
+    (* let mock_elements =  *)
+    (*   "type Element = #{ name : Str };  *)
+    (*    type DivElement = #{ name : /\"HTMLDivElement\"/ };" in *)
+    let env = JQEnv.parse_env d 
+      "Simple_tests: Structure well-formedness test" in
+
+    let decls = ListExt.filter_map (fun d -> match d with
+      | W.Decl (_, dc) -> Some dc | _ -> None) env in
+
+    try
+      ignore(D.well_formed_structure decls);
+      JQEnv.senv := old_env;
+      if (not pass) then raise (STest_failure "Well-formed test should have raised an exception")
+    with e -> 
+      JQEnv.senv := old_env;
+      match e with 
+      | D.Local_structure_error m -> if (not pass) then () else raise e
+      | _ -> raise e in
+
+  let fail_msg n =
+    "Structure_well_formed_test #" ^ (string_of_int (n+1)) ^ " failed" in
+
+  (* well-formedness tests *)
+  let test_harness n f = test_harness f (fail_msg n) in
+  let iteri f l =
+    let rec helper n l =
+      match l with
+      | [] -> ()
+      | hd::tl -> f n hd; helper (n+1) tl in
+    helper 0 l in
+
+
+  iteri test_harness [ 
+
+    (**** Rule 1: Cannot have more than one comp with the same id in
+          the entire env. *)
+    
+    (* Test 1: Dupes in two top-level comps *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1])
+       (A : Element classes=[a2])" false );
+    
+    (* Test 2: Nested dupes in same top-level comp *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (B : Element classes=[b1])
+           (C : DivElement classes=[c1]
+             (B : DivElement classes=[b2])))" false);
+
+    (* Test 3: Dupes on the same level in the same top-level comp*)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (B : DivElement classes=[b1])
+         (B : Element classes=[b2]))" false );
+
+
+    (* Test 4: Dupes in different levels and different top-level comps *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (C : DivElement classes=[c1]
+           (B : Element classes=[b1])))
+       (D : DivElement classes=[d1]
+         (E : Element classes=[e1]
+           (F : DivElement classes=[f1]
+             (B : DivElement classes=[b2]))))" false );
+
+    (* Test 5: Can have multiple dupe ids so long as there is only one comp*)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (C : DivElement classes=[c1])
+         (B : Element classes=[b1])
+         <B>
+         (D : DivElement classes=[d1])
+         <B>)" true );
+
+    
+    (**** Rule 2 DIds can only appear on the same level as a previous sibling
+        DNested declComp with the same id
+          
+          Rule 2: DIds can only be on the same level after their respective
+          comps *)
+
+    (* Test 6: DId cannot appear before comp *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         <B>
+         (C : DivElement classes=[c1])
+         (B : DivElement classes=[b1]))" false );
+
+    (* Test 7: DId can appear after comp *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (B : DivElement classes=[b1])
+         (C : DivElement classes=[c1])
+         <B>)" true );
+
+
+    (* Test 8: Can have as many DIds as wanted on the same level so 
+       long as they appear after their respective comp *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (B : DivElement classes=[b1])
+         <B>
+         (C : DivElement classes=[b1])
+         <B>
+         <B>
+         <B>)" true );
+
+
+    (**** Rule 3: DIds cannot be used on any level other than their 
+          respective comps *)
+
+    (* Test 9: Can't be used above *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (C : DivElement classes=[c1]
+           (B : DivElement classes=[b1]))
+         <B>)" false );
+
+    (* Test 10: Can be used below *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (B : DivElement classes=[b1])
+         (C : DivElement classes=[c1])
+         (D : DivElement classes=[d1])
+         <B>)" true);
+
+    (* Test 11: Crossover nested in a top-level comp *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (C : DivElement classes=[c1]
+           <B>))
+       (D : DivElement classes=[d1]
+         (B : Element classes=[b2]))" false);
+
+    (* Test 12: Crossover with a top-level comp *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         <B>)
+       (B : DivElement classes=[b1])" false );
+
+    
+    (**** Rule 4: Cannot have two consectutive placeholders *)
+    
+    (* Test 13: Can't have only two placeholders as children *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         ...
+         ...)" false);
+
+
+    (* Test 14: Can't have only adjacent placeholders at beginning *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         ...
+         ...
+         (B: DivElement classes=[b1])
+         (C: DivElement classes=[c1]))" false);
+
+
+    (* Test 15: Can't have two adjacent placeholders in middle *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (B: DivElement classes=[b1])
+         ...
+         ...
+         (C: DivElement classes=[c1]))" false);
+
+    (* Test 16: Can't have two adjacent placeholders at end *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         (B: DivElement classes=[b1])
+         (C: DivElement classes=[c1])
+         ...
+         ...)" false);
+
+    (* Test 17: Can have alternating placeholders *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         ...
+         (B: DivElement classes=[b1])
+         ...
+         (C: DivElement classes=[c1])
+         ...)" true);
+
+
+    (* Test 18: Can have single placeholder child *)
+    (fun _ -> well_formed_wrapper
+      "(A : DivElement classes=[a1]
+         ...)" true);
+
+
+  ] (* End list of tests *)
+
+(* end structure_well_formed_test *)
+
 let run_tests () =
-  (* try *)
+  try
     (* Random.self_init(); *)
     (* test1 500; *)
     (* test2 500; *)
@@ -439,7 +657,9 @@ let run_tests () =
     (* test6 1000; *)
     (* test7 (); *)
     (* well_formed_test (); *)
-    test5 ();
+    structure_well_formed_test ();
+    (* test5 (); *)
+    Printf.eprintf "All tests passed!";
     0
-  (* with _ -> 2 *)
+  with _ -> 2
 ;;

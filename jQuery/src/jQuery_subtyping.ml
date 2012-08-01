@@ -208,7 +208,7 @@ struct
     | MOne _, _ -> (cache, false) (* not canonical! *)
     | MZero (MPlain t1), MZero (MPlain t2)
     | MZero (MPlain t1), MZeroOne (MPlain t2)
-    | MZero (MPlain t1), MOnePlus (MPlain t2) -> subtype_typ cache t1 t2
+    | MZero (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
     | MZero _, _ -> (cache, false)
     | MZeroOne (MPlain t1), MZeroOne (MPlain t2)
     | MZeroOne (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2

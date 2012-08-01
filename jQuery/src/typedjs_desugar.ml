@@ -22,8 +22,10 @@ module type DESUGAR = sig
   type structureEnv = (backformEnv * clauseEnv)
   exception Typ_stx_error of string
   val desugar_typ : Pos.t -> W.t -> typ
+  val well_formed_structure : W.declComp list -> W.declComp list
   val desugar_structure : Pos.t -> structureEnv ->  W.declComp IdMap.t -> W.declComp ->  (typ IdMap.t * structureEnv) 
   val empty_structureEnv : structureEnv
+  exception Local_structure_error of string
 end
 
 module Make
@@ -65,6 +67,8 @@ struct
   type preStructureEnv = backformEnv * preClauseEnv
 
   type structureEnv = backformEnv * clauseEnv  (* Exposed *)
+
+  exception Local_structure_error of string
 
   (* END Local Structure types *)
 
@@ -239,7 +243,87 @@ struct
     with Typ_stx_error msg ->
       raise (Typ_stx_error (Pos.toString p ^ msg))
 
-  
+
+  (* Consumes: 
+     dcs (declComp list): list of top-level declComps
+     Produces: dcs
+
+     Recursively traverses the local structure defined by dcs, 
+     and performs several well-formedness checks. Rejects
+     malformed structures by raising Local_structure_error exceptions
+     Produces: original dcs, otherwise raises exception
+     
+     Well-formedness rules: 
+     1) Cannot have more than one DeclComp with the same id
+     2) DIds can only appear on the same level as a previous sibling
+        DNested declComp with the same id
+     4) Cannot have two consecutive placeholders  *)
+  let well_formed_structure (dcs : W.declComp list) : W.declComp list =
+
+    (* Helper: raises Local_structure_error with 
+       "Local structure is not well-formed: msg" *)
+    let raise_lse msg = 
+      raise (Local_structure_error 
+               ("Local structure is not well-formed: " ^ msg)) in
+    
+    (* Helper: raises exception if id is in defined, otherwise adds *)
+    let check_add defined id = 
+      if IdSet.mem id defined then
+        raise_lse ("id " ^ id ^ " has already been defined")
+      else IdSet.add id defined in
+        
+    (* Consumes :
+       defined IdSet.t: presence of id 'x' indicates DeclComp with name 'x'
+         has already been found
+       dc (W.declComp): the declComp to process
+       
+       Produces: IdSet: updated set. Raises exception if declComp causes
+         well-formedness error *)
+    let rec wf_dc (defined : IdSet.t) (dc : W.declComp) : IdSet.t = 
+
+      let (name,_,_,_,content) = dc in
+
+      (* Rule 1 *)
+      let new_defined = check_add defined name in
+
+      let wf_dcc dccs = 
+        let rec helper acc dccs = 
+          let (local_defined, defined) = acc in 
+          match dccs with
+          | [] -> acc
+          | hd::tl -> begin match hd, tl with
+            | W.DNested ((cname,_,_,_,_) as child), _ ->
+              helper
+                ((check_add local_defined cname) (* Rule 1 *),
+                 (wf_dc defined child) (* check child declComp*))
+                tl
+            | W.DId cname, _ ->
+              (* Rules 2 and 3 *)
+              if IdSet.mem cname local_defined then helper acc tl else
+                raise_lse ("DId " ^ cname ^ " does not have a previous sibling declComp with the same name")
+            | W.DPlaceholder, (W.DPlaceholder::rest) -> 
+              (* Rule 4 *)
+              raise_lse "encountered two adjacent placeholders"
+            | W.DPlaceholder, _ -> helper acc tl
+          end in (* end helper *)
+        
+        snd (helper (IdSet.empty, new_defined) dccs) in (* end wf_dcc *)
+      
+      (* Check content and return updated defined *)
+      wf_dcc content in (* end wf_dc *)
+        
+    (* Check for well-formedness *)
+    ignore(
+      List.fold_left wf_dc
+        (* Call wf_dc on first to start fold with a tuple *)
+        (wf_dc IdSet.empty (List.hd dcs)) (List.tl dcs)
+    );
+
+    (* If we've checked everything succesfully, just return original list *)
+    dcs
+
+
+
   let desugar_structure (p : Pos.t) (senv : structureEnv) (dcEnv : W.declComp IdMap.t) (dc : W.declComp) :
       (typ IdMap.t * structureEnv) = 
     
