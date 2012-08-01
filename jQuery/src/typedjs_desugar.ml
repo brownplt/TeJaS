@@ -255,10 +255,11 @@ struct
            let optclsels = clsel :: (List.map ((^) (clsel ^ ".")) optClasses) in
            let idsels = List.flatten 
            (List.map (fun id -> List.map ((^) ("#" ^ id)) optclsels) ids) in *)
+        let simple = Css.singleton (nodesel ^ clsel) in
         match comb with
         (* The Desc combinator should only be used as a dummy value *)
-        | Css_syntax.Desc -> (Css.singleton (nodesel ^ clsel))
-        | _ -> Css.concat_selectors sel comb (Css.singleton clsel) in
+        | Css_syntax.Desc -> simple
+        | _ -> Css.concat_selectors sel comb simple in
       let rec compileComp (ids : typ IdMap.t) (dc : W.declComp) (comb : Css.combinator) (prev : Css.t) = 
         let (name,_,nodeType,attribs, content) = dc in
         let sels = generateSels attribs comb prev nodeType in
@@ -275,8 +276,11 @@ struct
             with Not_found -> failwith ("id " ^ name ^ " used before declared in structure declaration") end in
           let (_, _, nodeType, attribs, contents) = decl in
           let sels = generateSels attribs comb prev nodeType in
-          IdMap.add name (JQ.TDom (None, JQ.TStrobe (S.TId nodeType), sels)) (compileContent ids tail Css_syntax.Adj sels)
-
+          let tdom = try IdMap.find name ids with Not_found -> JQ.TDom (None, JQ.TStrobe (S.TId nodeType), Css.empty) in begin
+          match tdom with
+          | JQ.TDom (_, _, sels2) -> compileContent (IdMap.add name (JQ.TDom (None, JQ.TStrobe (S.TId nodeType), Css.union sels sels2)) ids) tail Css_syntax.Adj sels
+          | _ -> failwith "impossible"
+          end
         | [W.DNested d] ->
           compileComp ids d comb prev
 
