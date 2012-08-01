@@ -435,7 +435,7 @@ let well_formed_test () =
      properly *)
 let structure_well_formed_test () = 
   let module D = Desugar in
-
+  let module W = Typedjs_writtyp.WritTyp in
 
   (* consumes: 
      d (string): the local structure declarations
@@ -450,12 +450,17 @@ let structure_well_formed_test () =
   let well_formed_wrapper d pass = 
     let old_env = !JQEnv.senv in
     JQEnv.senv := D.empty_structureEnv;
-    let mock_elements = 
-      "type Element = #{ name : Str }; 
-       type DivElement = #{ name : /\"HTMLDivElement\"/ };" in
-    let decls = JQEnv.parse_env (mock_elements ^ d) "dummy" in
+    (* let mock_elements =  *)
+    (*   "type Element = #{ name : Str };  *)
+    (*    type DivElement = #{ name : /\"HTMLDivElement\"/ };" in *)
+    let env = JQEnv.parse_env d 
+      "Simple_tests: Structure well-formedness test" in
+
+    let decls = ListExt.filter_map (fun d -> match d with
+      | W.Decl (_, dc) -> Some dc | _ -> None) env in
+
     try
-      ignore(JQEnv.extend_global_env IdMap.empty decls);
+      ignore(D.well_formed_structure decls);
       JQEnv.senv := old_env;
       if (not pass) then raise (STest_failure "Well-formed test should have raised an exception")
     with e -> 
@@ -464,7 +469,6 @@ let structure_well_formed_test () =
       | D.Local_structure_error m -> if (not pass) then () else raise e
       | _ -> raise e in
 
-  
   let fail_msg n =
     "Structure_well_formed_test #" ^ (string_of_int (n+1)) ^ " failed" in
 
@@ -488,8 +492,7 @@ let structure_well_formed_test () =
       "(A : DivElement classes=[a1])
        (A : Element classes=[a2])" false );
     
-    (* Test 2: Nested dupes in same top-level comp
-       TODO-liam: this might be caught during compilation *)
+    (* Test 2: Nested dupes in same top-level comp *)
     (fun _ -> well_formed_wrapper
       "(A : DivElement classes=[a1]
          (B : Element classes=[b1])
@@ -523,7 +526,10 @@ let structure_well_formed_test () =
          <B>)" true );
 
     
-    (**** Rule 2: DIds can only be on the same level after their respective
+    (**** Rule 2 DIds can only appear on the same level as a previous sibling
+        DNested declComp with the same id
+          
+          Rule 2: DIds can only be on the same level after their respective
           comps *)
 
     (* Test 6: DId cannot appear before comp *)
@@ -563,13 +569,13 @@ let structure_well_formed_test () =
            (B : DivElement classes=[b1]))
          <B>)" false );
 
-    (* Test 10: Can't be used below *)
+    (* Test 10: Can be used below *)
     (fun _ -> well_formed_wrapper
       "(A : DivElement classes=[a1]
          (B : DivElement classes=[b1])
          (C : DivElement classes=[c1])
          (D : DivElement classes=[d1])
-         <B>)" false);
+         <B>)" true);
 
     (* Test 11: Crossover nested in a top-level comp *)
     (fun _ -> well_formed_wrapper
