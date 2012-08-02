@@ -45,6 +45,7 @@ rule token = parse
 | '"' (string1 as x) '"'    { STRING x }
 | '\'' (string2 as x) '\''  { STRING x}
 | "#" (name as x)           { HASH x }
+| "*"                       { STAR }
 | "+"                       { PLUS }
 | ">"                       { GREATER }
 | ","                       { COMMA }

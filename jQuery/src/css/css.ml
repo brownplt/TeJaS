@@ -639,12 +639,18 @@ module RealCSS = struct
   end
 
   let canonical (s1a, s1s) (s2a, s2s) = 
-    if (s1a <> s2a) then SimpleSet.empty
-    else 
+    let sa = match s1a, s2a with
+      | USel, a
+      | a, USel -> Some a
+      | TSel a, TSel b when a = b -> Some (TSel a)
+      | _ -> None in
+    match sa with
+    | None -> SimpleSet.empty
+    | Some sa ->
       let specs = ListExt.remove_dups (s1s @ s2s) in
       if (List.length (List.filter (fun s -> match s with SpId _ -> true | _ -> false) specs) > 1)
       then SimpleSet.empty
-      else SimpleSet.singleton (s1a, specs)
+      else SimpleSet.singleton (sa, specs)
 
   let rec intersect_sels s1 s2 =
     let rec simple_inter s1 s2 = canonical s1 s2
