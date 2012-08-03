@@ -19,7 +19,7 @@
 %token <string> HASH
 (* %token <string> ATKEYWORD *)
 %token INCLUDES DASHMATCH PREFIXMATCH SUFFIXMATCH SUBSTRINGMATCH EQUALS LBRACK RBRACK
-       PLUS GREATER COMMA TILDE STAR COLON EOF S DOT
+       PLUS GREATER COMMA TILDE STAR COLON EOF S DOT DOTOPT DOTBANG
 
 
 %start selectors_group
@@ -56,6 +56,8 @@ simple_sel :
 simple_sel_attribs :
 | h=HASH { SpId h }
 | DOT c=IDENT { SpClass c }
+| DOTOPT c=IDENT { SpSpecClass (c, false) }
+| DOTBANG c=IDENT { SpSpecClass (c, true) }
 | a=attrib { a }
 | p=pseudo { SpPseudo p }
 

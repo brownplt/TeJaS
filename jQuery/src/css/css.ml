@@ -138,6 +138,7 @@ module RealCSS = struct
       let rss = List.map (fun s -> match s with
         | SpId s -> concat (R.singleton "#") (R.singleton s)
         | SpClass s -> concat (R.singleton ".") (R.singleton s)
+        | SpSpecClass _ -> failwith "Not yet implemented, and probably never will be"
         | SpPseudo s -> concat (R.singleton ":") (R.singleton s)
         | SpAttrib (a, None) -> surround "[" "]" (R.singleton a)
         | SpAttrib (a, Some (o, v)) -> surround "[" "]" 
@@ -331,6 +332,8 @@ module RealCSS = struct
     and pretty_spec s = List.map (fun s -> match s with
       | SpId s -> squish [text "#"; text s]
       | SpClass s -> squish [text "."; text s]
+      | SpSpecClass (s, true) -> squish [text ".!"; text s]
+      | SpSpecClass (s, false) -> squish [text ".?"; text s]
       | SpAttrib (s, None) -> brackets [text s]
       | SpAttrib (s, Some (op, v)) -> begin match op with
         | AOEquals -> brackets [squish [text s; text "="; string v]]
@@ -443,6 +446,10 @@ module RealCSS = struct
             match s1, s2 with
             | SpId i1, SpId i2 -> i1 = i2
             | SpClass c1, SpClass c2 -> c1 = c2
+            | SpClass c1, SpSpecClass (c2, false) -> c1 = c2
+            | SpSpecClass (c1, true), SpClass c2 -> c1 = c2
+            | SpSpecClass (c1, true), SpSpecClass (c2, _) -> c1 = c2
+            | SpSpecClass (c1, false), SpSpecClass (c2, false) -> c1 = c2
             | SpPseudo p1, SpPseudo p2 -> p1 = p2
             | SpAttrib (s1name, s1prop), SpAttrib (s2name, s2prop) -> 
               s1name = s2name && (match s1prop, s2prop with
@@ -647,10 +654,50 @@ module RealCSS = struct
     match sa with
     | None -> SimpleSet.empty
     | Some sa ->
-      let specs = ListExt.remove_dups (s1s @ s2s) in
-      if (List.length (List.filter (fun s -> match s with SpId _ -> true | _ -> false) specs) > 1)
-      then SimpleSet.empty
-      else SimpleSet.singleton (sa, specs)
+      let module S = Css_syntax.SpecSet in
+      let module SE = Css_syntax.SpecSetExt in
+      let collect_specs specs = 
+        List.fold_left (fun (i, c, spec, o) a ->
+          match a with
+          | SpId _ -> (S.add a i, c, spec, o)
+          | SpClass _ -> (i, S.add a c, spec, o)
+          | SpSpecClass _ -> (i, c, S.add a spec, o)
+          | _ -> (i, c, spec, S.add a o)) (S.empty, S.empty, S.empty, S.empty)
+          (ListExt.remove_dups specs) in
+      let specAsClasses spcls = S.fold (fun s a -> match s with
+        | SpSpecClass(c, _) -> S.add (SpClass c) a
+        | _ -> a) spcls S.empty in
+      let (ids1, classes1, specclasses1, others1) = collect_specs s1s in
+      let (ids2, classes2, specclasses2, others2) = collect_specs s2s in
+      if (S.cardinal ids1 + S.cardinal ids2 > 1) then SimpleSet.empty
+      else 
+        begin
+          let default = SimpleSet.singleton (sa, S.elements (SE.unions [ids1; ids2; classes1; classes2; specclasses1; specclasses2; others1; others2])) in
+          let specAsClasses1 = specAsClasses specclasses1 in
+          let specAsClasses2 = specAsClasses specclasses2 in
+          match (S.is_empty specclasses1), (S.is_empty specclasses2) with
+          | false, false -> 
+            begin          if (not ((S.subset classes1 specAsClasses2) && (S.subset classes2 specAsClasses1)))
+              then SimpleSet.empty else default
+            end
+          | false, true ->
+            if (not (S.subset classes2 specAsClasses1))
+            then SimpleSet.empty else default
+          | true, false ->
+            if (not (S.subset classes1 specAsClasses2)) 
+            then SimpleSet.empty else default
+          | true, true -> default
+        end
+
+        (* if (not (S.is_empty specclasses)) then begin *)
+        (*   let specAsClasses1 = specAsClasses specclasses1 in *)
+        (*   let specAsClasses2 = specAsClasses specclasses2 in *)
+        (*   if (not ((S.subset classes1 specAsClasses2) && (S.subset classes2 specAsClasses1))) *)
+        (*   then SimpleSet.empty *)
+        (*   else default *)
+        (* end else *)
+        (*   SimpleSet.singleton (sa, S.elements (SE.unions [ids; classes; others])) *)
+
 
   let rec intersect_sels s1 s2 =
     let rec simple_inter s1 s2 = canonical s1 s2
@@ -745,9 +792,15 @@ module RealCSS = struct
     else SelSetExt.p_set pretty_sel t
 
   let pretty s = FormatExt.to_string (SelSetExt.p_set Pretty.pretty_sel) s
-  let is_empty s = SelSet.exists (fun sel -> 
-    (List.exists (fun sim -> not (SimpleSet.is_empty (canonical sim sim))) (List.map snd (desc2regsel sel)))) s
+  let is_empty s = 
+    SelSet.is_empty s ||
+      SelSet.exists (fun sel -> 
+        let d = desc2regsel sel in
+        (d = []) ||
+          (List.exists (fun sim -> (SimpleSet.is_empty (canonical sim sim)))
+             (List.map snd d))) s
   let is_overlapped s1 s2 = 
+    Printf.eprintf "*** selector %s and selector %s overlap\n" (pretty s1) (pretty s2);
     not (SelSet.is_empty (intersect s1 s2))
   let is_equal s1 s2 = (is_subset IdMap.empty s1 s2) && (is_subset IdMap.empty s2 s1)
   let example s = 

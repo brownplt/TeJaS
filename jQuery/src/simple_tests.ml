@@ -194,7 +194,7 @@ let test_harness_many (tests : (( int -> string) * ( _ -> unit )) list)
   let foldi (f : int -> 'b -> 'a -> 'b) (s : 'b) (l : 'a list) : 'b = 
     let rec helper n a l =
       match l with
-n      | [] -> a
+      | [] -> a
       | hd::tl ->  helper (n+1) (f n a hd) tl in
     helper 0 s l in
 

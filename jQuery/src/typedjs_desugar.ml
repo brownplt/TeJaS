@@ -13,7 +13,7 @@ module type DESUGAR = sig
   type backformSel
   type clauseMap = multiplicity IdMap.t
 
-  type backformEnv = backformSel IdMap.t
+  type backformEnv = (id * backformSel) list
 
   type clauseEnv = { children : clauseMap; 
                      parent : clauseMap; 
@@ -53,7 +53,7 @@ struct
   type preClauseMap = id option list IdMap.t
   type clauseMap = multiplicity IdMap.t
 
-  type backformEnv = Css.t IdMap.t
+  type backformEnv = (id * Css.t) list
 
   type clauseEnv = { children : clauseMap; 
                      parent : clauseMap; 
@@ -144,7 +144,9 @@ struct
         | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "findOf"), _)) as a)
         | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "parentsOf"), _)) as a) 
         | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "prevAllOf"), _)) as a) 
-        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "nextAllOf"), _)) as a) -> 
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "nextAllOf"), _)) as a)
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "oneOf"), _)) as a)
+        | JQ.STyp ((JQ.TApp (JQ.TStrobe (S.TPrim "filterSel"), _)) as a) -> 
           JQ.SMult (JQ.MPlain a)
         | s -> s) t2s))
     end
@@ -231,7 +233,7 @@ struct
 
 
   let empty_structureEnv = 
-    (IdMap.empty,
+    ([],
      {children = IdMap.empty;
       parent = IdMap.empty;
       prev = IdMap.empty;
@@ -334,12 +336,16 @@ struct
     let gen_bindings (dc : W.declComp) : typ IdMap.t =
       let generateSels ((classes, optClasses, ids) : W.attribs) (comb : Css.combinator) (sel : Css.t) (node : string) : Css.t =
         let nodesel = node in
-        let clsel = "." ^ (String.concat "." classes) in
+        let clsel = if classes = [] then "" else 
+            ".!" ^ (String.concat ".!" classes) in
+        let optclsel = if optClasses = [] then "" else
+            ".?" ^ (String.concat ".?" optClasses) in
+        let idsel = if List.length ids = 1 then "#" ^ (List.hd ids) else "" in
         (* TODO: Account for ids and optional classes
            let optclsels = clsel :: (List.map ((^) (clsel ^ ".")) optClasses) in
            let idsels = List.flatten 
            (List.map (fun id -> List.map ((^) ("#" ^ id)) optclsels) ids) in *)
-        let simple = Css.singleton (nodesel ^ clsel) in
+        let simple = Css.singleton (nodesel ^ clsel ^ optclsel ^ idsel) in
         match comb with
         (* The Desc combinator should only be used as a dummy value *)
         | Css_syntax.Desc -> simple
@@ -350,7 +356,7 @@ struct
         let new_ids = 
           IdMap.add 
             name 
-            (JQ.TDom (None,JQ.TStrobe (S.TId nodeType), sels))
+            (JQ.TDom (None, JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")), sels))
             ids in
         compileContent new_ids content Css_syntax.Kid sels
       and compileContent (ids : typ IdMap.t) (dccs : W.dcContent list) (comb : Css.combinator) (prev : Css.t)  : typ IdMap.t = match dccs with
@@ -510,7 +516,7 @@ struct
 
       (* start with empty preStructureEnv *)
       let empty_psenv =
-        (IdMap.empty,
+        ([],
          {pce_children = IdMap.empty;
           pce_parent = IdMap.empty;
           pce_prev = IdMap.empty;
@@ -623,19 +629,25 @@ struct
         next = cMap_merge old_cenv.next new_cenv.next}) in
     
     (* Body of desugar_structure *)
-    let bEnv_merge (env1 : backformEnv) (env2 : backformEnv) : backformEnv =
-      IdMap.merge (fun (key : id) (v1 : Css.t option) (v2 : Css.t option) -> match v1, v2 with
-      | Some sel1, Some sel2 -> Some (Css.union sel1 sel2)
-      | _, None -> v1
-      | None, _ -> v2) env1 env2 in
+    let rec bEnv_merge (env1 : backformEnv) (env2 : backformEnv) : backformEnv = match env1 with
+      | [] -> env2
+      | (id, sel1) :: tl -> 
+        let sel2 = try List.assoc id env2 with Not_found -> Css.empty in
+        bEnv_merge tl ((id, Css.union sel1 sel2)::(List.remove_assoc id env2)) in
+      (* IdMap.merge (fun (key : id) (v1 : Css.t option) (v2 : Css.t option) -> match v1, v2 with *)
+      (* | Some sel1, Some sel2 -> Some (Css.union sel1 sel2) *)
+      (* | _, None -> v1 *)
+      (* | None, _ -> v2) env1 env2 in *)
     
     let bindings = gen_bindings dc in
     let (old_benv, new_cenv) = compile senv dc in
-    let new_benv = IdMap.map (fun t -> match t with
+    let new_benv = IdMap.bindings
+      (IdMap.map (fun t -> match t with
       | JQ.TDom (_, _, sel) -> sel
-      | _ -> failwith "impossible: gen_bindings should only produce bindings from ids to TDoms") bindings in
-
+      | _ -> failwith "impossible: gen_bindings should only produce bindings from ids to TDoms") bindings) in
+    
     (bindings, (bEnv_merge new_benv old_benv, new_cenv))
       
 
 end
+
