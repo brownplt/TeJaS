@@ -8,7 +8,6 @@ open JQuery_syntax
 module JQ = JQuery
 module S = StrobeImpl
 
-
 module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
 module SEnv = Strobe_env.Make (StrobeMod) (Strobe_kind) (Desugar)
 module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (SEnv) (Desugar)
@@ -194,7 +193,7 @@ let test_harness_many (tests : (( int -> string) * ( _ -> unit )) list)
   let foldi (f : int -> 'b -> 'a -> 'b) (s : 'b) (l : 'a list) : 'b = 
     let rec helper n a l =
       match l with
-n      | [] -> a
+      | [] -> a
       | hd::tl ->  helper (n+1) (f n a hd) tl in
     helper 0 s l in
 
@@ -485,13 +484,9 @@ let structure_well_formed_test () =
                   is expected
      produces: unit
      
-     1) empty JQEnv.senv
      2) parse d
-     3) extend_global_env with parsed decls and some dummy element types
-     4) empty JQEnv.senv *)
+     3) extend_global_env with parsed decls and some dummy element types *)
   let well_formed_wrapper d pass = 
-    let old_env = !JQEnv.senv in
-    JQEnv.senv := D.empty_structureEnv;
     let env = JQEnv.parse_env d 
       "Simple_tests: Structure well-formedness test" in
 
@@ -500,10 +495,8 @@ let structure_well_formed_test () =
 
     try
       ignore(D.well_formed_structure decls);
-      JQEnv.senv := old_env;
       if (not pass) then raise (STest_failure "Well-formed test should have raised an exception")
     with e -> 
-      JQEnv.senv := old_env;
       match e with 
       | D.Local_structure_error m -> if (not pass) then () else raise e
       | _ -> raise e in
@@ -648,7 +641,7 @@ let structure_well_formed_test () =
          (B: DivElement classes=[b1])
          (C: DivElement classes=[c1])
          ...
-         ...)" true));
+         ...)" false));
 
     ((fail_msg "Can have alternating placeholders"),
     (fun _ -> well_formed_wrapper
@@ -663,10 +656,99 @@ let structure_well_formed_test () =
     ((fail_msg "Can have single placeholder child"),
     (fun _ -> well_formed_wrapper
       "(A : DivElement classes=[a1]
-         ...)" false));
+         ...)" true));
 
 
   ] (* End list of tests *)
+
+(* End structure_well_formed_test *)
+
+
+let structure_compilation_test () = 
+  let module D = Desugar in
+  let module W = Typedjs_writtyp.WritTyp in
+  let module Css = JQueryMod.Css in
+  let open S in
+  let open JQ in
+
+  (* Helper: builds an MPlain from a list of ids. *)
+  let bmp (ts : string list) : JQ.multiplicity = match ts with
+    | [] -> failwith "Can't build type with no ids"
+    | _ -> 
+      let built_typ = List.fold_left (fun acc t -> TUnion (None, S.TId t, acc))
+        (S.TId (List.hd ts)) (List.tl ts) in
+      MPlain (TStrobe built_typ) in
+
+  (* Helper: builds a clauseMap from a list of (id, multiplicity *)
+  let bcm (cs : (id * multiplicity) list ) : D.clauseMap =
+    List.fold_left (fun acc (id, mult) -> 
+      IdMap.add id mult acc) IdMap.empty cs in
+  
+  (* Consumes:
+     d (string): structure declarations to be parsed
+     exp_backform_env (D.backformEnv): expected backformEnv
+     exp_clause_env (D.clauseEnv): expected clauseEnv *)
+  let wrapper d (exp_backform_env : D.backformEnv) (exp_clause_env : D.clauseEnv)
+      : unit  = 
+      
+    let mock_elements = 
+      "type Element = #{ name : Str }; " ^
+        "type DivElement = #{ name : /\"HTMLDivElement\"/ };" in
+
+
+    let env = JQEnv.parse_env (mock_elements ^ d) 
+      "Simple_tests: Structure Compilation Test" in
+
+    let decls = ListExt.filter_map (fun d -> match d with
+      | W.Decl (_, dc) -> Some dc | _ -> None) env in
+
+    let (backform_env, clause_env) = D.empty_structureEnv
+       (* W.desugar_structure decls *) in
+
+    let test = Css.singleton "*" in
+
+    let beq = IdMap.equal Css.is_equal backform_env exp_backform_env in
+
+    let ceq = 
+      let cm_eq m1 m2 = IdMap.equal (JQ.equivalent_multiplicity IdMap.empty) m1 m2 in
+      cm_eq clause_env.D.children exp_clause_env.D.children &&      
+        cm_eq clause_env.D.parent exp_clause_env.D.parent &&      
+        cm_eq clause_env.D.prev exp_clause_env.D.prev &&      
+        cm_eq clause_env.D.next exp_clause_env.D.next in  
+
+
+    begin 
+
+      if beq then ()
+      else raise 
+        (STest_failure 
+           "Expected backformEnv is not equivalent to compiled backformEnv");
+        
+      if ceq then ()
+      else raise
+        (STest_failure 
+           "Expected clauseEnv is not equivalent to compiled clauseEnv");
+
+    end in
+
+  let fmsg d n = "Structure compilation test #" ^ (string_of_int n) ^
+    "failed. Test description: " ^ d ^ "\n" in
+
+  test_harness_many [
+
+    (*** Begin compilation tests ***)
+
+    ((fmsg "Simple single tweet test"),
+     (fun _ -> wrapper
+       "(Tweet : DivElement classes=[t1])"
+       IdMap.empty
+       { D.children = bcm [("Tweet", MZero (bmp ["Element"]))];
+         D.parent = bcm [("Tweet", MZeroOne (bmp ["Element"]))];
+         D.prev = bcm [("Tweet", MZero (bmp ["Element"]))];
+         D.next = bcm [("Tweet", MZero (bmp ["Element"]))] }));
+
+  ]
+
 
 (* end structure_well_formed_test *)
 
