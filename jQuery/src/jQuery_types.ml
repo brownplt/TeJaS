@@ -868,8 +868,8 @@ struct
     | TApp (s1, s2), t -> 
       typ_assoc env (simpl_typ env (TApp (s1, s2))) t
     | t, TApp (s1, s2) -> 
-      let str_t1 = (string_of_typ t) in
-      let str_t2 = (string_of_typ (TApp (s1, s2))) in
+      (* let str_t1 = (string_of_typ t) in *)
+      (* let str_t2 = (string_of_typ (TApp (s1, s2))) in *)
       (* Strobe.traceMsg "JQtyp_assoc %s with %s\n" str_t1 str_t2; *)
       typ_assoc env t (simpl_typ env (TApp (s1, s2)))
     | TForall (_, x, STyp s1, s2), TForall (_, y, STyp t1, t2) ->

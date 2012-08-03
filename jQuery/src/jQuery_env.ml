@@ -96,9 +96,9 @@ struct
       Css.is_overlapped (snd elem) sels) benv in
     (* List.iter (fun pair -> Strobe.traceMsg "%s" (Css.pretty (snd pair))) pairs; *)
     let union = List.fold_left Css.union Css.empty (List.map snd pairs) in
-    if Css.is_equal union Css.empty then [] (* should give a warning here *)
+    if Css.is_empty union then [] (* should give a warning here *)
     else if Css.is_subset IdMap.empty sels union then (List.map fst pairs) else  begin
-      (* Strobe.traceMsg "%s is not a subset of %s" (Css.pretty sels) (Css.pretty union); *)
+      Strobe.traceMsg "%s is not a subset of %s" (Css.pretty sels) (Css.pretty union);
       "Element"::(List.map fst pairs)
     end
 
@@ -198,8 +198,8 @@ struct
     match t with
     | TDom (_,t,sels) ->
       let ids = backform benv (Css.intersect sels s) in
-      (* Strobe.traceMsg "The intersection of %s with %s is %s, backformed into: " (Css.pretty sels) (Css.pretty s) (Css.pretty (Css.intersect sels s)); *)
-      (* List.iter (fun id -> Strobe.traceMsg "%s" id) ids; *)
+      Strobe.traceMsg "The intersection of %s with %s is %s, backformed into: " (Css.pretty sels) (Css.pretty s) (Css.pretty (Css.intersect sels s));
+      List.iter (fun id -> Strobe.traceMsg "%s" id) ids;
       if ids == []
       then (MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))))
       else List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids
