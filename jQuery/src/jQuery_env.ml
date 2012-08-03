@@ -47,6 +47,7 @@ struct
   type multiplicity = JQuery.multiplicity
   type env = Env.env
   type env_decl = Env.env_decl
+  type backformSel = JQuery.sel
   open Env
   open JQueryKinding
   module Css = JQuery.Css
@@ -59,72 +60,58 @@ struct
   let (senv : structureEnv ref) = ref Desugar.empty_structureEnv
 
   let rec expose_tdoms (env : env) (t : typ) : typ = match t with
+    | TDom (s, _, sel) when Css.is_empty sel -> 
+      Strobe.traceMsg "Expose_tdom:EMPTY? %s" (string_of_typ t);
+      embed_t Strobe.TBot
     | TDom (s, (TDom (_,t,sel2)), sel1) ->
       expose_tdoms env (TDom (s, t, Css.intersect sel2 sel1))
-    | TDom (s, (TStrobe (Strobe.TId id)), sel) ->
-      expose_tdoms env (TDom (s, fst (lookup_typ_id id env), sel))
-    | TDom (s, (TStrobe (Strobe.TUnion (s2, t1 ,t2))), sel) ->
-      TStrobe (Strobe.TUnion (s2, 
-                              Strobe.TEmbed (expose_tdoms env (TDom (s, TStrobe t1, sel))),
-                              Strobe.TEmbed (expose_tdoms env (TDom (s, TStrobe t2, sel)))))
+    | TDom (s, inner, sel) -> begin match extract_t inner with
+      | (Strobe.TId id) ->
+        Strobe.traceMsg "Expose_tdom:TId of %s" id;
+        expose_tdoms env (TDom (s, fst (lookup_typ_id id env), sel))
+      | (Strobe.TUnion (s2, t1 ,t2)) ->
+        let t1' = expose_tdoms env (TDom (s, TStrobe t1, sel)) in
+        let t2' = expose_tdoms env (TDom (s, TStrobe t2, sel)) in
+        Strobe.traceMsg "Expose_tdom:TUnion of %s and %s" (string_of_typ t1') (string_of_typ t2');
+        embed_t (Strobe.TUnion (s2, extract_t t1', extract_t t2'))
+      | (Strobe.TInter (s2, t1 ,t2)) ->
+        let t1' = expose_tdoms env (TDom (s, TStrobe t1, sel)) in
+        let t2' = expose_tdoms env (TDom (s, TStrobe t2, sel)) in
+        Strobe.traceMsg "Expose_tdom:TInter of %s and %s" (string_of_typ t1') (string_of_typ t2');
+        embed_t (Strobe.TInter (s2, extract_t t1', extract_t t2'))
+      | _ -> 
+        Strobe.traceMsg "Expose_tdom:other of TDom(_, %s, %s)" (string_of_typ inner) (Css.pretty sel);
+        TDom (s, inner, sel)
+    end
     | _ -> t
 
-  let backform (benv : Desugar.backformEnv) (sels : sel) : IdSet.t = (* IdSet.singleton "test" *)
-    let open Typedjs_desugar in 
+  (* TODO: after backforming, check for legal selectors *)
+  let backform (benv : Desugar.backformEnv) (sels : Css.t) : id list = 
+    let open Typedjs_desugar in
     let open Desugar in
-    IdMap.fold (fun (id : id) (s : sel) (acc : IdSet.t) -> 
-    if Css.is_overlapped s sels then IdSet.add id acc else acc)
-      benv IdSet.empty
-  (* let rec list2lsidset l = (match l with *)
-  (*   | [] -> IdSet.empty *)
-  (*   | h::t -> IdSet.add h (list2lsidset t)) in *)
-  (* let simples = Css.targets sels in *)
-  (* let classes = SimpleSelSet.fold (fun (a,specs) (acc : string list)-> *)
-  (*   (acc @ (List.fold_left (fun acc s -> match s with *)
-  (*   | SpClass s -> s::acc *)
-  (*   | _ -> acc) [] specs))) simples [] in *)
-  (* let classMap = benv.classes in *)
-  (* let classMatches = match classes with *)
-  (*   | [] -> IdSet.empty *)
-  (*   | hd::tl -> List.fold_left (fun acc c -> *)
-  (*     try IdSet.inter acc (list2lsidset (StringMap.find c classMap)) *)
-  (*     with Not_found -> IdSet.empty) *)
-  (*     (try (list2lsidset (StringMap.find *)
-  (*                           hd *)
-  (*                           classMap)) *)
-  (*      with Not_found -> IdSet.empty) *)
-  (*     tl in *)
-  (* classMatches *)
-
-  (* let children_of (senv : structureEnv) (t : typ) : multiplicity =  *)
-  (*   let ClauseEnv (chxildMap, _, _, _) = (snd senv) in  *)
-  (*   let rec get_children_of t =  *)
-  (*     match t with *)
-  (*     | TDom (s,t,sels) -> *)
-  (*       let lsidSet = backform (fst senv) sels in *)
-  (*       (IdSet.fold (fun lsid acc -> *)
-  (*         (try MSum (acc, IdMap.find lsid childMap) *)
-  (*          with Not_found -> failwith "impossible") (\* Backform has ALL lsids *\)) *)
-  (*          lsidSet  *)
-  (*          (MZero (MPlain (TDom (None, TId "ElementAny", Css.singleton "*"))))) *)
-  (*     | TId id -> IdMap.find (Id id) childMap (\* TODO: is this ok? *\)  *)
-  (*     | TUnion (_, t1, t2) ->  *)
-  (*     (\* TODO: is it ok to reduce TUnions to MSums? *\) *)
-  (*       MSum (get_children_of t1, get_children_of t2) *)
-  (*     | _ -> failwith "impossible" in *)
-  (* (\* build children and canonicalize result *\) *)
-  (*   get_children_of t *)
+    let pairs = List.filter (fun (elem : (id * Css.t)) -> 
+      let inter = Css.intersect (snd elem) sels in
+      Strobe.traceMsg "Backform: Intersected %s with %s and got %s"
+        (Css.pretty (snd elem)) (Css.pretty sels) (Css.pretty inter);
+      Css.is_overlapped (snd elem) sels) benv in
+    (* List.iter (fun pair -> Strobe.traceMsg "%s" (Css.pretty (snd pair))) pairs; *)
+    let union = List.fold_left Css.union Css.empty (List.map snd pairs) in
+    if Css.is_empty union then [] (* should give a warning here *)
+    else if Css.is_subset IdMap.empty sels union then (List.map fst pairs) else  begin
+      Strobe.traceMsg "%s is not a subset of %s" (Css.pretty sels) (Css.pretty union);
+      "Element"::(List.map fst pairs)
+    end
 
   let rec x_of (benv : Desugar.backformEnv) (cm : Desugar.clauseMap) (t : typ ) : multiplicity = 
     let open JQuery in
     match t with
     | TDom (s,t,sels) ->
-      let lsidSet = backform benv sels in
-      (IdSet.fold (fun lsid acc ->
-        (try MSum (acc, IdMap.find lsid cm)
-         with Not_found -> failwith "impossible") (* Backform has ALL lsids *))
-         lsidSet
-         (MZero (MPlain (TStrobe Strobe.TTop)))) (* This will disappear anyway *)
+      let ids = backform benv sels in
+      (List.fold_left (fun acc id ->
+        (try MSum (acc, IdMap.find id cm)
+         with Not_found -> failwith "impossible") (* Backform has ALL ids *))
+         (MZero (MPlain (TStrobe Strobe.TTop))))  (* This will disappear anyway *)
+         ids
     | TStrobe (Strobe.TId id) -> 
       (* TODO: is this ok? *)
       begin
@@ -141,14 +128,13 @@ struct
     | _ ->  MOne (MPlain t)
 
   let children (senv : structureEnv) (t : typ) : multiplicity =
-    let (_,cenv) = senv in
-    x_of (fst senv) cenv.Desugar.children t
+    let (benv,cenv) = senv in
+    x_of benv cenv.Desugar.children t
 
   (* TODO: In the example $("p>.tweet").parent(), the return type should be made to be 'p's, not Element *)
   let parent (senv : structureEnv) (t : typ) : multiplicity =
     let (_,cenv) = senv in
     x_of (fst senv) cenv.Desugar.parent t
-
 
   let prevsib (senv : structureEnv) (t : typ) : multiplicity =
     let (_,cenv) = senv in
@@ -158,7 +144,7 @@ struct
     let (_,cenv) = senv in
     x_of (fst senv) cenv.Desugar.next t
 
-  let rec transitive (senv : structureEnv) (t : typ) (f : structureEnv -> typ -> multiplicity) : multiplicity =
+  let rec transitive (env : env) (senv : structureEnv) (t : typ) (f : structureEnv -> typ -> multiplicity) : multiplicity =
     Strobe.traceMsg "In transitive, ";
     let open JQuery in
     let next = canonical_multiplicity (f senv t) in
@@ -167,8 +153,9 @@ struct
       let (s, fs) = extract_mult next in
       begin
         match s with
-        | STyp t ->
-          MSum (next, fs (SMult (transitive senv t f))) 
+        | STyp next_t ->
+          if JQuery.equivalent_typ env t next_t then next else
+          MSum (next, fs (SMult (transitive env senv next_t f))) 
         | SMult m -> next
       end in
     match next with
@@ -192,30 +179,37 @@ struct
       end
       else recur ()
 
-  let nextall (senv : structureEnv) (t : typ) : multiplicity =
-    transitive senv t nextsib
+  let nextall (env : env) (senv : structureEnv) (t : typ) : multiplicity =
+    transitive env senv t nextsib
 
-  let prevall (senv : structureEnv) (t : typ) : multiplicity =
-    transitive senv t prevsib
+  let prevall (env : env) (senv : structureEnv) (t : typ) : multiplicity =
+    transitive env senv t prevsib
 
-  let parents (senv : structureEnv) (t : typ) : multiplicity =
-    transitive senv t parent
+  let parents (env : env) (senv : structureEnv) (t : typ) : multiplicity =
+    transitive env senv t parent
 
-  let find (senv : structureEnv) (t : typ) : multiplicity =
-    transitive senv t children
+  let find (env : env) (senv : structureEnv) (t : typ) : multiplicity =
+    transitive env senv t children
 
-  let filterSel (env : env) (benv : Desugar.backformEnv) (t : typ) (sel : string) : multiplicity =
+  let rec filterSel (env : env) (benv : Desugar.backformEnv) (t : typ) (sel : string) : multiplicity =
+    Strobe.traceMsg "In filterSel ";
     let open JQuery in
     let s = Css.singleton sel in
     match t with
-    | TDom (_,t,sels) -> 
-      let idset = backform benv (Css.intersect sels s) in
-      if IdSet.is_empty idset
-      then MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s)))
-      else IdSet.fold (fun id acc -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) idset (MZero (MPlain (TStrobe (Strobe.TTop))))
-      
-    | _ ->
-    MZero (MPlain (TStrobe (Strobe.TTop)))
+    | TDom (_,t,sels) ->
+      let ids = backform benv (Css.intersect sels s) in
+      Strobe.traceMsg "The intersection of %s with %s is %s, backformed into: " (Css.pretty sels) (Css.pretty s) (Css.pretty (Css.intersect sels s));
+      List.iter (fun id -> Strobe.traceMsg "%s" id) ids;
+      if ids == []
+      then (MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))))
+      else List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids
+    | TStrobe (Strobe.TUnion (x, t1, t2)) -> MSum (filterSel env benv (embed_t t1) sel, filterSel env benv (embed_t t1) sel)
+    | TStrobe (Strobe.TId x) -> begin
+      Strobe.traceMsg "filterSel called with TId %s" x;
+      Strobe.traceMsg "%s is: %s in the environment" x (string_of_typ (fst (lookup_typ_id x env)));
+      try filterSel env benv (fst (lookup_typ_id x env)) sel with Not_found -> failwith ("error: unbound TId " ^ x)
+        end
+    | _ -> Strobe.traceMsg "filterSel encountered a non-tdom, non-tunion type %s" (string_of_typ t); MZero (MPlain (TStrobe (Strobe.TTop)))
 
   let filterJQ (benv : Desugar.backformEnv) (typ : typ) : multiplicity =
     let open JQuery in
@@ -226,10 +220,10 @@ struct
   let jQuery (env : env) (benv : Desugar.backformEnv) (sel : string) : multiplicity =
     let open JQuery in
     let s = Css.singleton sel in
-    let idset = backform benv s in
-    if IdSet.is_empty idset
+    let ids = backform benv s in
+    if ids == []
     then MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s)))
-    else IdSet.fold (fun id acc -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) idset (MZero (MPlain (TStrobe (Strobe.TTop))))
+    else List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids
 
   (**** End Local Structure ***)
 
@@ -238,12 +232,14 @@ struct
     let open FormatExt in
     let open Desugar in
     let (benv, cenv) = senv in
+    let benv = List.fold_left (fun (acc : Css.t IdMap.t) elem -> IdMap.add (fst elem) (snd elem) acc) IdMap.empty benv in
     let print_id id= text id in
     let print_benv_key = text in
     let print_benv_val = Css.p_css in
     let print_cenv_key = print_id in
     let print_cenv_val = JQuery.Pretty.multiplicity in
-    label lbl [text "Backform Environment";
+    label lbl [text "";
+               text "Backform Environment";
                (IdMapExt.p_map ""
                   empty print_benv_key print_benv_val benv);
                text "Clause Environment";
@@ -366,6 +362,7 @@ struct
           match bs with
           | [] -> IdMap.add x [(BStrobe (Strobe.BTypBound (extract_t tdom, Strobe.KStar)))] env
           | [BStrobe (Strobe.BTypBound ((Strobe.TEmbed (TDom (name1, node1, sel1))), k1))] -> begin
+            Strobe.traceMsg "unioning two tdoms";
             match tdom with
             | (TDom (name2, node2, sel2)) -> if name1 = name2 then IdMap.add x [(BStrobe (Strobe.BTypBound ((Strobe.TEmbed (TDom (name1, node1, Css.union sel1 sel2))), k1)))] env else failwith "trying to bind two TDoms with different TIds to the same TId"
             | _ -> failwith "impossible : expected tdoms here"
@@ -528,10 +525,22 @@ struct
         failwith "nextAllOf at outermost level"
       | TApp(TStrobe (Strobe.TPrim "oneOf"), [STyp t]) ->
         failwith "oneOf at outermost level"
+      | TApp(TStrobe (Strobe.TPrim "filterSel"), [STyp t]) ->
+        failwith "filterSel at outermost level"
       | TApp(t, args) ->
-        Strobe.traceMsg "rjq called with TApp : %s" (string_of_typ t);
+        (* Strobe.traceMsg "rjq called with TApp : %s" (string_of_typ t); *)
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult m with
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TRegex pat))])), m1) ->
+            let (s, m2) = extract_mult m in
+              begin match s with
+                | STyp t -> 
+                  SMult (canonical_multiplicity (m2 (SMult (m1 (SMult (filterSel env (fst senv) t (match Strobe.Pat.singleton_string pat with Some s -> s | None -> failwith "regex argument to @filterSel cannot be converted to string")))))))
+                | SMult m -> s
+              end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TId _))])), _) -> s
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), l)), _) ->
+            failwith "filterSel not called with a mult argument and a string"
           | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), [SMult m])), m1) ->
             let (s, _) = extract_mult m in SMult (
               begin 
@@ -574,11 +583,10 @@ struct
           | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), _)), _) ->
             failwith "nextSibOf not called with a single mult argument"
           | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), [SMult m])), m1) ->
-            Strobe.traceMsg "resolving findOf";
             let (s, m2) = extract_mult m in
             begin match s with
             | STyp t -> 
-              SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (find senv (rjq t)))))))
+              SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (find env senv (rjq t)))))))
             | SMult _ -> s
             end
           | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), _)), _) ->
@@ -586,7 +594,7 @@ struct
           | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), [SMult m])), m1) ->
             let (s, m2) = extract_mult m in
             begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (parents senv (rjq t)))))))
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (parents env senv (rjq t)))))))
             | SMult _ -> s
             end
           | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), _)), _) ->
@@ -594,7 +602,7 @@ struct
           | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), [SMult m])), m1) ->
             let (s, m2) = extract_mult m in
             begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (prevall senv (rjq t)))))))
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (prevall env senv (rjq t)))))))
             | SMult _ -> s
             end
           | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), _)), _) ->
@@ -602,7 +610,7 @@ struct
           | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), [SMult m])), m1) ->
             let (s, m2) = extract_mult m in
             begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (nextall senv (rjq t)))))))
+            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (nextall env senv (rjq t)))))))
             | SMult _ -> s
             end
           | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), _)), _) ->
@@ -647,3 +655,4 @@ struct
     rjq t
       
 end
+  

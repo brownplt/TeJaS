@@ -34,6 +34,8 @@ let b = 'v'|'\\' four_zeros("58"|"78")("\r\n"|w)?|'\\''v'
 rule token = parse
 | '\r' | '\n' | "\r\n"      { new_line lexbuf; S }
 | ' ' | '\t' | '\x0C'       { S }
+| ".?"                      { DOTOPT }
+| ".!"                      { DOTBANG }
 | "."                       { DOT }
 | "/*"                      { block_comment lexbuf }
 | "~="                      { INCLUDES }
@@ -45,6 +47,7 @@ rule token = parse
 | '"' (string1 as x) '"'    { STRING x }
 | '\'' (string2 as x) '\''  { STRING x}
 | "#" (name as x)           { HASH x }
+| "*"                       { STAR }
 | "+"                       { PLUS }
 | ">"                       { GREATER }
 | ","                       { COMMA }

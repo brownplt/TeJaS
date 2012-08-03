@@ -129,8 +129,8 @@ struct
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
       else match unwrap_t t1, unwrap_t t2 with
       (* Case for handling two-arg jQ types *)
-      | ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m1; p1])) as jq1),
-        ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m2; p2])) as jq2) ->
+      | ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m1; p1])) (* as jq1 *)),
+        ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m2; p2])) (* as jq2 *)) ->
         List.fold_left2 subtype_sigma_list (cache, true) [m1;p1] [m2;p2]
       (* convenience for AnyJQ *)
       | t1, TStrobe ((Strobe.TId "AnyJQ") as anyJQ) ->
