@@ -194,7 +194,8 @@ let test_harness_many (tests : (( int -> string) * ( _ -> unit )) list)
     let rec helper n a l =
       match l with
       | [] -> a
-      | hd::tl ->  helper (n+1) (f n a hd) tl in
+      | hd::tl ->  
+        helper (n+1) (f n a hd) tl in
     helper 0 s l in
 
   (* let iteri (f : int -> 'a -> unit) (l : 'a list) : unit = *)
@@ -672,29 +673,35 @@ let structure_compilation_test () =
   let open JQ in
 
   (* Helper: builds an MPlain from a list of ids. *)
-  let bmp (ts : string list) : JQ.multiplicity = match ts with
+  let b_mp (ts : string list) : JQ.multiplicity = match ts with
     | [] -> failwith "Can't build type with no ids"
     | _ -> 
-      let built_typ = List.fold_left (fun acc t -> TUnion (None, S.TId t, acc))
-        (S.TId (List.hd ts)) (List.tl ts) in
+      let catch_tany t = if t = "Any" then TTop else TId t in
+      let built_typ = List.fold_left (fun acc t -> 
+        (* Fix so that we can represent Any in string form *)
+        TUnion (None, catch_tany t, acc))
+        (catch_tany (List.hd ts)) (List.tl ts) in
       MPlain (TStrobe built_typ) in
 
-  (* Helper: builds a clauseMap from a list of (id, multiplicity *)
-  let bcm (cs : (id * multiplicity) list ) : D.clauseMap =
+  (* Helper: builds a clauseMap from a (id * multiplicity) list.
+     Adds to the original clauseMap, cm *)
+  let b_cm cm (cs : (id * multiplicity) list ) : D.clauseMap =
     List.fold_left (fun acc (id, mult) -> 
-      IdMap.add id mult acc) IdMap.empty cs in
-  
+      IdMap.add id mult acc) cm cs in
+
+
+  let sel s = Css.singleton s in
+
   (* Consumes:
      d (string): structure declarations to be parsed
      exp_backform_env (D.backformEnv): expected backformEnv
      exp_clause_env (D.clauseEnv): expected clauseEnv *)
   let wrapper d (exp_backform_env : D.backformEnv) (exp_clause_env : D.clauseEnv)
       : unit  = 
-      
+
     let mock_elements = 
       "type Element = #{ name : Str }; " ^
         "type DivElement = #{ name : /\"HTMLDivElement\"/ };" in
-
 
     let env = JQEnv.parse_env (mock_elements ^ d) 
       "Simple_tests: Structure Compilation Test" in
@@ -702,12 +709,12 @@ let structure_compilation_test () =
     let decls = ListExt.filter_map (fun d -> match d with
       | W.Decl (_, dc) -> Some dc | _ -> None) env in
 
-    let (backform_env, clause_env) = D.empty_structureEnv
-       (* W.desugar_structure decls *) in
+    let expected_senv = (exp_backform_env, exp_clause_env) in
 
-    let test = Css.singleton "*" in
+    let (_, senv) = D.desugar_structure decls in
+    let (backform_env, clause_env) = senv in
 
-    let beq = IdMap.equal Css.is_equal backform_env exp_backform_env in
+    let beq = D.benv_eq exp_backform_env backform_env in
 
     let ceq = 
       let cm_eq m1 m2 = IdMap.equal (JQ.equivalent_multiplicity IdMap.empty) m1 m2 in
@@ -716,23 +723,41 @@ let structure_compilation_test () =
         cm_eq clause_env.D.prev exp_clause_env.D.prev &&      
         cm_eq clause_env.D.next exp_clause_env.D.next in  
 
-
     begin 
 
       if beq then ()
       else raise 
         (STest_failure 
-           "Expected backformEnv is not equivalent to compiled backformEnv");
+           (sprintf "Expected backformEnv in structureEnv: %s  is not equivalent to compiled backformEnv in structureEnv: %s" 
+              (FormatExt.to_string (JQEnv.print_structureEnv "Expected") expected_senv)
+              (FormatExt.to_string (JQEnv.print_structureEnv "Compiled") senv)));
         
       if ceq then ()
       else raise
         (STest_failure 
-           "Expected clauseEnv is not equivalent to compiled clauseEnv");
+           (sprintf "Expected clauseEnv in structureEnv: %s  is not equivalent to compiled clauseEnv in structureEnv: %s" 
+              (FormatExt.to_string (JQEnv.print_structureEnv "Expected") expected_senv)
+              (FormatExt.to_string (JQEnv.print_structureEnv "Compiled") senv)));
+      
+
 
     end in
 
   let fmsg d n = "Structure compilation test #" ^ (string_of_int n) ^
     "failed. Test description: " ^ d ^ "\n" in
+  
+  (* base clauseMap with Element clauses *)
+  let base_clauseMap =
+    { D.children = b_cm IdMap.empty [("Element", MZeroPlus (b_mp ["Element"]))];
+      D.parent = b_cm IdMap.empty [("Element", MZeroOne (b_mp ["Element"]))];
+      D.prev = b_cm IdMap.empty [("Element", MZeroOne (b_mp ["Element"]))];
+      D.next = b_cm IdMap.empty [("Element", MZeroOne (b_mp ["Element"]))] } in
+
+  (* Helper: builds a clauseMap by extending the base clauseMap *)
+  let ch cs = b_cm base_clauseMap.D.children cs in
+  let par cs = b_cm base_clauseMap.D.parent cs in
+  let prev cs = b_cm base_clauseMap.D.prev cs in
+  let next cs = b_cm base_clauseMap.D.next cs in
 
   test_harness_many [
 
@@ -740,12 +765,34 @@ let structure_compilation_test () =
 
     ((fmsg "Simple single tweet test"),
      (fun _ -> wrapper
-       "(Tweet : DivElement classes=[t1])"
-       IdMap.empty
-       { D.children = bcm [("Tweet", MZero (bmp ["Element"]))];
-         D.parent = bcm [("Tweet", MZeroOne (bmp ["Element"]))];
-         D.prev = bcm [("Tweet", MZero (bmp ["Element"]))];
-         D.next = bcm [("Tweet", MZero (bmp ["Element"]))] }));
+       "(Tweet : div classes=[t1])"
+       ["Tweet", sel "div.!t1"]
+       { D.children = ch [("Tweet", MZero (b_mp ["Any"]))];
+         D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]))];
+         D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]))];
+         D.next = next [("Tweet", MZeroOne (b_mp ["Element"]))] }));
+
+
+    (* Current bugs: 
+       1) Prevsib and Nextsib of Author is 1<Author>, not 01<Author>
+    *)
+    ((fmsg "Multiple children with the same name"),
+     (fun _ -> wrapper
+       "(Tweet : div classes=[t1]
+          (Author : div classes=[a1])
+          <Author>
+          <Author>)"
+       [("Tweet", sel "div.!t1");
+        ("Author", sel "div.!t1 > div.!a1")]
+       { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"]));
+                          ("Author", MZero (b_mp ["Any"]))];
+         D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
+                         ("Author", MOne (b_mp ["Tweet"]))];
+         D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZeroOne (b_mp ["Element"; "Author"]))];
+         D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZeroOne (b_mp ["Element"; "Author"]))]; }));
+    
 
   ]
 
@@ -765,9 +812,11 @@ let run_tests () =
     (* well_formed_test (); *)
     (raise_exns [
       structure_well_formed_test;
+      structure_compilation_test;
     ]);
     (* test5 (); *)
     Printf.eprintf "All tests passed!";
     0
   with _ -> 2
 ;;
+

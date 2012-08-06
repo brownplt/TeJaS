@@ -228,6 +228,7 @@ struct
   (**** End Local Structure ***)
 
 
+
   let print_structureEnv lbl (senv : structureEnv) = 
     let open FormatExt in
     let open Desugar in
@@ -335,40 +336,50 @@ struct
                                    string_of_typ (embed_t t)))
 
 
-  let extend_global_env env lst =
+
+  let extend_global_env env lst = 
     let open Typedjs_writtyp.WritTyp in
-    let rec collect_decls (lst : declComp list) : declComp IdMap.t =
-      List.fold_left (fun acc decl -> 
-        let (name, _, _, _, contents) = decl in
-        let compList = 
-          List.fold_left (fun l dcc -> match dcc with
-          | DNested d -> d::l
-          | _ -> l) [] contents in
-        IdMap.merge (fun k d1 d2 -> match (d1,d2) with
-        | Some _, Some _ -> failwith "malformed declaration: same id bound multiple times"
-        | d, None
-        | None, d -> d)
-          acc (IdMap.add name decl (collect_decls compList))
-      ) IdMap.empty lst in
+
+    (* Partition lst into local structure declarations and non-structure
+       declarations *)
+    let (structure_decls, non_structure_decls) = 
+      List.partition (fun d -> match d with
+      | Decl _ -> true | _ -> false) lst in
+
+    (* First gather structure declarations and compile into structureEnv *)
+    
+    let top_level_declComps = List.map (fun d -> match d with
+      | Decl (_,dc) -> dc | _ -> failwith "impossible") structure_decls in
+
+
+    (* Compile bindings and structureEnv from local structure *)
+    let (bindings, compiled_senv) = 
+      let wfs = (Desugar.well_formed_structure top_level_declComps) in
+      Desugar.desugar_structure wfs in
+    (* Perform well-formedness test for local structure *)
+    
+    (* Update senv *)
+    senv := compiled_senv;
+
+    (* Add bindings created during desugar_structure to the env *)
+    let env = IdMap.fold (fun id t new_env ->
+      (try
+         ignore (lookup_typ_id id new_env);
+         raise (Not_wf_typ (sprintf "the type %s is already defined" id))
+       with Not_found ->
+         let k = kind_check env [] (STyp t) in
+         raw_bind_typ_id id (extract_t (apply_name (Some id) t)) (extract_k k) env))
+    bindings env in
+
+    
+    (* Finally, extend env with all other declarations *)
+
+    let lst = non_structure_decls in
+           
     let desugar_typ p t = JQuery.extract_t (Desugar.desugar_typ p t) in
     let rec add recIds env decl = match decl with
-      | Decl (p, dc) -> 
-        let (tdoms, structure) = Desugar.desugar_structure p !senv (collect_decls (List.fold_left (fun acc env_decl -> match env_decl with
-          | Decl (_, dc) -> dc::acc
-          | _ -> acc) [] lst)) dc in
-        senv := structure;
-        IdMap.fold (fun x tdom env ->
-          let bs = try IdMap.find x env with Not_found -> [] in
-          match bs with
-          | [] -> IdMap.add x [(BStrobe (Strobe.BTypBound (extract_t tdom, Strobe.KStar)))] env
-          | [BStrobe (Strobe.BTypBound ((Strobe.TEmbed (TDom (name1, node1, sel1))), k1))] -> begin
-            Strobe.traceMsg "unioning two tdoms";
-            match tdom with
-            | (TDom (name2, node2, sel2)) -> if name1 = name2 then IdMap.add x [(BStrobe (Strobe.BTypBound ((Strobe.TEmbed (TDom (name1, node1, Css.union sel1 sel2))), k1)))] env else failwith "trying to bind two TDoms with different TIds to the same TId"
-            | _ -> failwith "impossible : expected tdoms here"
-          end
-          | _ -> failwith "impossible : binding list should be of length one and contain a TDom"
-        ) tdoms env
+      | Decl (_, (name,_,_,_,_)) -> 
+        failwith (sprintf "JQUERYextend_global_env: impossible: all local structure declarations should have already been compiled, but Decl %s was not." name)
       | EnvBind (p, x, typ) ->
         (try 
            ignore (lookup_id x env);
