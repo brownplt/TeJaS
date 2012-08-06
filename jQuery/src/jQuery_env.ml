@@ -97,10 +97,11 @@ struct
     (* List.iter (fun pair -> Strobe.traceMsg "%s" (Css.pretty (snd pair))) pairs; *)
     let union = List.fold_left Css.union Css.empty (List.map snd pairs) in
     if Css.is_empty union then [] (* should give a warning here *)
-    else if Css.is_subset IdMap.empty sels union then (List.map fst pairs) else  begin
-      Strobe.traceMsg "%s is not a subset of %s" (Css.pretty sels) (Css.pretty union);
-      "Element"::(List.map fst pairs)
-    end
+    else (List.map fst pairs)
+  (* if Css.is_subset IdMap.empty sels union then (List.map fst pairs) else  begin *)
+  (* Strobe.traceMsg "%s is not a subset of %s" (Css.pretty sels) (Css.pretty union); *)
+  (* "Element"::(List.map fst pairs) *)
+  (* end *)
 
   let rec x_of (benv : Desugar.backformEnv) (cm : Desugar.clauseMap) (t : typ ) : multiplicity = 
     let open JQuery in
@@ -116,15 +117,15 @@ struct
       (* TODO: is this ok? *)
       begin
       try IdMap.find id cm with Not_found -> 
-	(* Strobe.traceMsg "exception not_found with id %s" id; *)
-	raise Not_found
+        (* Strobe.traceMsg "exception not_found with id %s" id; *)
+        raise Not_found
       end
     
     | TStrobe (Strobe.TUnion (_, t1, t2)) ->
     (* TODO: is it ok to reduce TUnions to MSums? *)
       MSum (x_of benv cm (TStrobe t1), x_of benv cm (TStrobe t2))
     (* This is bad, but let it through so it can be caught elsewhere (it
-       probably already was, in association *)
+       probably already was, in association) *)
     | _ ->  MOne (MPlain t)
 
   let children (senv : structureEnv) (t : typ) : multiplicity =
@@ -133,16 +134,16 @@ struct
 
   (* TODO: In the example $("p>.tweet").parent(), the return type should be made to be 'p's, not Element *)
   let parent (senv : structureEnv) (t : typ) : multiplicity =
-    let (_,cenv) = senv in
-    x_of (fst senv) cenv.Desugar.parent t
+    let (benv,cenv) = senv in
+    x_of benv cenv.Desugar.parent t
 
   let prevsib (senv : structureEnv) (t : typ) : multiplicity =
-    let (_,cenv) = senv in
-    x_of (fst senv) cenv.Desugar.prev t
+    let (benv,cenv) = senv in
+    x_of benv cenv.Desugar.prev t
 
   let nextsib (senv : structureEnv) (t : typ) : multiplicity =
-    let (_,cenv) = senv in
-    x_of (fst senv) cenv.Desugar.next t
+    let (benv,cenv) = senv in
+    x_of benv cenv.Desugar.next t
 
   let rec transitive (env : env) (senv : structureEnv) (t : typ) (f : structureEnv -> typ -> multiplicity) : multiplicity =
     Strobe.traceMsg "In transitive, ";
@@ -197,13 +198,16 @@ struct
     let s = Css.singleton sel in
     match t with
     | TDom (_,t,sels) ->
-      let ids = backform benv (Css.intersect sels s) in
-      Strobe.traceMsg "The intersection of %s with %s is %s, backformed into: " (Css.pretty sels) (Css.pretty s) (Css.pretty (Css.intersect sels s));
+      let inter = Css.intersect sels s in
+      let ids = backform benv inter in
+      Strobe.traceMsg "The intersection of %s with %s is %s, backformed into: " (Css.pretty sels) (Css.pretty s) (Css.pretty inter);
       List.iter (fun id -> Strobe.traceMsg "%s" id) ids;
       if ids == []
-      then (MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))))
-      else List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids
-    | TStrobe (Strobe.TUnion (x, t1, t2)) -> MSum (filterSel env benv (embed_t t1) sel, filterSel env benv (embed_t t1) sel)
+      then (MZero (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), inter))))
+      else List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), inter)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids
+    | TStrobe (Strobe.TUnion (x, t1, t2)) -> 
+      Strobe.traceMsg "filterSel called with TUnion %s with %s" (string_of_typ (embed_t t1)) (string_of_typ (embed_t t2));
+      MSum (filterSel env benv (embed_t t1) sel, filterSel env benv (embed_t t2) sel)
     | TStrobe (Strobe.TId x) -> begin
       Strobe.traceMsg "filterSel called with TId %s" x;
       Strobe.traceMsg "%s is: %s in the environment" x (string_of_typ (fst (lookup_typ_id x env)));
@@ -218,12 +222,21 @@ struct
 
   (* returns an MSum of TDoms *)
   let jQuery (env : env) (benv : Desugar.backformEnv) (sel : string) : multiplicity =
+    (* check whether sel is legal in the context of given local structure *)
+    let env_specs = List.flatten (List.map Css.speclist (List.map snd2 benv)) in
+    let sel_specs = Css.speclist (Css.singleton sel) in
+    (* sel_specs and env_specs should overlap, otherwise give a warning *)
+    let overlap = List.exists (fun s -> List.mem s env_specs) sel_specs in
     let open JQuery in
     let s = Css.singleton sel in
     let ids = backform benv s in
-    if ids == []
-    then MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s)))
-    else List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids
+    let sum = List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids in
+    match ids, overlap with
+    | [], true -> MZero (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s)))
+    | [], false -> MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s)))
+    | _, true -> sum
+    | _, false ->
+      MSum (MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))), sum)
 
   (**** End Local Structure ***)
 
@@ -515,7 +528,10 @@ struct
       | TApp (TStrobe (Strobe.TPrim "selector"), [STyp (TStrobe (Strobe.TRegex pat))]) ->
         Strobe.traceMsg "resolving selector primitive";
         begin match Strobe.Pat.singleton_string pat with
-        | Some s -> TApp (TStrobe (Strobe.TId "jQ"), [(SMult (canonical_multiplicity (jQuery env (fst senv) s))); STyp (TStrobe (Strobe.TId "AnyJQ"))])
+        | Some s -> 
+          let m = canonical_multiplicity (jQuery env (fst senv) s) in
+          Strobe.traceMsg "jQuery(%s) returns %s" s (string_of_mult m);
+          TApp (TStrobe (Strobe.TId "jQ"), [(SMult m); STyp (TStrobe (Strobe.TId "AnyJQ"))])
         | None -> failwith "pattern cannot be converted to string??"
         end
       | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]) ->
@@ -660,7 +676,7 @@ struct
       | Strobe.TApp (t, ts) -> Strobe.TApp (rs t, (List.map rs ts))
       | Strobe.TFix _ -> t
       | Strobe.TUninit tor -> 
-	tor := opt_map rs !tor;
+        tor := opt_map rs !tor;
         Strobe.TUninit tor
       | Strobe.TEmbed t -> Strobe.TEmbed (rjq t) in
     rjq t

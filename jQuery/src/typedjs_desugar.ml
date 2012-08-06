@@ -403,9 +403,9 @@ struct
                   " testing") end in
           let (_, _, nodeType, attribs, contents) = decl in
           let sels = generateSels attribs comb prev nodeType in
-          let tdom = try IdMap.find name ids with Not_found -> JQ.TDom (None, JQ.TStrobe (S.TId nodeType), Css.empty) in begin
+          let tdom = try IdMap.find name ids with Not_found -> JQ.TDom (None, JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")), Css.empty) in begin
           match tdom with
-          | JQ.TDom (_, _, sels2) -> compileContent (IdMap.add name (JQ.TDom (None, JQ.TStrobe (S.TId nodeType), Css.union sels sels2)) ids) tail Css_syntax.Adj sels
+          | JQ.TDom (_, _, sels2) -> compileContent (IdMap.add name (JQ.TDom (None, JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")), Css.union sels sels2)) ids) tail Css_syntax.Adj sels
           | _ -> failwith "impossible"
           end
         | [W.DNested d] ->
