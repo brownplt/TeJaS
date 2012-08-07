@@ -8,6 +8,7 @@ module type CSS = sig
   val concat_selectors : t -> combinator -> t -> t
   val p_css : t -> FormatExt.printer
   val targets : t -> Css_syntax.SimpleSelSet.t
+  val speclist : t -> Css_syntax.spec list
 end
 
 module RealCSS : CSS

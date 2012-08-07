@@ -795,9 +795,44 @@ let structure_compilation_test () =
     
 
   ]
-
-
 (* end structure_well_formed_test *)
+
+
+
+let selector_tests () =
+  match List.map Css.singleton 
+  ["div.author.tag";
+   "div.!tweet.?first.?last > div.!author.!tag + div.!time";
+   "div.!tweet.?first.?last > div.!author.!tag + div.!time + div.!content.!tag";
+   "div.!tweet.?first.?last";
+   "div.!tweet.?first.?last > div.!author.!tag";
+   "div.!tweet>div.!author";
+   "div.!tweet>div.!author+div.!author"] with
+  | s1::time::content::tweet::author::a1::a2::_ -> begin
+    let subset_wrapper s1 s2 b =
+      if b = (Css.is_subset IdMap.empty s1 s2) then () else begin
+        Printf.eprintf "trying to subset %s with %s, expected to be %b" (Css.pretty s1) (Css.pretty s2) b;
+        raise (STest_failure "subset test did not pass")
+      end
+    in
+
+    let fail_msg desc n =
+      "Selector_test #" ^ (string_of_int (n+1)) ^ " failed.\n" ^
+        "Description: "^ desc in
+
+    test_harness_many [
+      ((fail_msg "None"),
+       (fun _ -> subset_wrapper s1 time false));
+
+      ((fail_msg "None"),
+       (fun _ -> subset_wrapper s1 author true));
+     
+      ((fail_msg "None"),
+       (fun _ -> subset_wrapper a1 a2 false));
+    ]
+  end
+  | _ -> []
+
 
 let run_tests () =
   try
@@ -813,6 +848,7 @@ let run_tests () =
     (raise_exns [
       structure_well_formed_test;
       structure_compilation_test;
+      (* selector_tests; *)
     ]);
     (* test5 (); *)
     Printf.eprintf "All tests passed!";

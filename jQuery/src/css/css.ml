@@ -8,6 +8,7 @@ module type CSS = sig
   val concat_selectors : t -> combinator -> t -> t
   val p_css : t -> FormatExt.printer
   val targets : t -> Css_syntax.SimpleSelSet.t
+  val speclist : t -> Css_syntax.spec list
 end
 
 module Map2Sets (Src : Set.S) (Dst : Set.S) = struct
@@ -38,6 +39,37 @@ module RealCSS = struct
 
   type regsel = Css_syntax.regsel
 
+  module SelOrdered = struct
+    type t = sel
+    let compare = compare
+  end
+  module KidOrdered = struct
+    type t = kid
+    let compare = compare
+  end
+  module SibOrdered = struct
+    type t = sib
+    let compare = compare
+  end
+  module AdjOrdered = struct
+    type t = adj
+    let compare = compare
+  end
+  module SimpleOrdered = struct
+    type t = simple
+    let compare = compare
+  end
+  module SelSet = Set.Make (SelOrdered)
+  module KidSet = Set.Make (KidOrdered)
+  module SibSet = Set.Make (SibOrdered)
+  module AdjSet = Set.Make (AdjOrdered)
+  module SimpleSet = Set.Make (SimpleOrdered)
+  module SelSetExt = SetExt.Make (SelSet)
+  module KidSetExt = SetExt.Make (KidSet)
+  module SibSetExt = SetExt.Make (SibSet)
+  module AdjSetExt = SetExt.Make (AdjSet)
+  module SimpleSetExt = SetExt.Make (SimpleSet)
+
   let rec simple2regsel c s = [c, s]
   and adj2regsel c a = match a with
     | AS s -> simple2regsel c s
@@ -64,6 +96,14 @@ module RealCSS = struct
   let kid2regsel = kid2regsel Kid
   let desc2regsel = desc2regsel Desc
 
+  let speclist sels =
+    let regsels = SelSet.fold (fun d acc -> (desc2regsel d)::acc) sels [] in
+    let specs = ListExt.remove_dups (List.flatten (List.map (fun x -> snd2 (snd2 (List.hd (List.rev x)))) (List.filter (fun l -> List.length l > 0) regsels))) in
+    let open Css_syntax in
+    List.map (fun s -> match s with
+    | SpSpecClass (c, _) -> SpClass c
+    | _ -> s) specs
+    
   let (regsel2adj, regsel2sib, regsel2kid, regsel2desc) =
     let regsel2adjs rs =
       let rs' = List.map (fun (c, s) -> (c, AS s)) rs in
@@ -176,36 +216,6 @@ module RealCSS = struct
   end
 
 
-  module SelOrdered = struct
-    type t = sel
-    let compare = compare
-  end
-  module KidOrdered = struct
-    type t = kid
-    let compare = compare
-  end
-  module SibOrdered = struct
-    type t = sib
-    let compare = compare
-  end
-  module AdjOrdered = struct
-    type t = adj
-    let compare = compare
-  end
-  module SimpleOrdered = struct
-    type t = simple
-    let compare = compare
-  end
-  module SelSet = Set.Make (SelOrdered)
-  module KidSet = Set.Make (KidOrdered)
-  module SibSet = Set.Make (SibOrdered)
-  module AdjSet = Set.Make (AdjOrdered)
-  module SimpleSet = Set.Make (SimpleOrdered)
-  module SelSetExt = SetExt.Make (SelSet)
-  module KidSetExt = SetExt.Make (KidSet)
-  module SibSetExt = SetExt.Make (SibSet)
-  module AdjSetExt = SetExt.Make (AdjSet)
-  module SimpleSetExt = SetExt.Make (SimpleSet)
 
   let concat_selectors_gen toRegsel1 fromRegsel cross s1 comb s2 =
     let helper d1 comb d2 =
