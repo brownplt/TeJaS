@@ -430,11 +430,14 @@ struct
         
     (** Function: compile
         ============================================================
-        Compile takes a structure environment (the accumulator) and a declaration component, compiles structure information from the declComp and adds it to the existing structureEnv.
+        Compile takes a structure environment (the accumulator) and a declaration component, compiles structure information from the declComp and adds it to the existing structureEnv. TODO(liam) Currently it does not touch the backformEnv, 
+        suggesting that perhaps it should only deal with the clauseEnv
     **)
-    let compile (senv : structureEnv) (dc : W.declComp)  : structureEnv = 
+    let compile (senv : structureEnv) (dcs : W.declComp list)  : structureEnv = 
+
       let element = "Element" in
       let any = "Any" in
+      let (benv,_) = senv in
       
       (** Function: enforcePresence
           ==================================================
@@ -447,6 +450,8 @@ struct
          pce_parent =  (helper pcenv.pce_parent);
          pce_prev = (helper pcenv.pce_prev);
          pce_next = (helper pcenv.pce_next) } in
+
+
 
       (** Function: compileComp
           ==================================================
@@ -479,13 +484,13 @@ struct
 
           let pcenv = match dccs with 
             | [] -> pcenv
-            | hd::tail ->  begin match hd with 
+            | hd::_ ->  begin match hd with 
               | W.DPlaceholder -> pcenv
               | W.DNested (name,_,_,_,_)
               | W.DId name ->
                 { pce_parent = pcenv.pce_parent; 
                   pce_children = pcenv.pce_children; 
-                  pce_prev = update name (Some "Any") pcenv.pce_children; 
+                  pce_prev = update name (Some any) pcenv.pce_prev; 
                   pce_next = pcenv.pce_next} 
             end in
 
@@ -573,6 +578,8 @@ struct
           (benv, newPreClauseEnv)
           pcontents in
 
+      (* Body of compile *)
+
       (* start with empty preStructureEnv *)
       let empty_psenv =
         ([],
@@ -581,7 +588,11 @@ struct
           pce_prev = IdMap.empty;
           pce_next = IdMap.empty}) in
 
-      let (_, pcenv) = compileComp empty_psenv dc in
+
+      (* Compile each top-level declComp *)
+      let (_, pcenv) = List.fold_left 
+        compileComp
+        empty_psenv dcs in
 
       (** Function: transformPCM
           ==================================================
@@ -682,47 +693,42 @@ will always have list with length >= 1"
         | [None] -> failwith "parent cannot be a placeholder"
         | hd:: tail -> failwith "cannot have more than one parent" in
 
-      (* Make sure that the toplevel declComp has nextsib and prevsib
-         of 01<Element>
-         Note: this is moderately hackish and disgusting. 
-         TODO-liam: make this cleaner later on? *)
-      
-      let (name, _,_,_,_) = dc in
+      (* Make sure that each  toplevel declComp has nextsib and prevsib
+         of 01<Element> *)
+      let pcenv = List.fold_left (fun pcenv dc ->
+        let (name, _,_,_,_) = dc in
+        {pce_children = pcenv.pce_children;
+         pce_parent = pcenv.pce_parent;
+         pce_prev = IdMap.add name [None] pcenv.pce_prev;
+         pce_next = IdMap.add name [None] pcenv.pce_next;})
+        pcenv dcs in
 
-      let pcenv = {pce_children = pcenv.pce_children;
-                   pce_parent = pcenv.pce_parent;
-                   pce_prev = IdMap.add name [None] pcenv.pce_prev;
-                   pce_next = IdMap.add name [None] pcenv.pce_next;} in
-      
-      
-      (* return final structureEnv, adding bindings for element in each of the maps *)
-      let new_cenv = {children = IdMap.add element (JQ.MZeroPlus (wrap_id element)) (transformPCM pcenv.pce_children transform_children);
-                      parent = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_parent transform_parent);
-                      prev = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_prev transform_sibs);
-                      next = IdMap.add element (JQ.MZeroOne (wrap_id element)) (transformPCM pcenv.pce_next transform_sibs)} in
 
-      let (benv, old_cenv) = senv in
+      (* Transform clauseEnv, and add Element clauses *)
 
-      let cMap_merge (map1 : clauseMap) (map2 : clauseMap) : clauseMap =
-        IdMap.merge (fun (key : id) (v1 : multiplicity option) (v2 : multiplicity option) ->
-          match v1, v2 with
-          | Some m1, Some m2 -> Some (JQ.MSum (m1, m2))
-          | _, None -> v1
-          | None, _ -> v2) map1 map2 in
-      (benv,
-       {children = cMap_merge old_cenv.children new_cenv.children;
-        parent = cMap_merge old_cenv.parent new_cenv.parent;
-        prev = cMap_merge old_cenv.prev new_cenv.prev;
-        next = cMap_merge old_cenv.next new_cenv.next}) in
+      let cenv = 
+        {children = 
+            IdMap.add element (JQ.MZeroPlus (wrap_id element)) 
+              (transformPCM pcenv.pce_children transform_children);
+         parent = IdMap.add element (JQ.MZeroOne (wrap_id element)) 
+            (transformPCM pcenv.pce_parent transform_parent);
+         prev = IdMap.add element (JQ.MZeroOne (wrap_id element)) 
+            (transformPCM pcenv.pce_prev transform_sibs);
+         next = IdMap.add element (JQ.MZeroOne (wrap_id element)) 
+            (transformPCM pcenv.pce_next transform_sibs)} in
+
+      
+      (* return final structureEnv *)
+      (benv, cenv) in
 
     (* body of desugar_structure *)
 
     (* generate bindings to add to environment *)
     let bindings = gen_bindings dcs in
     
-    (* compile structure into senv. benv is not compiled here.
-       TODO(liam): clean this up so that benv is not passed through. *)
-    let (_, cenv) = List.fold_left compile empty_structureEnv dcs in
+    (* compile structure into senv. *)
+
+    let (_, cenv) = compile empty_structureEnv dcs in
     
     (* use bindings to create benv *)
     let benv = IdMap.bindings

@@ -773,7 +773,7 @@ let structure_compilation_test () =
 
     (*** Begin compilation tests ***)
 
-    ((fmsg "Simple single tweet test"),
+    ((fmsg "Single top-level declComp"),
      (fun _ -> wrapper
        "(Tweet : div classes=[t1])"
        ["Tweet", sel ["div.!t1"]]
@@ -781,6 +781,37 @@ let structure_compilation_test () =
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]))];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]))] }));
+
+
+    ((fmsg "Single author as a child"),
+     (fun _ -> wrapper
+       "(Tweet : div classes=[t1]
+          (Author : div classes=[a1]))"
+       [("Tweet", sel ["div.!t1"]);
+        ("Author", sel ["div.!t1 > div.!a1"]);]
+       { D.children = ch [("Tweet", MOne (b_mp ["Author"]));
+                          ("Author", MZero (b_mp ["Any"]))];
+         D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
+                         ("Author", MOne (b_mp ["Tweet"]))];
+         D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZero (b_mp ["Any"]))];
+         D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZero (b_mp ["Any"]))]; }));
+
+    ((fmsg "Multiple top-level declComps"),
+     (fun _ -> wrapper
+       "(A : div classes=[a1])
+        (B : div classes=[b1])"
+       [("A", sel ["div.!a1"]);
+        ("B", sel ["div.!b1"])]
+       { D.children = ch [("A", MZero (b_mp ["Any"]));
+                          ("B", MZero (b_mp ["Any"]))];
+         D.parent = par [("A", MZeroOne (b_mp ["Element"]));
+                         ("B", MZeroOne (b_mp ["Element"]))];
+         D.prev = prev [("A", MZeroOne (b_mp ["Element"]));
+                        ("B", MZeroOne (b_mp ["Element"]))];
+         D.next = next [("A", MZeroOne (b_mp ["Element"]));
+                        ("B", MZeroOne (b_mp ["Element"]))] }));
 
 
     ((fmsg "Multiple children with the same name"),
@@ -867,6 +898,7 @@ let structure_compilation_test () =
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));]; }));
+
 
     ((fmsg "Single placeholder following one named child"),
      (fun _ -> wrapper
