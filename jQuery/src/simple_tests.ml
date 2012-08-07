@@ -776,7 +776,7 @@ let structure_compilation_test () =
     ((fmsg "Single top-level declComp"),
      (fun _ -> wrapper
        "(Tweet : div classes=[t1])"
-       ["Tweet", sel ["div.!t1"]]
+       ["Tweet", sel "div.!t1"]
        { D.children = ch [("Tweet", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]))];
@@ -853,20 +853,24 @@ let structure_compilation_test () =
                          ("E", MZero (b_mp ["Any"]));
                          ("F", MZero (b_mp ["Any"]))]; }));
 
+
+    (* Current bugs: 
+       1) Prevsib and Nextsib of Author is 1<Author>, not 01<Author>
+    *)
     ((fmsg "Multiple children with the same name"),
      (fun _ -> wrapper
        "(Tweet : div classes=[t1]
           (Author : div classes=[a1])
           <Author>
           <Author>)"
-       [("Tweet", sel ["div.!t1"]);
-        ("Author", sel ["div.!t1 > div.!a1"])]
+       [("Tweet", sel "div.!t1");
+        ("Author", sel "div.!t1 > div.!a1")]
        { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"]));
                           ("Author", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
-                        ("Author", MZeroOne (b_mp ["Author"]))];
+                        ("Author", MZeroOne (b_mp ["Element"; "Author"]))];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
                         ("Author", MZeroOne (b_mp ["Author"]))]; }));
 
@@ -1021,7 +1025,6 @@ let structure_compilation_test () =
             ("Content", MOne (b_mp ["Element";"Image"]));
             ("Image", MOne (b_mp ["Image"; "Time"]));
             ("Time", MZero (b_mp ["Any"]));]; }));
-
 
   ]
 (* end structure_well_formed_test *)
