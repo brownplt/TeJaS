@@ -814,6 +814,45 @@ let structure_compilation_test () =
                         ("B", MZeroOne (b_mp ["Element"]))] }));
 
 
+    ((fmsg "Multiple top-level declComps with many nested children"),
+     (fun _ -> wrapper
+       "(A : div classes=[a1]
+           (B : div classes=[b1]
+              (C : div classes=[c1])))
+        (D : div classes=[d1]
+           (E : div classes=[e1]
+              (F : div classes=[f1])))"
+       [("A", sel ["div.!a1"]);
+        ("B", sel ["div.!a1 > div.!b1"]);
+        ("C", sel ["div.!a1 > div.!b1 > div.!c1"]);
+        ("D", sel ["div.!d1"]);
+        ("E", sel ["div.!d1 > div.!e1"]);
+        ("F", sel ["div.!d1 > div.!e1 > div.!f1"])]
+       { D.children = ch [("A", MOne (b_mp ["B"]));
+                          ("B", MOne (b_mp ["C"]));
+                          ("C", MZero (b_mp ["Any"]));
+                          ("D", MOne (b_mp ["E"]));
+                          ("E", MOne (b_mp ["F"]));
+                          ("F", MZero (b_mp ["Any"]))];
+         D.parent = par  [("A", MZeroOne (b_mp ["Element"]));
+                          ("B", MOne (b_mp ["A"]));
+                          ("C", MOne (b_mp ["B"]));
+                          ("D", MZeroOne (b_mp ["Element"]));
+                          ("E", MOne (b_mp ["D"]));
+                          ("F", MOne (b_mp ["E"]))];
+         D.prev = prev  [("A", MZeroOne (b_mp ["Element"]));
+                         ("B", MZero (b_mp ["Any"]));
+                         ("C", MZero (b_mp ["Any"]));
+                         ("D", MZeroOne (b_mp ["Element"]));
+                         ("E", MZero (b_mp ["Any"]));
+                         ("F", MZero (b_mp ["Any"]))];
+         D.next = next  [("A", MZeroOne (b_mp ["Element"]));
+                         ("B", MZero (b_mp ["Any"]));
+                         ("C", MZero (b_mp ["Any"]));
+                         ("D", MZeroOne (b_mp ["Element"]));
+                         ("E", MZero (b_mp ["Any"]));
+                         ("F", MZero (b_mp ["Any"]))]; }));
+
     ((fmsg "Multiple children with the same name"),
      (fun _ -> wrapper
        "(Tweet : div classes=[t1]
@@ -933,10 +972,56 @@ let structure_compilation_test () =
                         ("Author", MZero (b_mp ["Any"]))]; }));
 
 
-
     
+    ((fmsg "Terribad comprehensive test case"),
+     (fun _ -> wrapper
+       "(Tweet : div classes=[tweet] optional classes=[first,last]
+          ...
+          (Author : div classes=[author] optional classes=[featured]
+             (Bio : div classes=[bio] optional classes=[hidden]
+                ...)
+             ...)
+          (Content : div classes=[content])
+          ...
+          (Image : div classes=[image])
+          <Image>
+          (Time : div classes=[time]))"
+       [("Tweet", sel ["div.!tweet.?first.?last"]);
+        ("Author", sel ["div.!tweet.?first.?last > div.!author.?featured"]);
+        ("Bio", sel ["div.!tweet.?first.?last > div.!author.?featured > div.!bio.?hidden"]);
+        ("Content", sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content"]);
+        ("Image", sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image";
+                       "div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image"]);
+        ("Time", sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image + div.!time"]);]
+       { D.children = ch
+           [("Tweet", MOnePlus (b_mp ["Element"; "Author"; "Content"; "Image"; "Time";]));
+            ("Author", MOnePlus (b_mp ["Bio"; "Element"]));
+            ("Bio", MZeroPlus (b_mp ["Element"]));
+            ("Content", MZero (b_mp ["Any"]));
+            ("Image", MZero (b_mp ["Any"]));
+            ("Time", MZero (b_mp ["Any"]));];
+         D.parent = par 
+           [("Tweet", MZeroOne (b_mp ["Element"]));
+            ("Author", MOne (b_mp ["Tweet"]));
+            ("Bio", MOne (b_mp ["Author"]));
+            ("Content", MOne (b_mp ["Tweet"]));
+            ("Image", MOne (b_mp ["Tweet"]));
+            ("Time", MOne (b_mp ["Tweet"]));];
+         D.prev = prev 
+           [("Tweet", MZeroOne (b_mp ["Element"]));
+            ("Author", MZeroOne (b_mp ["Element"]));
+            ("Bio", MZero (b_mp ["Any"]));
+            ("Content", MOne (b_mp ["Author"]));
+            ("Image", MOne (b_mp ["Element";"Content";"Image";]));
+            ("Time", MOne (b_mp ["Image"]));];
+         D.next = next 
+           [("Tweet", MZeroOne (b_mp ["Element"]));
+            ("Author", MOne (b_mp ["Content"]));
+            ("Bio", MZeroOne (b_mp ["Element"]));
+            ("Content", MOne (b_mp ["Element";"Image"]));
+            ("Image", MOne (b_mp ["Image"; "Time"]));
+            ("Time", MZero (b_mp ["Any"]));]; }));
 
-    
 
   ]
 (* end structure_well_formed_test *)

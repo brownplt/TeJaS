@@ -548,6 +548,7 @@ struct
     | _, TStrobe (Strobe.TEmbed t2) -> equivalent_typ env t1 t2
     | TStrobe t1, TStrobe t2 -> Strobe.equivalent_typ env t1 t2
     | _ -> false
+      
   and equivalent_multiplicity env m1 m2 = match m1, m2 with
     | MPlain t1, MPlain t2 -> equivalent_typ env t1 t2
     | MId n1, MId n2 ->
