@@ -367,11 +367,10 @@ struct
          ignore (lookup_typ_id id new_env);
          raise (Not_wf_typ (sprintf "the type %s is already defined" id))
        with Not_found ->
-         let k = kind_check env [] (STyp t) in
-         raw_bind_typ_id id (extract_t (apply_name (Some id) t)) (extract_k k) env))
+         let k = kind_check new_env [] (STyp t) in
+         raw_bind_typ_id id (extract_t (apply_name (Some id) t)) (extract_k k) new_env))
     bindings env in
 
-    
     (* Finally, extend env with all other declarations *)
 
     let lst = non_structure_decls in
