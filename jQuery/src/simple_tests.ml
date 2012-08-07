@@ -689,8 +689,14 @@ let structure_compilation_test () =
     List.fold_left (fun acc (id, mult) -> 
       IdMap.add id mult acc) cm cs in
 
+  (* Helper: creates a sel from a list of selectors *)
+  let sel sels = match sels with 
+    | [] -> failwith "shouldn't be providing an empty selector"
+    | [s] -> Css.singleton s
+    | hd::tl -> 
+      List.fold_left (fun sels s -> Css.union (Css.singleton s) sels)
+        (Css.singleton hd) tl in
 
-  let sel s = Css.singleton s in
 
   (* Consumes:
      d (string): structure declarations to be parsed
@@ -714,6 +720,10 @@ let structure_compilation_test () =
     let (_, senv) = D.desugar_structure decls in
     let (backform_env, clause_env) = senv in
 
+    (* Note this does not check to make sure that the SelSets have
+       the SAME selectors, just that they are equivalent. This has
+       the unfortunate side-effect of making it too easy for some 
+       tests to pass *)
     let beq = D.benv_eq exp_backform_env backform_env in
 
     let ceq = 
@@ -766,32 +776,134 @@ let structure_compilation_test () =
     ((fmsg "Simple single tweet test"),
      (fun _ -> wrapper
        "(Tweet : div classes=[t1])"
-       ["Tweet", sel "div.!t1"]
+       ["Tweet", sel ["div.!t1"]]
        { D.children = ch [("Tweet", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]))];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]))] }));
 
 
-    (* Current bugs: 
-       1) Prevsib and Nextsib of Author is 1<Author>, not 01<Author>
-    *)
     ((fmsg "Multiple children with the same name"),
      (fun _ -> wrapper
        "(Tweet : div classes=[t1]
           (Author : div classes=[a1])
           <Author>
           <Author>)"
-       [("Tweet", sel "div.!t1");
-        ("Author", sel "div.!t1 > div.!a1")]
+       [("Tweet", sel ["div.!t1"]);
+        ("Author", sel ["div.!t1 > div.!a1"])]
        { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"]));
                           ("Author", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
-                        ("Author", MZeroOne (b_mp ["Element"; "Author"]))];
+                        ("Author", MZeroOne (b_mp ["Author"]))];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
-                        ("Author", MZeroOne (b_mp ["Element"; "Author"]))]; }));
+                        ("Author", MZeroOne (b_mp ["Author"]))]; }));
+
+    ((fmsg "Multiple children with same name interspersed with placeholders"),
+     (fun _ -> wrapper
+       "(Tweet : div classes=[t1]
+          ...
+          (Author : div classes=[a1])
+          ...
+          <Author>
+          <Author>
+          ...
+          <Author>)"
+       [("Tweet", sel ["div.!t1"]);
+        ("Author", sel ["div.!t1 > div.!a1"])]
+       { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"; "Element"]));
+                          ("Author", MZero (b_mp ["Any"]))];
+         D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
+                         ("Author", MOne (b_mp ["Tweet"]))];
+         D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MOne (b_mp ["Author"; "Element"]))];
+         D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZeroOne (b_mp ["Author"; "Element"]))]; }));
+
+
+    ((fmsg "Multiple children with several same-name DIds interspersed with placeholders"),
+     (fun _ -> wrapper
+       "(Tweet : div classes=[t1]
+          ...
+          (Author : div classes=[a1])
+          ...
+          <Author>
+          (Content : div classes=[c1])
+          <Author>
+          <Content>
+          ...
+          <Author>)"
+       [("Tweet", sel ["div.!t1"]);
+        ("Author", 
+         sel ["div.!t1 > div.!a1";
+              "div.!t1 > div.!a1 ~ div.!a1";
+              "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1";
+              "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1 ~ div.!a1"]);
+        ("Content", 
+         sel ["div.!t1 > div.!a1 ~ div.!a1 + div.!c1";
+              "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1"])]
+       { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"; "Element"; "Content"]));
+                          ("Author", MZero (b_mp ["Any"]));
+                          ("Content", MZero (b_mp ["Any"]))];
+         D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
+                         ("Author", MOne (b_mp ["Tweet"]));
+                         ("Content", MOne (b_mp ["Tweet"]))];
+         D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MOne (b_mp ["Author";"Element";"Content"]));
+                        ("Content", MOne (b_mp ["Author"]))];
+         D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZeroOne (b_mp ["Author"; "Element"; "Content"]));
+                        ("Content", MOne (b_mp ["Author"; "Element"]))]; }));
+
+
+
+    ((fmsg "Single placeholder as a child"),
+     (fun _ -> wrapper
+       "(Tweet : div classes=[t1]
+          ...)"
+       [("Tweet", sel ["div.!t1"]);]
+       { D.children = ch [("Tweet", MZeroPlus (b_mp ["Element"]));];
+         D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));];
+         D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));];
+         D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));]; }));
+
+    ((fmsg "Single placeholder following one named child"),
+     (fun _ -> wrapper
+       "(Tweet : div classes=[t1]
+          (Author : div classes=[a1])
+          ...)"
+       [("Tweet", sel ["div.!t1"]);
+       ("Author", sel ["div.!t1 > div.!a1"])]
+       { D.children = ch [("Tweet", MOnePlus (b_mp ["Element"; "Author"]));
+                          ("Author", MZero (b_mp ["Any"]))];
+         D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
+                         ("Author", MOne (b_mp ["Tweet"]))];
+         D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZero (b_mp ["Any"]))];
+         D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZeroOne (b_mp ["Element"]))]; }));
+
+    ((fmsg "Single placeholder preceding one named child"),
+     (fun _ -> wrapper
+       "(Tweet : div classes=[t1]
+          ...
+          (Author : div classes=[a1]))"
+       [("Tweet", sel ["div.!t1"]);
+       ("Author", sel ["div.!t1 > div.!a1"])]
+       { D.children = ch [("Tweet", MOnePlus (b_mp ["Element"; "Author"]));
+                          ("Author", MZero (b_mp ["Any"]))];
+         D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
+                         ("Author", MOne (b_mp ["Tweet"]))];
+         D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZeroOne (b_mp ["Element"]))];
+         D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
+                        ("Author", MZero (b_mp ["Any"]))]; }));
+
+
+
+    
+
     
 
   ]
@@ -820,6 +932,7 @@ let selector_tests () =
       "Selector_test #" ^ (string_of_int (n+1)) ^ " failed.\n" ^
         "Description: "^ desc in
 
+
     test_harness_many [
       ((fail_msg "None"),
        (fun _ -> subset_wrapper s1 time false));
@@ -829,6 +942,7 @@ let selector_tests () =
      
       ((fail_msg "None"),
        (fun _ -> subset_wrapper a1 a2 false));
+      
     ]
   end
   | _ -> []

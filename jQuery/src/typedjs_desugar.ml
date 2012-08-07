@@ -434,6 +434,7 @@ struct
     **)
     let compile (senv : structureEnv) (dc : W.declComp)  : structureEnv = 
       let element = "Element" in
+      let any = "Any" in
       
       (** Function: enforcePresence
           ==================================================
@@ -474,63 +475,81 @@ struct
             ==================================================
             Takes a preClauseEnv, a list of dcContents (the children list of a declComp), compiles the list of dcContents and merges the result into the pcenv. This is the core function for compiling declarations into clause environments.
         **)
-        let rec compPreClauses (pcenv : preClauseEnv) (dccs : W.dcContent list) : preClauseEnv = 
+        let  compPreClauses (pcenv : preClauseEnv) (dccs : W.dcContent list) : preClauseEnv = 
+
+          let pcenv = match dccs with 
+            | [] -> pcenv
+            | hd::tail ->  begin match hd with 
+              | W.DPlaceholder -> pcenv
+              | W.DNested (name,_,_,_,_)
+              | W.DId name ->
+                { pce_parent = pcenv.pce_parent; 
+                  pce_children = pcenv.pce_children; 
+                  pce_prev = update name (Some "Any") pcenv.pce_children; 
+                  pce_next = pcenv.pce_next} 
+            end in
+
+          let rec helper pcenv dccs = 
+
           (* decompose the pcenv into four preClauseMaps *)
-          let { pce_parent = parent; pce_children = children; pce_prev = prev; pce_next = next} = pcenv in
+            let { pce_parent = parent; pce_children = children; pce_prev = prev; pce_next = next} = pcenv in
           (* While traversing the list of dcContents, we only update the preClauseMaps relevant to the head of the content list in each of the cases. The rest will be dealt with by recursive calls to the tail of the list. *)
-          match dccs with
+            match dccs with
           (* list is empty ==> return the original pcenv *)
-          | [] -> pcenv
+            | [] -> pcenv
           (* list consists of a single placeholder ==> add the binding from parentId to None in kidMap *)
-          | W.DPlaceholder :: [] -> 
-            {pce_children = (update pname None children);
-             pce_parent = parent;
-             pce_prev = prev; 
-             pce_next = next }
-          (* list consists of a single declaration (or Did) ==> add the binding from parentId to id in kidMap, and from id to parentId in parentMap *)
-          | W.DNested  (name,_,_,_,_) :: []
-          | W.DId name::[] -> 
-            {pce_children = (update pname (Some name) children);
-             pce_parent = (update name (Some pname) parent);
-             pce_prev = prev; 
-             pce_next = next }
-          (* list contains more than one element ==> match on the first two elements of the list *)
-          | c1 :: ((c2 :: rest) as tail) -> (match c1, c2 with
-            (* two placeholders ==> recur on tail *)
-            | W.DPlaceholder, W.DPlaceholder -> compPreClauses pcenv tail
-            (* placeholder and nested/id ==> add binding from parentId to None in kidMap, and bindng from id to None in prevSibMap *)
-            | W.DPlaceholder, W.DNested (name, _, _, _, _)
-            | W.DPlaceholder, W.DId name -> compPreClauses 
+            | W.DPlaceholder :: [] -> 
               {pce_children = (update pname None children);
                pce_parent = parent;
-               pce_prev = (update name None prev);
-               pce_next = next; } tail
+               pce_prev = prev; 
+               pce_next = next }
+          (* list consists of a single declaration (or Did) ==> add the binding from parentId to id in kidMap, and from id to parentId in parentMap. Also
+             indicate that next for name has an Any*)
+            | W.DNested  (name,_,_,_,_) :: []
+            | W.DId name::[] -> 
+              {pce_children = (update pname (Some name) children);
+               pce_parent = (update name (Some pname) parent);
+               pce_prev = prev; 
+               pce_next = (update name (Some any) next) }
+          (* list contains more than one element ==> match on the first two elements of the list *)
+            | c1 :: ((c2 :: rest) as tail) -> (match c1, c2 with
+            (* two placeholders ==> recur on tail *)
+              | W.DPlaceholder, W.DPlaceholder -> helper pcenv tail
+            (* placeholder and nested/id ==> add binding from parentId to None in kidMap, and bindng from id to None in prevSibMap *)
+              | W.DPlaceholder, W.DNested (name, _, _, _, _)
+              | W.DPlaceholder, W.DId name -> helper 
+                {pce_children = (update pname None children);
+                 pce_parent = parent;
+                 pce_prev = (update name None prev);
+                 pce_next = next; } tail
             (* nested/id and placeholder ==> add binding from parentId to id in kidMap, from id to parentId in parentMap, and from id to None in nextSibMap *)
-            | W.DNested (name, _, _, _, _), W.DPlaceholder
-            | W.DId name, W.DPlaceholder -> 
-              begin match rest with
-              | []
-              | W.DPlaceholder :: _ -> compPreClauses 
-                {pce_children = (update pname (Some name) children);
-                 pce_parent = (update name (Some pname) parent);
-                 pce_prev = prev;
-                 pce_next = (update name None next); } tail
-              | W.DNested (name2, _, _, _, _)::_
-              | W.DId name2 :: _ -> compPreClauses
-                {pce_children = (update pname (Some name) children);
-                 pce_parent = (update name (Some pname) parent);
-                 pce_prev = (update name2 (Some name) prev);
-                 pce_next = (update name None (update name (Some name2) next)); } tail
-              end
+              | W.DNested (name, _, _, _, _), W.DPlaceholder
+              | W.DId name, W.DPlaceholder -> 
+                begin match rest with
+                | []
+                | W.DPlaceholder :: _ -> helper 
+                  {pce_children = (update pname (Some name) children);
+                   pce_parent = (update name (Some pname) parent);
+                   pce_prev = prev;
+                   pce_next = (update name None next); } tail
+                | W.DNested (name2, _, _, _, _)::_
+                | W.DId name2 :: _ -> helper
+                  {pce_children = (update pname (Some name) children);
+                   pce_parent = (update name (Some pname) parent);
+                   pce_prev = (update name2 (Some name) prev);
+                   pce_next = (update name None (update name (Some name2) next)); } tail
+                end
             (* nested/id and nested/id ==> add binding from parentId to id1 and id2 in kidMap, from id1 and id2 to parentId in parentMap, from id1 to id2 in nextSibMap, from id2 to id1 in prevSibMap *)
-            | W.DNested (name1, _, _, _, _), W.DNested (name2, _, _, _, _)
-            | W.DNested (name1, _, _, _, _), W.DId name2
-            | W.DId name1, W.DNested (name2, _, _, _, _)
-            | W.DId name1, W.DId name2 -> compPreClauses 
-              {pce_children = (update pname (Some name1) children);
-               pce_parent = (update name1 (Some pname) parent);
-               pce_prev = (update name2 (Some name1) prev);
-               pce_next = (update name1 (Some name2) next)} tail) in
+              | W.DNested (name1, _, _, _, _), W.DNested (name2, _, _, _, _)
+              | W.DNested (name1, _, _, _, _), W.DId name2
+              | W.DId name1, W.DNested (name2, _, _, _, _)
+              | W.DId name1, W.DId name2 -> helper 
+                {pce_children = (update pname (Some name1) children);
+                 pce_parent = (update name1 (Some pname) parent);
+                 pce_prev = (update name2 (Some name1) prev);
+                 pce_next = (update name1 (Some name2) next)} tail) in
+
+          helper pcenv dccs in
 
 
         (* Enforce all ids that show up (regardless of whether or not it has been declared before) in the W.declComp *)
@@ -539,6 +558,9 @@ struct
           | W.DId name -> enforcePresence name pcenv
           | _ -> pcenv)
           (enforcePresence pname pcenv) pcontents in
+
+        (* For the first contents, if it is a DNested 
+           or a DId, add Any to prev *)
 
         (*  preClauseEnv updated for this W.declComp *)
         let newPreClauseEnv =  compPreClauses enforcedPreClauseEnv pcontents in
@@ -571,18 +593,22 @@ struct
           pcm IdMap.empty in
       
       (* Functions for transforming lists of tids into multiplicities *)
-
+      
+      (* Helper function: transform id into MPlain *)
       let wrap_id id = (JQ.MPlain (JQ.TStrobe (S.TId id))) in
 
-      let extract_id (ido : id option) : id  = match ido with 
-        | Some id -> id
-        | None -> element in
+      (* Helper: takes an id option and produces a typ. Also
+         handles "Any" -> TTop transformation *)
+      let extract_id (ido : id option) : S.typ  = match ido with 
+        | Some "Any" -> S.TTop
+        | Some id -> S.TId id
+        | None -> S.TId element in
 
       (** Function: transform_children
           ==================================================
           Transform function for kidMap that takes an id option list and turns it into a multiplicity.
           Match cases:
-          empty list ==> 0<Element>
+          empty list ==> 0<TTop>
           list with a single id ==> 1<id>
           list with a single None ==> 0+<Element>
           list with more than one entries ==> 
@@ -595,32 +621,47 @@ struct
         | _ -> match ListExt.remove_dups idos with
           | [] -> failwith 
             "Desugar:desugar_structure:transform_children: IMPOSSIBLE:";
-          | [ido] -> MOnePlus (MPlain (TStrobe (S.TId (extract_id ido))))
+          | [ido] -> MOnePlus (MPlain (TStrobe (extract_id ido)))
           | hd::tail -> 
             MOnePlus (MPlain (TStrobe (List.fold_left (fun acc ido ->
-              S.TUnion (None,acc, (S.TId (extract_id ido)))) 
-                                         (S.TId (extract_id hd)) tail))) in
+              S.TUnion (None,acc, (extract_id ido))) 
+                                         (extract_id hd) tail))) in
       (** Function: transform_sibs
           ==================================================
           Transform function for prevSibMap and nextSibMap that takes an id option list and turns it into a multiplicity.
           Match cases:
-          empty list ==> 0<Element>
+          empty list ==> fail - should not encounter this case
+          [Some "Any"] -> 0<TTop>
           list with a single id ==> 1<id>
           list with a single None ==> 01<Element>
           list with more than one entries ==> 
-
-          1<union of of all entries in the list>
+          1<union of all remove_dups entries in the list> OR
+          01<union of remove_dups of all entries in the list> if list contains
+          an "Any"
       **)
       let transform_sibs idos = let open JQ in match idos with
-        (* what should this be? TTop or Element? *)
-        (* Question: Should MZero be a unit constructor? *)
-        | [] -> MZero (MPlain (TStrobe (S.TTop)))
+        | [] -> failwith "Desugar:desugar_structure:transform_sibs: IMPOSSIBLE: should not encounter an empty list of ids."
+        | [Some "Any"] -> MZero (MPlain (TStrobe (S.TTop)))
         | [Some id] -> MOne (wrap_id id)
         | [None] -> MZeroOne (wrap_id element)
-        | hd::tail -> (* TODO(liam) figure out the subtleties here *)
-          MOne (MPlain (TStrobe (List.fold_left (fun acc ido ->
-            S.TUnion (None,acc, (S.TId (extract_id ido)))) 
-                                   (S.TId (extract_id hd)) tail))) in
+        (* Any other list with length > 1 *)
+        | _ -> begin 
+          let rd_idos = ListExt.remove_dups idos in
+          let any_present = (List.exists (fun ido -> 
+            ido = (Some "Any")) rd_idos) in
+          match  (if any_present then (List.filter (fun ido -> 
+            (not (ido = (Some "Any")))) rd_idos) 
+            else rd_idos) with 
+          | [] -> failwith "Desugar:desugar_structure:transform_sibs: IMPOSSIBLE: 
+will always have list with length >= 1"
+          | hd::tail -> 
+            let mplain = 
+              MPlain (TStrobe (List.fold_left (fun acc ido -> 
+                S.TUnion (None,acc, (extract_id ido))) 
+                                 (extract_id hd) tail)) in
+            if any_present then MZeroOne mplain else MOne mplain
+        end in
+
 
       (** Function: transform_parent
           ==================================================
@@ -640,10 +681,6 @@ struct
         | [Some id] -> MOne (wrap_id id)
         | [None] -> failwith "parent cannot be a placeholder"
         | hd:: tail -> failwith "cannot have more than one parent" in
-          (* MOne (MPlain (TStrobe (List.fold_left (fun acc ido -> *)
-          (* S.TUnion (None,acc, (S.TId (extract_id ido))))  *)
-          (*                                       (S.TId (extract_id hd)) tail))) in *)
-
 
       (* Make sure that the toplevel declComp has nextsib and prevsib
          of 01<Element>
