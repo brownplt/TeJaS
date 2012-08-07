@@ -151,22 +151,10 @@ struct
           let (|||) c thunk = if (snd c) then c else thunk (fst c) in
           let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
           match unwrap_t simpl_t1, unwrap_t simpl_t2 with
-          | TStrobe (Strobe.TUnion(_, t11, t12)), t2 -> (* order matters -- left side must be split first! *)
-            subtype_typ env cache (embed_t t11) t2 &&& (fun c -> subtype_typ env c (embed_t t12) t2)
-          | t1, TStrobe (Strobe.TUnion(_, t21, t22)) ->
-            subtype_typ env cache t1 (embed_t t21) ||| (fun c -> subtype_typ env c t1 (embed_t t22))
-          | t1, TStrobe (Strobe.TInter(_, t21, t22)) -> (* order matters -- right side must be split first! *)
-            subtype_typ env cache t1 (embed_t t21) &&& (fun c -> subtype_typ env c t1 (embed_t t22))
-          | TStrobe (Strobe.TInter(_, t11, t12)), t2 ->
-            subtype_typ env cache (TStrobe t11) t2 ||| (fun c -> subtype_typ env c (TStrobe t12) t2)
-
-          | TStrobe t1, TStrobe t2 -> 
-            tc_cache := cache; (* checkpoint state *)
-            cache, StrobeSub.subtype env t1 t2
           | TDom (_, t1, sel1), TDom (_, t2, sel2) ->
             subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
-          | TDom _, _ -> subtype_typ env cache t1 (Env.expose_tdoms env (TDom(None, t2, Css.all)))
-          | _, TDom _ -> subtype_typ env cache (Env.expose_tdoms env (TDom(None, t1, Css.all))) t2
+          | TDom _, _ -> subtype_typ env cache (Env.expose_tdoms env t1) (Env.expose_tdoms env (TDom(None, t2, Css.all)))
+          | _, TDom _ -> subtype_typ env cache (Env.expose_tdoms env (TDom(None, t1, Css.all))) (Env.expose_tdoms env t2)
           | TApp _, TApp _ -> cache, false
           (* UNSOUND: Type constructor might not be covariant in its arguments *)
           (* | TApp(t1, args1), TApp(t2, args2) -> *)
@@ -181,6 +169,18 @@ struct
                 | STyp t -> Env.bind_typ_id x1 t env
                 | SMult m -> Env.bind_mult_id x1 m env in
               subtype_typ env' cache t1 t2
+          | TStrobe (Strobe.TUnion(_, t11, t12)), t2 -> (* order matters -- left side must be split first! *)
+            subtype_typ env cache (embed_t t11) t2 &&& (fun c -> subtype_typ env c (embed_t t12) t2)
+          | t1, TStrobe (Strobe.TUnion(_, t21, t22)) ->
+            subtype_typ env cache t1 (embed_t t21) ||| (fun c -> subtype_typ env c t1 (embed_t t22))
+          | t1, TStrobe (Strobe.TInter(_, t21, t22)) -> (* order matters -- right side must be split first! *)
+            subtype_typ env cache t1 (embed_t t21) &&& (fun c -> subtype_typ env c t1 (embed_t t22))
+          | TStrobe (Strobe.TInter(_, t11, t12)), t2 ->
+            subtype_typ env cache (TStrobe t11) t2 ||| (fun c -> subtype_typ env c (TStrobe t12) t2)
+
+          | TStrobe t1, TStrobe t2 -> 
+            tc_cache := cache; (* checkpoint state *)
+            cache, StrobeSub.subtype env t1 t2
           | _ -> (cache, false))
     end
       
