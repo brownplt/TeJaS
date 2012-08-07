@@ -44,16 +44,16 @@ $('td').parent().children().addClass('highlight');
 
 
 
-// $('td')     // Find every cell containing "Henry"
-//     .parent()               // Select its parent
-//     .find()
-//     .filter('td')
-//     .eq(1)               // Find the 2nd descendant cell
-//     .addClass('highlight')  // Add the "highlight" class
-//     .end()
-//     .end()
-//     .end()              // Return to the parent of the cell containing "Henry"
-//     .find()
-//     .filter('td')
-//     .eq(2)              // Find the 3rd descendant cell
-//     .addClass('highlight'); // Add the "highlight" class
+$('td')     // Find every cell containing "Henry"
+    .parent()               // Select its parent
+    .find()
+    .filter('td')
+    .eq(1)               // Find the 2nd descendant cell
+    .addClass('highlight')  // Add the "highlight" class
+    .end()
+    .end()
+    .end()              // Return to the parent of the cell containing "Henry"
+    .find()
+    .filter('td')
+    .eq(2)              // Find the 3rd descendant cell
+    .addClass('highlight'); // Add the "highlight" class
