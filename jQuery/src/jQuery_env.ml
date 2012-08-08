@@ -59,7 +59,28 @@ struct
 
   let (senv : structureEnv ref) = ref Desugar.empty_structureEnv
 
-  let rec expose_tdoms (env : env) (t : typ) : typ = t
+  (* Consumes:
+     env 
+     t (typ)
+
+     Produces t if t is of the form:
+       TDom
+       TId id -> TDom
+       TUnion of TDoms (or TUnion of TDom, TUnion of Tdoms...)
+     Otherwise, raises Typ_error *)
+  let rec expose_tdoms (env : env) (t : typ) : typ =
+    match unwrap_t t with
+    | TDom _ -> t
+    | _ -> begin match extract_t t with
+      | Strobe.TUnion (s,t1,t2) -> 
+        embed_t (Strobe.TUnion (s, (extract_t (expose_tdoms env (embed_t t1))), 
+                                (extract_t (expose_tdoms env (embed_t t2)))))
+      | Strobe.TId id -> expose_tdoms env (fst (lookup_typ_id id env))
+      | _ ->  raise (* If it's anything else, then reject, and fail with a type error *)     
+        (Strobe.Typ_error 
+           (Pos.dummy,
+            (Strobe.FixedString (sprintf "Malformed TDom: %s"(string_of_typ t)))))
+    end
 
 (* match (unwrap_t t) with *)
 (*     | TDom (s, _, sel) when Css.is_empty sel ->  *)
@@ -418,11 +439,18 @@ struct
                                    string_of_typ (embed_t t)))
 
 
-
+  (* Consumes an env and a list of declarations 
+     1) Gathers all top level declComps, and desugars them.
+     2) Updates senv with compiled structureEnv
+     3) Adds all other original, non-structure declarations to the env
+     4) Adds local structure bindings returned from desugar into the env
+     The reason that #4 has to happen after #3 is that certain ids,
+     such as DivElement and Element, may have not yet been added to
+     the environment. *)
   let extend_global_env env lst = 
     let open Typedjs_writtyp.WritTyp in
 
-    (* Partition lst into local structure declarations and non-structure
+    (* 1) Partition lst into local structure declarations and non-structure
        declarations *)
     let (structure_decls, non_structure_decls) = 
       List.partition (fun d -> match d with
@@ -440,20 +468,10 @@ struct
       Desugar.desugar_structure wfs in
     (* Perform well-formedness test for local structure *)
     
-    (* Update senv *)
+    (* 2) Update senv *)
     senv := compiled_senv;
 
-    (* Add bindings created during desugar_structure to the env *)
-    let env = IdMap.fold (fun id t new_env ->
-      (try
-         ignore (lookup_typ_id id new_env);
-         raise (Not_wf_typ (sprintf "the type %s is already defined" id))
-       with Not_found ->
-         let k = kind_check new_env [] (STyp t) in
-         raw_bind_typ_id id (extract_t (apply_name (Some id) t)) (extract_k k) new_env))
-    bindings env in
-
-    (* Finally, extend env with all other declarations *)
+    (* 3) Extend env with all other declarations *)
 
     let lst = non_structure_decls in
            
@@ -567,13 +585,22 @@ struct
         (* Printf.eprintf "Recursively including ids: "; *)
         (* List.iter (fun x -> Printf.eprintf "%s " x) ids; *)
         List.fold_left (add ids) env binds
- 
-    in List.fold_left (add []) env lst
+          
+    in 
+    
+    let env = List.fold_left (add []) env lst in
 
-  (* let rec bind_typ env typ : env * typ = match typ with *)
-  (*   | TForall (n, x, s, t) -> bind_typ (bind_typ_id x s env) (apply_name n t) *)
-  (*   | typ -> (env, typ) *)
+    (* 4) Finally add bindings created during desugar_structure to the env *)
+    IdMap.fold (fun id t new_env ->
+      (try
+         ignore (lookup_typ_id id new_env);
+         raise (Not_wf_typ (sprintf "the type %s is already defined" id))
+       with Not_found ->
+         let k = kind_check new_env [] (STyp t) in
+         raw_bind_typ_id id (extract_t (apply_name (Some id) t)) (extract_k k) new_env))
+      bindings env
 
+  (* End of extend_global_env *)
 
   let rec resolve_special_functions (env : env) (senv : structureEnv) (t : typ) =
     let rec resolve_sigma s = match s with

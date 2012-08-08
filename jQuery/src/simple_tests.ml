@@ -148,9 +148,6 @@ let print_env env : unit =
   Format.print_newline ()
 
 
-
-(********************************* Tests **************************************)
-
 exception STest_failure of string
 
 (* Helper: consumes a list of functions that return exception option lists,
@@ -208,6 +205,298 @@ let test_harness_many (tests : (( int -> string) * ( _ -> unit )) list)
   foldi (fun n exns (f_msg, f_test) -> 
     (List.append (test_harness f_test (f_msg n)) exns)) [] tests
 
+
+(************************** Testing helper functions **************************)
+
+module Helper = struct    
+
+(* Helper: creates a sel from a list of selectors *)
+  let sel sels = 
+    let module Css = JQueryMod.Css in
+    match sels with 
+    | [] -> failwith "shouldn't be providing an empty selector"
+    | [s] -> Css.singleton s
+    | hd::tl -> 
+      List.fold_left (fun sels s -> Css.union (Css.singleton s) sels)
+        (Css.singleton hd) tl
+
+
+  let tdom id typ_string sel_strings = 
+    JQ.TDom (None, 
+             id, 
+             JQ.TStrobe (Strobe.TId ((String.capitalize typ_string) ^ "Element")),
+             sel sel_strings)
+
+  (* Helper that turns two JQ.typs into a TStrobe Strobe.TUnion *)
+  let tu t1 t2 = 
+    JQ.embed_t (S.TUnion (None, (JQ.extract_t t1), (JQ.extract_t t2))) 
+
+  let tid id = JQ.embed_t (Strobe.TId id)
+
+  let env = 
+    let raw = 
+      "type Element = #{ name : Str };
+       type DivElement = #{ name : /\"HTMLDivElement\"/ };" in
+
+    let decls = JQEnv.parse_env raw "Helper env" in
+    
+    JQEnv.extend_global_env IdMap.empty decls
+  
+    
+
+end
+
+
+
+(********************************* Tests **************************************)
+
+
+(* DEPENDS on working extend_global_env *)
+let expose_tdoms_test () =
+ 
+  let module H = Helper in
+
+  let raw_structure = 
+    "(Tweet : div classes=[tweet])" in
+  
+
+  let decls = JQEnv.parse_env raw_structure "Expose TDoms test" in
+
+  let env = JQEnv.extend_global_env H.env decls in
+
+  let wrapper t pass = (fun _ ->
+
+    try 
+      ignore( JQEnv.expose_tdoms env t);
+      if (not pass) 
+      then raise 
+        (STest_failure (sprintf "%s SHOULD have caused an error when being exposed"
+                          (JQ.string_of_typ t)))
+      else ()
+    with Strobe.Typ_error _ -> 
+      if pass then begin
+        raise (STest_failure 
+           (sprintf "%s should NOT have caused an error when being exposed"
+              (JQ.string_of_typ t))) end
+      else () )
+
+  in (* END of wrapper *)
+
+  
+  let fmsg d n = (sprintf "Expose TDom test #%n failed.\nDescription: %s"n d) in
+
+  test_harness_many [
+
+    ((fmsg "Basic TDom"),
+     wrapper (H.tdom "Tweet" "div" ["*"]) true);
+
+    ((fmsg "TId that resolves to a TDom"),
+     wrapper (JQ.embed_t (S.TId "Tweet")) true);
+
+    ((fmsg "TId that does NOT resolve to a TDom"),
+     wrapper (JQ.embed_t (S.TId "Element")) false);
+
+    ((fmsg "TUnion of TDoms with ids that resolve to a TDom"),
+     wrapper (H.tu 
+                (H.tdom "Tweet" "div" ["*"])
+                (H.tu
+                   (H.tu
+                      (H.tdom "Tweet" "div" ["*"])
+                      (H.tid "Tweet"))
+                   (H.tid "Tweet"))) true);
+
+    ((fmsg "TUnion of TDoms that contain an id that does NOT resolve to a TDom"),
+     wrapper (H.tu
+                (H.tu
+                   (H.tdom "Tweet" "div" ["*"])
+                   (H.tid "Element"))
+                (H.tid "Tweet")) false);
+
+    ((fmsg "Some non-TDom JQ.typ"),
+     wrapper (JQ.TApp ((H.tdom "Tweet" "div" ["*"]),
+                       [JQ.SMult (JQ.MOne (JQ.MPlain (H.tid "Tweet")))]))
+       false);
+
+    ((fmsg "Some non-TDom Strobe.typ"),
+     wrapper (JQ.embed_t S.TBot) false);
+
+  ]
+(* END of extract_tdom_test *)
+
+(* DEPENDS on working extend_global_env *)
+let subtyping_test () = 
+
+  let module H = Helper in
+
+  let raw_env = 
+    "(Tweet1 : div classes=[tweet]
+       (Author : div classes=[author])
+       (Content : div classes=[content])
+       (Time : div classes=[time]));
+     (Tweet2 : div classes=[tweet]
+       (Content2 : div classes=[content2]));
+     (Tweet3: div classes=[tweet])" in
+
+
+  let decls  = (JQEnv.parse_env raw_env "Subtyping test") in
+
+  Printf.eprintf "Length of decls is %n"(List.length decls);
+
+  let env = JQEnv.extend_global_env H.env decls in
+
+  let wrapper t1 t2 pass = 
+    (fun _ -> 
+      match (JQuerySub.subtype_typ true env t1 t2), pass with
+      | true, true
+      | false, false -> ()
+      | true, false -> raise 
+        (STest_failure (sprintf "%s should NOT subtype %s, but it does"
+                          (JQ.string_of_typ t1) (JQ.string_of_typ t2)))
+      | false, true -> raise 
+        (STest_failure (sprintf "%s SHOULD subtype %s, but it does not"
+                          (JQ.string_of_typ t1) (JQ.string_of_typ t2)))) in
+
+
+  let fmsg d n = (sprintf "Subtyping test %n failed.\nDescription: %s"n d) in
+
+  test_harness_many [
+
+    (*** TDom subtyping tests ***)
+    
+    ((fmsg "DivElement <: DivElement"),
+     (wrapper 
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet1" "div" ["*"])
+       true));
+
+    ((fmsg "DivElement <: Element"),
+     (wrapper 
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet1" "" ["*"])
+       true));
+
+    ((fmsg "Element </: DivElement"),
+     (wrapper 
+       (H.tdom "Tweet1" "" ["*"])
+       (H.tdom "Tweet1" "div" ["*"])
+       false));
+
+    ((fmsg "Tweet1 <: Tweet2"),
+     (wrapper 
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet2" "div" ["*"])
+       true));
+
+    ((fmsg "Tweet2 <: Tweet1"),
+     (wrapper 
+       (H.tdom "Tweet2" "div" ["*"])
+       (H.tdom "Tweet1" "div" ["*"])
+       true));
+
+    ((fmsg "TDom <: TUnion"),
+     (wrapper 
+        (H.tdom "Tweet1" "div" ["*"])
+        (H.tu 
+           (H.tdom "Tweet2" "div" ["*"])
+           (H.tdom "Tweet3" "div" ["*"]))
+       true));
+
+    ((fmsg "TDom </: TUnion"),
+     (wrapper 
+        (H.tdom "Tweet1" "div" ["*"])
+        (H.tu 
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Content" "div" ["*"]))
+       true));    
+
+    ((fmsg "TUnion <: TDom"),
+     (wrapper 
+        (H.tu 
+           (H.tdom "Tweet2" "div" ["*"])
+           (H.tdom "Tweet3" "div" ["*"]))
+        (H.tdom "Tweet1" "div" ["*"])
+        true));
+
+
+    ((fmsg "TUnion </: TDom t1"),
+     (wrapper 
+        (H.tu 
+           (H.tdom "Tweet1" "div" ["*"])
+           (H.tdom "Content" "div" ["*"]))
+        (H.tdom "Tweet1" "div" ["*"])
+        false));
+
+    ((fmsg "TUnion </: TDom t2"),
+     (wrapper 
+        (H.tu 
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Tweet1" "div" ["*"]))
+        (H.tdom "Tweet1" "div" ["*"])
+        false));
+
+    ((fmsg "TUnion </: TDom t3"),
+     (wrapper 
+        (H.tu 
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Content" "div" ["*"]))
+        (H.tdom "Tweet1" "div" ["*"])
+        false));
+
+    ((fmsg "TUnion <: TUnion t1"),
+     (wrapper 
+        (H.tu 
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Content" "div" ["*"]))
+        (H.tu 
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Content" "div" ["*"]))
+        true));
+
+
+    ((fmsg ""),
+     (wrapper 
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet2" "div" ["*"])
+       true));
+
+    ((fmsg ""),
+     (wrapper 
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet2" "div" ["*"])
+       true));
+
+    ((fmsg ""),
+     (wrapper 
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet2" "div" ["*"])
+       true));
+
+    ((fmsg ""),
+     (wrapper 
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet2" "div" ["*"])
+       true));
+
+    ((fmsg ""),
+     (wrapper 
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet2" "div" ["*"])
+       true));
+
+    ((fmsg ""),
+     (wrapper 
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet2" "div" ["*"])
+       true));
+
+    
+
+  ]
+
+(* END subtyping_test *)
+
+
+  
 let test1 n =
   let test1_help n a = 
     let e = eval a in
@@ -689,14 +978,6 @@ let structure_compilation_test () =
     List.fold_left (fun acc (id, mult) -> 
       IdMap.add id mult acc) cm cs in
 
-  (* Helper: creates a sel from a list of selectors *)
-  let sel sels = match sels with 
-    | [] -> failwith "shouldn't be providing an empty selector"
-    | [s] -> Css.singleton s
-    | hd::tl -> 
-      List.fold_left (fun sels s -> Css.union (Css.singleton s) sels)
-        (Css.singleton hd) tl in
-
 
   (* Consumes:
      d (string): structure declarations to be parsed
@@ -769,6 +1050,8 @@ let structure_compilation_test () =
   let prev cs = b_cm base_clauseMap.D.prev cs in
   let next cs = b_cm base_clauseMap.D.next cs in
 
+  let module H = Helper in
+
   test_harness_many [
 
     (*** Begin compilation tests ***)
@@ -776,7 +1059,7 @@ let structure_compilation_test () =
     ((fmsg "Single top-level declComp"),
      (fun _ -> wrapper
        "(Tweet : div classes=[t1])"
-       ["Tweet", sel ["div.!t1"]]
+       ["Tweet", H.sel ["div.!t1"]]
        { D.children = ch [("Tweet", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]))];
@@ -787,8 +1070,8 @@ let structure_compilation_test () =
      (fun _ -> wrapper
        "(Tweet : div classes=[t1]
           (Author : div classes=[a1]))"
-       [("Tweet", sel ["div.!t1"]);
-        ("Author", sel ["div.!t1 > div.!a1"]);]
+       [("Tweet", H.sel ["div.!t1"]);
+        ("Author", H.sel ["div.!t1 > div.!a1"]);]
        { D.children = ch [("Tweet", MOne (b_mp ["Author"]));
                           ("Author", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
@@ -802,8 +1085,8 @@ let structure_compilation_test () =
      (fun _ -> wrapper
        "(A : div classes=[a1])
         (B : div classes=[b1])"
-       [("A", sel ["div.!a1"]);
-        ("B", sel ["div.!b1"])]
+       [("A", H.sel ["div.!a1"]);
+        ("B", H.sel ["div.!b1"])]
        { D.children = ch [("A", MZero (b_mp ["Any"]));
                           ("B", MZero (b_mp ["Any"]))];
          D.parent = par [("A", MZeroOne (b_mp ["Element"]));
@@ -822,12 +1105,12 @@ let structure_compilation_test () =
         (D : div classes=[d1]
            (E : div classes=[e1]
               (F : div classes=[f1])))"
-       [("A", sel ["div.!a1"]);
-        ("B", sel ["div.!a1 > div.!b1"]);
-        ("C", sel ["div.!a1 > div.!b1 > div.!c1"]);
-        ("D", sel ["div.!d1"]);
-        ("E", sel ["div.!d1 > div.!e1"]);
-        ("F", sel ["div.!d1 > div.!e1 > div.!f1"])]
+       [("A", H.sel ["div.!a1"]);
+        ("B", H.sel ["div.!a1 > div.!b1"]);
+        ("C", H.sel ["div.!a1 > div.!b1 > div.!c1"]);
+        ("D", H.sel ["div.!d1"]);
+        ("E", H.sel ["div.!d1 > div.!e1"]);
+        ("F", H.sel ["div.!d1 > div.!e1 > div.!f1"])]
        { D.children = ch [("A", MOne (b_mp ["B"]));
                           ("B", MOne (b_mp ["C"]));
                           ("C", MZero (b_mp ["Any"]));
@@ -863,8 +1146,8 @@ let structure_compilation_test () =
           (Author : div classes=[a1])
           <Author>
           <Author>)"
-       [("Tweet", sel ["div.!t1"]);
-        ("Author", sel ["div.!t1 > div.!a1"])]
+       [("Tweet", H.sel ["div.!t1"]);
+        ("Author", H.sel ["div.!t1 > div.!a1"])]
        { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"]));
                           ("Author", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
@@ -884,8 +1167,8 @@ let structure_compilation_test () =
           <Author>
           ...
           <Author>)"
-       [("Tweet", sel ["div.!t1"]);
-        ("Author", sel ["div.!t1 > div.!a1"])]
+       [("Tweet", H.sel ["div.!t1"]);
+        ("Author", H.sel ["div.!t1 > div.!a1"])]
        { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"; "Element"]));
                           ("Author", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
@@ -908,14 +1191,14 @@ let structure_compilation_test () =
           <Content>
           ...
           <Author>)"
-       [("Tweet", sel ["div.!t1"]);
+       [("Tweet", H.sel ["div.!t1"]);
         ("Author", 
-         sel ["div.!t1 > div.!a1";
+         H.sel ["div.!t1 > div.!a1";
               "div.!t1 > div.!a1 ~ div.!a1";
               "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1";
               "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1 ~ div.!a1"]);
         ("Content", 
-         sel ["div.!t1 > div.!a1 ~ div.!a1 + div.!c1";
+         H.sel ["div.!t1 > div.!a1 ~ div.!a1 + div.!c1";
               "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1"])]
        { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"; "Element"; "Content"]));
                           ("Author", MZero (b_mp ["Any"]));
@@ -936,7 +1219,7 @@ let structure_compilation_test () =
      (fun _ -> wrapper
        "(Tweet : div classes=[t1]
           ...)"
-       [("Tweet", sel ["div.!t1"]);]
+       [("Tweet", H.sel ["div.!t1"]);]
        { D.children = ch [("Tweet", MZeroPlus (b_mp ["Element"]));];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));];
@@ -948,8 +1231,8 @@ let structure_compilation_test () =
        "(Tweet : div classes=[t1]
           (Author : div classes=[a1])
           ...)"
-       [("Tweet", sel ["div.!t1"]);
-       ("Author", sel ["div.!t1 > div.!a1"])]
+       [("Tweet", H.sel ["div.!t1"]);
+       ("Author", H.sel ["div.!t1 > div.!a1"])]
        { D.children = ch [("Tweet", MOnePlus (b_mp ["Element"; "Author"]));
                           ("Author", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
@@ -964,8 +1247,8 @@ let structure_compilation_test () =
        "(Tweet : div classes=[t1]
           ...
           (Author : div classes=[a1]))"
-       [("Tweet", sel ["div.!t1"]);
-       ("Author", sel ["div.!t1 > div.!a1"])]
+       [("Tweet", H.sel ["div.!t1"]);
+       ("Author", H.sel ["div.!t1 > div.!a1"])]
        { D.children = ch [("Tweet", MOnePlus (b_mp ["Element"; "Author"]));
                           ("Author", MZero (b_mp ["Any"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
@@ -990,13 +1273,13 @@ let structure_compilation_test () =
           (Image : div classes=[image])
           <Image>
           (Time : div classes=[time]))"
-       [("Tweet", sel ["div.!tweet.?first.?last"]);
-        ("Author", sel ["div.!tweet.?first.?last > div.!author.?featured"]);
-        ("Bio", sel ["div.!tweet.?first.?last > div.!author.?featured > div.!bio.?hidden"]);
-        ("Content", sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content"]);
-        ("Image", sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image";
+       [("Tweet", H.sel ["div.!tweet.?first.?last"]);
+        ("Author", H.sel ["div.!tweet.?first.?last > div.!author.?featured"]);
+        ("Bio", H.sel ["div.!tweet.?first.?last > div.!author.?featured > div.!bio.?hidden"]);
+        ("Content", H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content"]);
+        ("Image", H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image";
                        "div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image"]);
-        ("Time", sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image + div.!time"]);]
+        ("Time", H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image + div.!time"]);]
        { D.children = ch
            [("Tweet", MOnePlus (b_mp ["Element"; "Author"; "Content"; "Image"; "Time";]));
             ("Author", MOnePlus (b_mp ["Bio"; "Element"]));
@@ -1080,6 +1363,8 @@ let run_tests () =
     (* test7 (); *)
     (* well_formed_test (); *)
     (raise_exns [
+      expose_tdoms_test;
+      (* subtyping_test; *)
       structure_well_formed_test;
       structure_compilation_test;
       (* selector_tests; *)
@@ -1087,6 +1372,8 @@ let run_tests () =
     (* test5 (); *)
     Printf.eprintf "All tests passed!";
     0
-  with _ -> 2
+  with e -> 
+    Printf.eprintf "Failed with %s" (Printexc.to_string e);
+    2
 ;;
 
