@@ -151,10 +151,21 @@ struct
           let (|||) c thunk = if (snd c) then c else thunk (fst c) in
           let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
           match unwrap_t simpl_t1, unwrap_t simpl_t2 with
-          | TDom (_, t1, sel1), TDom (_, t2, sel2) ->
-            subtype_typ env cache t1 t2 &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2))
-          | TDom _, _ -> subtype_typ env cache (Env.expose_tdoms env t1) (Env.expose_tdoms env (TDom(None, t2, Css.all)))
-          | _, TDom _ -> subtype_typ env cache (Env.expose_tdoms env (TDom(None, t1, Css.all))) (Env.expose_tdoms env t2)
+          | TDom (_,id1, t1, sel1), TDom (_,id2, t2, sel2) ->
+            (* TODO(liam): make this actually correct
+               exposed version of both TDoms must subtype *)
+            cache, false
+            
+            (* subtype_typ env cache (Strobe.TId id1) (Strobe.TId id2) *)
+            (* &&& (fun c -> subtype_typ env c t1 t2)  *)
+            (* &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2)) *)
+
+          (* TODO(liam): revamp TDom subtyping rules below *)
+
+          (* | TDom _, _ -> subtype_typ env cache (Env.expose_tdoms env t1) (Env.expose_tdoms env (TDom(None, t2, Css.all))) *)
+          (* | _, TDom _ -> subtype_typ env cache (Env.expose_tdoms env (TDom(None, t1, Css.all))) (Env.expose_tdoms env t2) *)
+
+
           | TApp _, TApp _ -> cache, false
           (* UNSOUND: Type constructor might not be covariant in its arguments *)
           (* | TApp(t1, args1), TApp(t2, args2) -> *)

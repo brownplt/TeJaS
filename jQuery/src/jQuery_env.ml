@@ -59,50 +59,54 @@ struct
 
   let (senv : structureEnv ref) = ref Desugar.empty_structureEnv
 
-  let rec expose_tdoms (env : env) (t : typ) : typ = match (unwrap_t t) with
-    | TDom (s, _, sel) when Css.is_empty sel -> 
-      Strobe.traceMsg "Expose_tdom:EMPTY? %s" (string_of_typ t);
-      embed_t Strobe.TBot
-    | TDom (s, inner, sel) ->
-      begin match (unwrap_t inner) with
-      | (TDom (_,t,sel2)) ->
-        expose_tdoms env (TDom (s, t, Css.intersect sel2 sel))
-      | _ ->
-        begin match extract_t inner with
-        | (Strobe.TId id) ->
-          Strobe.traceMsg "Expose_tdom:TId of %s" id;
-          expose_tdoms env (TDom (s, fst (lookup_typ_id id env), sel))
-        | (Strobe.TUnion (s2, t1 ,t2)) ->
-          Strobe.traceMsg "Expose_tdom:TUnion of %s and %s" (string_of_typ (embed_t t1)) (string_of_typ (embed_t t2));
-          let t1' = expose_tdoms env (TDom (s, TStrobe t1, sel)) in
-          let t2' = expose_tdoms env (TDom (s, TStrobe t2, sel)) in
-          embed_t (Strobe.TUnion (s2, extract_t t1', extract_t t2'))
-        | (Strobe.TInter (s2, t1 ,t2)) ->
-          let t1' = expose_tdoms env (TDom (s, TStrobe t1, sel)) in
-          let t2' = expose_tdoms env (TDom (s, TStrobe t2, sel)) in
-          Strobe.traceMsg "Expose_tdom:TInter of %s and %s" (string_of_typ t1') (string_of_typ t2');
-          embed_t (Strobe.TInter (s2, extract_t t1', extract_t t2'))
-        | Strobe.TEmbed _ -> Strobe.traceMsg "TEmbed"; TDom (s, inner, sel)
-        | _ -> 
-          Strobe.traceMsg "Expose_tdom:other of TDom(_, %s, %s)" (string_of_typ inner) (Css.pretty sel);
-          TDom (s, inner, sel)
-        end
-      end
-    | _ -> t
+  let rec expose_tdoms (env : env) (t : typ) : typ = t
+
+(* match (unwrap_t t) with *)
+(*     | TDom (s, _, sel) when Css.is_empty sel ->  *)
+(*       Strobe.traceMsg "Expose_tdom:EMPTY? %s" (string_of_typ t); *)
+(*       embed_t Strobe.TBot *)
+(*     | TDom (s, inner, sel) -> *)
+(*       begin match (unwrap_t inner) with *)
+(*       | (TDom (_,t,sel2)) -> *)
+(*         expose_tdoms env (TDom (s, t, Css.intersect sel2 sel)) *)
+(*       | _ -> *)
+(*         begin match extract_t inner with *)
+(*         | (Strobe.TId id) -> *)
+(*           Strobe.traceMsg "Expose_tdom:TId of %s" id; *)
+(*           expose_tdoms env (TDom (s, fst (lookup_typ_id id env), sel)) *)
+(*         | (Strobe.TUnion (s2, t1 ,t2)) -> *)
+(*           Strobe.traceMsg "Expose_tdom:TUnion of %s and %s" (string_of_typ (embed_t t1)) (string_of_typ (embed_t t2)); *)
+(*           let t1' = expose_tdoms env (TDom (s, TStrobe t1, sel)) in *)
+(*           let t2' = expose_tdoms env (TDom (s, TStrobe t2, sel)) in *)
+(*           embed_t (Strobe.TUnion (s2, extract_t t1', extract_t t2')) *)
+(*         | (Strobe.TInter (s2, t1 ,t2)) -> *)
+(*           let t1' = expose_tdoms env (TDom (s, TStrobe t1, sel)) in *)
+(*           let t2' = expose_tdoms env (TDom (s, TStrobe t2, sel)) in *)
+(*           Strobe.traceMsg "Expose_tdom:TInter of %s and %s" (string_of_typ t1') (string_of_typ t2'); *)
+(*           embed_t (Strobe.TInter (s2, extract_t t1', extract_t t2')) *)
+(*         | Strobe.TEmbed _ -> Strobe.traceMsg "TEmbed"; TDom (s, inner, sel) *)
+(*         | _ ->  *)
+(*           Strobe.traceMsg "Expose_tdom:other of TDom(_, %s, %s)" (string_of_typ inner) (Css.pretty sel); *)
+(*           TDom (s, inner, sel) *)
+(*         end *)
+(*       end *)
+(*     | _ -> t *)
 
   (* TODO: after backforming, check for legal selectors *)
-  let backform (benv : Desugar.backformEnv) (sels : Css.t) : id list = 
-    let open Typedjs_desugar in
-    let open Desugar in
-    let pairs = List.filter (fun (elem : (id * Css.t)) -> 
-      let inter = Css.intersect (snd elem) sels in
-      Strobe.traceMsg "Backform: Intersected %s with %s and got %s"
-        (Css.pretty (snd elem)) (Css.pretty sels) (Css.pretty inter);
-      Css.is_overlapped (snd elem) sels) benv in
-    (* List.iter (fun pair -> Strobe.traceMsg "%s" (Css.pretty (snd pair))) pairs; *)
-    let union = List.fold_left Css.union Css.empty (List.map snd pairs) in
-    if Css.is_empty union then [] (* should give a warning here *)
-    else (List.map fst pairs)
+
+  (* let backform (benv : Desugar.backformEnv) (sels : Css.t) : id list =  *)
+  (*   let open Typedjs_desugar in *)
+  (*   let open Desugar in *)
+  (*   let pairs = List.filter (fun (elem : (id * Css.t)) ->  *)
+  (*     let inter = Css.intersect (snd elem) sels in *)
+  (*     Strobe.traceMsg "Backform: Intersected %s with %s and got %s" *)
+  (*       (Css.pretty (snd elem)) (Css.pretty sels) (Css.pretty inter); *)
+  (*     Css.is_overlapped (snd elem) sels) benv in *)
+  (*   (\* List.iter (fun pair -> Strobe.traceMsg "%s" (Css.pretty (snd pair))) pairs; *\) *)
+  (*   let union = List.fold_left Css.union Css.empty (List.map snd pairs) in *)
+  (*   if Css.is_empty union then [] (\* should give a warning here *\) *)
+  (*   else (List.map fst pairs) *)
+
   (* if Css.is_subset IdMap.empty sels union then (List.map fst pairs) else  begin *)
   (* Strobe.traceMsg "%s is not a subset of %s" (Css.pretty sels) (Css.pretty union); *)
   (* "Element"::(List.map fst pairs) *)
@@ -121,61 +125,63 @@ struct
       Then the prev() of a jQ containing a TDom of Contents with a selector (.tweet1 > .a+.c) should be 1+<Author>, not 1+<Author + Forward>, but without backforming there is no way to restrict the result to Author.
   **)
   (* TODO: backform of div.!tweet>* returns author, time, content and tweet because div.!tweet>* intersected with div.!tweet produces div.!tweet >div.!tweet, but backforming from div.!tweet>* should only get children of tweets.*)
-  let rec x_of (benv : Desugar.backformEnv) (cm : Desugar.clauseMap) (t : typ) (transform_sel : Css.t -> Css.t) : multiplicity = 
+  let rec x_of (benv : Desugar.backformEnv) (cm : Desugar.clauseMap) (t : typ) (transform_sel : Css.t -> Css.t) : multiplicity =
     let open JQuery in
-    (* let rec expand_ids (t : baseTyp) : (id list) option = *)
-    (*   match t with *)
-    (*   | (Strobe.TUnion (_, t1, t2)) ->  *)
-    (*     begin match (expand_ids t1), (expand_ids t2) with *)
-    (*     | Some ids1, Some ids2 -> Some (ids1 @ ids2) *)
-    (*     | ids, None *)
-    (*     | None, ids -> ids *)
+    
+    MOne (MPlain (TStrobe Strobe.TTop)) 
+
+    (* (\*   match t with *\) *)
+    (* (\*   | (Strobe.TUnion (_, t1, t2)) ->  *\) *)
+    (* (\*     begin match (expand_ids t1), (expand_ids t2) with *\) *)
+    (* (\*     | Some ids1, Some ids2 -> Some (ids1 @ ids2) *\) *)
+    (* (\*     | ids, None *\) *)
+    (* (\*     | None, ids -> ids *\) *)
+    (* (\*   end *\) *)
+    (* (\*   | (Strobe.TId id) -> Some [id] *\) *)
+    (* (\*   | _ -> None in *\) *)
+    (* match t with *)
+    (* | TDom (s,t,sels) -> *)
+    (*   let new_sel = transform_sel sels in *)
+    (*   (\* let backform_ids = backform benv new_sel in *\) *)
+    (*   let ids = backform benv sels in *)
+    (*   (List.fold_left (fun acc id -> *)
+    (*     (try *)
+    (*        Strobe.traceMsg "nextSib of %s is %s" id (string_of_mult (IdMap.find id cm)); *)
+    (*        let (s, fs) = extract_mult (IdMap.find id cm) in *)
+    (*        match s with *)
+    (*        | STyp t ->  *)
+    (*          Strobe.traceMsg "creating a TDom with TIds"; *)
+    (*          (\* let clause_ids = expand_ids (extract_t t) in *\) *)
+    (*          (\* begin match clause_ids with *\) *)
+    (*          MSum (acc, fs (STyp (TDom (None, t, new_sel)))) *)
+    (*          (\* | Some clause_ids ->  *\) *)
+    (*          (\*   MSum (acc,  *\) *)
+    (*          (\*         fs (STyp (TDom (None, embed_t (List.fold_left (fun acc id -> Strobe.TUnion (None, acc, Strobe.TId id)) Strobe.TBot (List.filter (fun i -> List.mem i clause_ids) backform_ids)), new_sel)))) *\) *)
+    (*          (\* end *\) *)
+    (*        | SMult m ->  *)
+    (*          MSum (acc, fs s) *)
+    (*      with Not_found -> failwith "impossible") (\* Backform has ALL ids *\)) *)
+    (*      (MZero (MPlain (TStrobe Strobe.TTop))))  (\* This will disappear anyway *\) *)
+    (*      ids *)
+    (* | TStrobe (Strobe.TId id) -> *)
+    (*   (\* TODO: is this ok? *\) *)
+    (*   begin *)
+    (*   let sel = try List.assoc id benv with Not_found -> raise Not_found in *)
+    (*   let mult = try IdMap.find id cm with Not_found -> raise Not_found in *)
+    (*   let (s, fs) = extract_mult mult in begin *)
+    (*     match s with *)
+    (*     | STyp t -> *)
+    (*       Strobe.traceMsg "creating a TDom with TIds"; *)
+    (*       fs (STyp (TDom (None, t, transform_sel sel))) *)
+    (*     | SMult _ -> mult *)
     (*   end *)
-    (*   | (Strobe.TId id) -> Some [id] *)
-    (*   | _ -> None in *)
-    match t with
-    | TDom (s,t,sels) ->
-      let new_sel = transform_sel sels in
-      (* let backform_ids = backform benv new_sel in *)
-      let ids = backform benv sels in
-      (List.fold_left (fun acc id ->
-        (try
-           Strobe.traceMsg "nextSib of %s is %s" id (string_of_mult (IdMap.find id cm));
-           let (s, fs) = extract_mult (IdMap.find id cm) in
-           match s with
-           | STyp t -> 
-             Strobe.traceMsg "creating a TDom with TIds";
-             (* let clause_ids = expand_ids (extract_t t) in *)
-             (* begin match clause_ids with *)
-             MSum (acc, fs (STyp (TDom (None, t, new_sel))))
-             (* | Some clause_ids ->  *)
-             (*   MSum (acc,  *)
-             (*         fs (STyp (TDom (None, embed_t (List.fold_left (fun acc id -> Strobe.TUnion (None, acc, Strobe.TId id)) Strobe.TBot (List.filter (fun i -> List.mem i clause_ids) backform_ids)), new_sel)))) *)
-             (* end *)
-           | SMult m -> 
-             MSum (acc, fs s)
-         with Not_found -> failwith "impossible") (* Backform has ALL ids *))
-         (MZero (MPlain (TStrobe Strobe.TTop))))  (* This will disappear anyway *)
-         ids
-    | TStrobe (Strobe.TId id) ->
-      (* TODO: is this ok? *)
-      begin
-      let sel = try List.assoc id benv with Not_found -> raise Not_found in
-      let mult = try IdMap.find id cm with Not_found -> raise Not_found in
-      let (s, fs) = extract_mult mult in begin
-        match s with
-        | STyp t ->
-          Strobe.traceMsg "creating a TDom with TIds";
-          fs (STyp (TDom (None, t, transform_sel sel)))
-        | SMult _ -> mult
-      end
-      end      
-    | TStrobe (Strobe.TUnion (_, t1, t2)) ->
-    (* TODO: is it ok to reduce TUnions to MSums? *)
-      MSum (x_of benv cm (TStrobe t1) transform_sel, x_of benv cm (TStrobe t2) transform_sel)
-    (* This is bad, but let it through so it can be caught elsewhere (it
-       probably already was, in association) *)
-    | _ ->  MOne (MPlain t)
+    (*   end       *)
+    (* | TStrobe (Strobe.TUnion (_, t1, t2)) -> *)
+    (* (\* TODO: is it ok to reduce TUnions to MSums? *\) *)
+    (*   MSum (x_of benv cm (TStrobe t1) transform_sel, x_of benv cm (TStrobe t2) transform_sel) *)
+    (* (\* This is bad, but let it through so it can be caught elsewhere (it *)
+    (*    probably already was, in association) *\) *)
+    (* | _ ->  MOne (MPlain t) *)
 
   let children (senv : structureEnv) (t : typ) : multiplicity =
     let (benv,cenv) = senv in
@@ -253,28 +259,28 @@ struct
       ==============================
       filterSel takes a type environment env, a backform environment benv, a type t, and a selector sel. It extracts the selector corresponding to its type argument, and intersects that selector with sel, resulting in inter. inter is then backformed into ids and both are wrapped in an MSum of TDoms. filterSel only deals with TDoms, TIds and TUnions. It should not encounter any other type.
   **)
-  let rec filterSel (env : env) (benv : Desugar.backformEnv) (t : typ) (sel : string) : multiplicity =
-    Strobe.traceMsg "In filterSel ";
-    let open JQuery in
-    let s = Css.singleton sel in
-    match t with
-    | TDom (_,t,sels) ->
-      let inter = Css.intersect sels s in
-      let ids = backform benv inter in
-      Strobe.traceMsg "The intersection of %s with %s is %s, backformed into: " (Css.pretty sels) (Css.pretty s) (Css.pretty inter);
-      List.iter (fun id -> Strobe.traceMsg "%s" id) ids;
-      if ids == []
-      then (MZero (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), inter))))
-      else List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), inter)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids
-    | TStrobe (Strobe.TUnion (x, t1, t2)) -> 
-      Strobe.traceMsg "filterSel called with TUnion %s with %s" (string_of_typ (embed_t t1)) (string_of_typ (embed_t t2));
-      MSum (filterSel env benv (embed_t t1) sel, filterSel env benv (embed_t t2) sel)
-    | TStrobe (Strobe.TId x) -> begin
-      Strobe.traceMsg "filterSel called with TId %s" x;
-      Strobe.traceMsg "%s is: %s in the environment" x (string_of_typ (fst (lookup_typ_id x env)));
-      try filterSel env benv (fst (lookup_typ_id x env)) sel with Not_found -> failwith ("error: unbound TId " ^ x)
-        end
-    | _ -> Strobe.traceMsg "filterSel encountered a non-tdom, non-tunion type %s" (string_of_typ t); MZero (MPlain (TStrobe (Strobe.TTop)))
+  let rec filterSel (env : env) (benv : Desugar.backformEnv) (t : typ) (sel : string) : multiplicity = MOne (MPlain (TStrobe (Strobe.TTop)))
+    (* Strobe.traceMsg "In filterSel "; *)
+    (* let open JQuery in *)
+    (* let s = Css.singleton sel in *)
+    (* match t with *)
+    (* | TDom (_,t,sels) -> *)
+    (*   let inter = Css.intersect sels s in *)
+    (*   let ids = backform benv inter in *)
+    (*   Strobe.traceMsg "The intersection of %s with %s is %s, backformed into: " (Css.pretty sels) (Css.pretty s) (Css.pretty inter); *)
+    (*   List.iter (fun id -> Strobe.traceMsg "%s" id) ids; *)
+    (*   if ids == [] *)
+    (*   then (MZero (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), inter)))) *)
+    (*   else List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), inter)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids *)
+    (* | TStrobe (Strobe.TUnion (x, t1, t2)) ->  *)
+    (*   Strobe.traceMsg "filterSel called with TUnion %s with %s" (string_of_typ (embed_t t1)) (string_of_typ (embed_t t2)); *)
+    (*   MSum (filterSel env benv (embed_t t1) sel, filterSel env benv (embed_t t2) sel) *)
+    (* | TStrobe (Strobe.TId x) -> begin *)
+    (*   Strobe.traceMsg "filterSel called with TId %s" x; *)
+    (*   Strobe.traceMsg "%s is: %s in the environment" x (string_of_typ (fst (lookup_typ_id x env))); *)
+    (*   try filterSel env benv (fst (lookup_typ_id x env)) sel with Not_found -> failwith ("error: unbound TId " ^ x) *)
+    (*     end *)
+    (* | _ -> Strobe.traceMsg "filterSel encountered a non-tdom, non-tunion type %s" (string_of_typ t); MZero (MPlain (TStrobe (Strobe.TTop))) *)
 
   let filterJQ (benv : Desugar.backformEnv) (typ : typ) : multiplicity =
     let open JQuery in
@@ -283,22 +289,23 @@ struct
 
   (* returns an MSum of TDoms *)
   let jQuery (env : env) (benv : Desugar.backformEnv) (sel : string) : multiplicity =
-    (* check whether sel is legal in the context of given local structure *)
-    let env_specs = List.flatten (List.map Css.speclist (List.map snd2 benv)) in
-    let sel_specs = Css.speclist (Css.singleton sel) in
-    (* sel_specs and env_specs should overlap, otherwise give a warning *)
-    let overlap = List.exists (fun s -> List.mem s env_specs) sel_specs in
-    let open JQuery in
-    let s = Css.singleton sel in
-    let ids = backform benv s in
-    let sum = List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids in
-    match ids, overlap with
-    | [], true -> MZero (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s)))
-    | [], false -> MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s)))
-    | _, true -> sum
-    | _, false ->
-      (* adding element *)
-      MSum (MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))), sum)
+    MOne (MPlain (TStrobe Strobe.TTop))
+    (* (\* check whether sel is legal in the context of given local structure *\) *)
+    (* let env_specs = List.flatten (List.map Css.speclist (List.map snd2 benv)) in *)
+    (* let sel_specs = Css.speclist (Css.singleton sel) in *)
+    (* (\* sel_specs and env_specs should overlap, otherwise give a warning *\) *)
+    (* let overlap = List.exists (fun s -> List.mem s env_specs) sel_specs in *)
+    (* let open JQuery in *)
+    (* let s = Css.singleton sel in *)
+    (* let ids = backform benv s in *)
+    (* let sum = List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids in *)
+    (* match ids, overlap with *)
+    (* | [], true -> MZero (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))) *)
+    (* | [], false -> MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))) *)
+    (* | _, true -> sum *)
+    (* | _, false -> *)
+    (*   (\* adding element *\) *)
+    (*   MSum (MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))), sum) *)
 
   (**** End Local Structure ***)
 
@@ -707,7 +714,7 @@ struct
         end
         | STyp t -> s
         ) args)
-      | TDom (s, t, sel) -> TDom (s, rjq t, sel)
+      | TDom (s,id, t, sel) -> TDom (s,id,rjq t, sel)
       | TStrobe t -> TStrobe (rs t)
     and rs t = 
       let rs_obj o = Strobe.mk_obj_typ 

@@ -18,7 +18,11 @@ module Make : JQUERY_TYP = functor (Css : Css.CSS) -> functor (STROBE : TYPS) ->
     | TForall of string option * id * sigma * typ
     | TLambda of string option * (id * kind) list * typ (** type operator *)
     | TApp of typ * sigma list
-    | TDom of string option * typ * sel
+    | TDom of 
+        string option 
+      * id (* local structure id *) 
+      * typ (* node type *)
+      * sel (* sel imposing restriction on whatever  id is *)
     | TStrobe of STROBE.typ
 
   and multiplicity = 
@@ -97,7 +101,7 @@ struct
     | TForall (_, id, s, t) -> wf_sigma s && wf_jtyp t
     | TLambda (_, _, t) -> wf_jtyp t
     | TApp (t, sl) -> wf_jtyp t && List.for_all wf_sigma sl
-    | TDom (_, t, _) -> wf_jtyp t
+    | TDom (_,_, t, _) -> wf_jtyp t
     | TStrobe b -> wf_bt b
   and wf_mult (m : multiplicity) : bool = match m with
     | MPlain t -> wf_jtyp t
@@ -158,21 +162,21 @@ struct
     | TStrobe t -> embed_t (Strobe.apply_name n t)
     | TForall(None, x, t, b) -> TForall(n, x, t, b)
     | TLambda(None, ts, t) -> TLambda(n, ts, t)
-    | TDom(None, t, sel) -> TDom(n, t, sel)
+    | TDom(None,id, t, sel) -> TDom(n,id, t, sel)
     | _ -> typ
 
   and name_of typ =  match typ with
     | TStrobe t -> Strobe.name_of t
     | TForall(name, _, _, _) -> name
     | TLambda(name, _, _) -> name
-    | TDom(name, _, _) -> name
+    | TDom(name,_, _, _) -> name
     | _ -> None
 
   and replace_name n typ = match typ with
     | TStrobe t -> embed_t (Strobe.replace_name n t)
     | TForall(_, x, t, b) -> TForall(n, x, t, b)
     | TLambda(_, ts, t) -> TLambda(n, ts, t)
-    | TDom(_, t, sel) -> TDom(n, t, sel)
+    | TDom(_,id, t, sel) -> TDom(n,id, t, sel)
     | _ -> typ
 
 
@@ -219,8 +223,8 @@ struct
         | _ -> parens
           [squish [typ t; 
                    angles (add_sep_between (text ",") (map sigma ts))]])
-      | TDom (name, t, sel) ->
-        namedType name (horzOrVert [horz [typ t; text "@"]; Css.p_css sel])
+      | TDom (name, id, t, sel) ->
+        namedType name (horzOrVert [horz [text id;typ t; text "@"]; Css.p_css sel])
     and multiplicity m =
       let p = multiplicity in
       match m with
@@ -259,8 +263,8 @@ struct
 
     let rec simpl_typ typ = match typ with
       | TStrobe t -> "TSTROBE(" ^ (Strobe.Pretty.simpl_typ t) ^ ")"
-      | TDom(name, _, sel) -> 
-        let desc = match name with Some n -> n | None -> FormatExt.to_string Css.p_css sel in
+      | TDom(name,id, _, sel) -> 
+        let desc = match name with Some n -> n | None -> (id ^ (FormatExt.to_string Css.p_css sel)) in
         "JQ.TDom " ^ desc
       | TForall(name, a, _, _) ->
         let desc = match name with Some n -> n | None -> a ^ "<:**.***" in
@@ -331,7 +335,7 @@ struct
 
 
   let rec free_typ_ids t = match t with
-    | TDom(_, t, _) -> free_typ_ids t
+    | TDom(_, _, t, _) -> free_typ_ids t
     | TForall (_, alpha, bound, typ) ->
       let free_t = match bound with
         | STyp _ -> IdSet.remove alpha (free_typ_ids typ)
@@ -364,7 +368,7 @@ struct
     | MZeroPlus m -> free_mult_ids m
     | MSum(m1, m2) -> IdSet.union (free_mult_ids m1) (free_mult_ids m2)
   and free_typ_mult_ids t = match t with
-    | TDom(_, t, _) -> free_typ_ids t
+    | TDom(_, _, t, _) -> free_typ_ids t
     | TForall (_, alpha, bound, typ) ->
       let free_t = match bound with
         | STyp _ -> IdSet.remove alpha (free_typ_ids typ)
@@ -506,7 +510,8 @@ struct
           let (free_t, free_m) = free_sigma_typ_ids s, free_sigma_mult_ids s in
           let (beta, body') = rename_avoid_capture (IdSet.union free_t free_m) [alpha] body in
           TForall (name, (List.hd beta), sigma_help bound, typ_help body')
-      | TDom (name, t, sel) -> TDom(name, typ_help t, sel)
+      (* TODO(liam): for now, ignoring id *)
+      | TDom (name,id, t, sel) -> TDom(name,id, typ_help t, sel)
     in sigma_help sigma
 
   and sig_typ_subst x s typ = match subst x s (STyp typ) with STyp t -> canonical_type t | _ -> failwith "impossible1"
@@ -542,8 +547,8 @@ struct
     | TApp(t1, args1), TApp(t2, args2) ->
       if (List.length args1 <> List.length args2) then false
       else equivalent_typ env t1 t2 && List.for_all2 (equivalent_sigma env) args1 args2
-    | TDom(_, t1, sel1), TDom(_, t2, sel2) ->
-      equivalent_typ env t1 t2 && Css.is_equal sel1 sel2
+    | TDom(_, id1, t1, sel1), TDom(_, id2, t2, sel2) ->
+      id1 == id2 && equivalent_typ env t1 t2 && Css.is_equal sel1 sel2
     | TStrobe (Strobe.TEmbed t1), _ -> equivalent_typ env t1 t2
     | _, TStrobe (Strobe.TEmbed t2) -> equivalent_typ env t1 t2
     | TStrobe t1, TStrobe t2 -> Strobe.equivalent_typ env t1 t2
@@ -630,8 +635,10 @@ struct
     end
     | TForall (n, alpha, bound, typ) -> TForall(n, alpha, canonical_sigma bound, c typ)
     | TLambda(n, ts, t) -> TLambda(n, ts, c t)
-    | TDom(n, TDom(_, t, sel1), sel2) -> c (TDom(n, t, Css.intersect sel1 sel2))
-    | TDom(n, t, sel) -> TDom(n, c t, sel)
+    | TDom(n, _, TDom(_, _, t, sel1), sel2) -> 
+      failwith "canonical_typ: IMPOSSIBLE: should NEVER have nested TDoms"
+    (* c (TDom(n, t, Css.intersect sel1 sel2)) *)
+    | TDom(n, id, t, sel) -> TDom(n, id, c t, sel)
 
   and canonical_multiplicity m =
     let c = canonical_multiplicity in
@@ -759,7 +766,7 @@ struct
       | TLambda (n, args, t) -> TLambda(n, args, squash_t t)
       | TForall(n, id, s, t) -> TForall(n, id, squash_sig s, squash_t t)
       | TApp(t, ss) -> TApp(squash_t t, List.map squash_sig ss)
-      | TDom(n, t, s) -> TDom(n, squash_t t, s)
+      | TDom(n, id, t, s) -> TDom(n, id, squash_t t, s)
     and squash_sig s =
       match s with
       | SMult m -> SMult (squash_m m)
@@ -877,8 +884,8 @@ struct
       assoc_merge (typ_assoc env s1 t1) (typ_assoc env s2 t2)
     | TForall (_, x, SMult s1, s2), TForall (_, y, SMult t1, t2) ->
       assoc_merge (mult_assoc env s1 t1) (typ_assoc env s2 t2)
-    | TDom(_, s1, _), TDom(_, s2, _) ->
-      typ_assoc env s1 s2
+    | TDom(_, id1, t1, _), TDom(_, id2, t2, _) -> if id1 = id2 then
+        typ_assoc env t1 t2 else IdMap.empty
     | _ -> IdMap.empty
   and mult_assoc env m1 m2 =
     Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2);

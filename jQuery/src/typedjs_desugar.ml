@@ -388,7 +388,7 @@ struct
         let new_ids = 
           IdMap.add 
             name 
-            (JQ.TDom (None, JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")), sels))
+            (JQ.TDom (None,name, JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")), sels))
             ids in
         compileContent new_ids content Css_syntax.Kid sels
 
@@ -403,9 +403,20 @@ struct
                   " testing") end in
           let (_, _, nodeType, attribs, contents) = decl in
           let sels = generateSels attribs comb prev nodeType in
-          let tdom = try IdMap.find name ids with Not_found -> JQ.TDom (None, JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")), Css.empty) in begin
+          let tdom = try IdMap.find name ids with Not_found -> 
+            failwith "gen_bindings:compile_content: IMPOSSIBLE?: should not encounter a name for which there is no typ in ids"
+            (* JQ.TDom (None,  *)
+            (*          name *)
+            (*          JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")),  *)
+            (*          Css.empty) in begin *) in begin
           match tdom with
-          | JQ.TDom (_, _, sels2) -> compileContent (IdMap.add name (JQ.TDom (None, JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")), Css.union sels sels2)) ids) tail Css_syntax.Adj sels
+          | JQ.TDom (_, _, _, sels2) -> compileContent 
+            (IdMap.add name 
+               (JQ.TDom (None, 
+                         name, 
+                         JQ.TStrobe (S.TId ((String.capitalize nodeType) 
+                                            ^ "Element")), 
+                         Css.union sels sels2)) ids) tail Css_syntax.Adj sels
           | _ -> failwith "impossible"
           end
         | [W.DNested d] ->
@@ -733,7 +744,7 @@ will always have list with length >= 1"
     (* use bindings to create benv *)
     let benv = IdMap.bindings
       (IdMap.map (fun t -> match t with
-      | JQ.TDom (_, _, sel) -> sel
+      | JQ.TDom (_, _,  _, sel) -> sel
       | _ -> failwith "impossible: gen_bindings should only produce bindings from ids to TDoms") bindings) in
     
     (* return list if bindings to add to the environment, and the compiled

@@ -16,7 +16,7 @@ module type JQUERY_TYPS = sig
     | TForall of string option * id * sigma * typ (* replacement for TForall with only typ bounds *)
     | TLambda of string option * (id * kind) list * typ (** type operator *)
     | TApp of typ * sigma list (* replacement for TApp with only typ arguments *)
-    | TDom of string option * typ * sel
+    | TDom of string option * id * typ * sel
     | TStrobe of baseTyp
 
   and multiplicity = 

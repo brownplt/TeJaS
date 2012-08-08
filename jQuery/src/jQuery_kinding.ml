@@ -68,7 +68,7 @@ struct
       IdMap.add x ((embed_b (Strobe.BTyvar (extract_k k)))::bs) env in
     match typ with
     | TStrobe t -> embed_k (StrobeKind.kind_check env recIds t)
-    | TDom (_, t, sel) -> 
+    | TDom (_,_, t, sel) -> 
       let k = kind_check_typ env recIds t in
       if extract_k k <> Strobe.KStar then kind_mismatch_typ t k (KStrobe Strobe.KStar) else KStrobe Strobe.KStar
     | TLambda (_, args, t) ->
