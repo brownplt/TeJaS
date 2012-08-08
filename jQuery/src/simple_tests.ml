@@ -870,7 +870,7 @@ let structure_compilation_test () =
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
-                        ("Author", MZeroOne (b_mp ["Element"; "Author"]))];
+                        ("Author", MZeroOne (b_mp ["Author"]))];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
                         ("Author", MZeroOne (b_mp ["Author"]))]; }));
 

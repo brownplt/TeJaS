@@ -490,7 +490,7 @@ struct
               | W.DId name ->
                 { pce_parent = pcenv.pce_parent; 
                   pce_children = pcenv.pce_children; 
-                  pce_prev = update name (Some "Any") pcenv.pce_prev; 
+                  pce_prev = update name (Some any) pcenv.pce_prev; 
                   pce_next = pcenv.pce_next} 
             end in
 
