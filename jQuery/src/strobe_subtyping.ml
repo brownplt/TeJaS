@@ -218,9 +218,13 @@ struct
       end
     with Invalid_parent msg -> raise (Typ_error (p, FixedString msg))
 
-  and subt env cache s t =
-    trace "STROBE_subt" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subt' env cache s t)
-  and subt' (env : env) (cache : bool TPMap.t) s t : bool TPMap.t * bool = 
+  (* and subt env cache s t = *)
+  (*   let res = subt' env cache s t in *)
+  (*   let eq_str = if (snd res) then "<:" else "</:" in *)
+  (*   traceMsg "STROBE_subt %s %s %s"(string_of_typ s) eq_str (string_of_typ t); *)
+  (*   res *)
+  (*   (\* trace "STROBE_subt" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subt' env cache s t) *\) *)
+  and subt (env : env) (cache : bool TPMap.t) s t : bool TPMap.t * bool = 
     let open TypPair in
     let (|||) c thunk = if (snd c) then c else thunk (fst c) in
     let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
@@ -366,9 +370,9 @@ struct
     | Present, Inherited -> true
     | _, _ -> false
 
+  (* and subtype_object env cache obj1 obj2 : bool TPMap.t * bool = *)
+  (*   trace "STROBE_subtype_OBJECT" "" snd2 (fun () -> subtype_object' env cache obj1 obj2) *)
   and subtype_object env cache obj1 obj2 : bool TPMap.t * bool =
-    trace "STROBE_subtype_OBJECT" "" snd2 (fun () -> subtype_object' env cache obj1 obj2)
-  and subtype_object' env cache obj1 obj2 : bool TPMap.t * bool =
     let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
     let subtype_typ_list f c x = c &&& (fun c -> f c x) in
     let lhs_absent = absent_pat obj1 in

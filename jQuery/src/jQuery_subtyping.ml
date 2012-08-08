@@ -116,9 +116,9 @@ struct
     (* ************************** *)
     | STyp t, SMult m -> (cache, false)
 
-  and subtype_typ lax env cache s t =
-    Strobe.trace "JQUERY_subtype_typ" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subtype_typ' lax env cache s t)
-  and subtype_typ' lax (env : env) cache t1 t2 : (bool SPMap.t * bool) =
+  (* and subtype_typ lax env cache s t = *)
+  (*   Strobe.trace "JQUERY_subtype_typ" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subtype_typ' lax env cache s t) *)
+  and subtype_typ lax (env : env) cache t1 t2 : (bool SPMap.t * bool) =
     let subtype_sigma = subtype_sigma lax in
     let subtype_typ = subtype_typ lax in
     let open SigmaPair in
@@ -151,16 +151,21 @@ struct
           let (|||) c thunk = if (snd c) then c else thunk (fst c) in
           let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
           match unwrap_t simpl_t1, unwrap_t simpl_t2 with
-          | TDom (_,id1, t1, sel1), TDom (_,id2, t2, sel2) ->
-            (* TODO(liam): make this actually correct
-               exposed version of both TDoms must subtype *)
-            cache, false
-            
-            (* subtype_typ env cache (Strobe.TId id1) (Strobe.TId id2) *)
-            (* &&& (fun c -> subtype_typ env c t1 t2)  *)
-            (* &&& (fun c -> (c, Css.is_subset IdMap.empty sel1 sel2)) *)
+          | TDom (_,id1, nt1, sel1), TDom (_,id2, nt2, sel2) ->
 
-          (* TODO(liam): revamp TDom subtyping rules below *)
+            let sel1', sel2' = match 
+              (Env.expose_tdoms env (JQ.embed_t (Strobe.TId id1))),
+            (Env.expose_tdoms env (JQ.embed_t (Strobe.TId id2))) with
+            | TDom (_,_,_,sel1'),TDom (_,_,_,sel2') -> sel1', sel2'
+            | _ -> failwith "JQuery_subtyping: subtype_typ: IMPOSSIBLE: Should only get TDoms when exposing a TDom's id" 
+            in
+
+            (* When subtyping TDoms, must check that the most precise selectors
+               subtype, and the node types subtype *)
+            subtype_typ env cache nt1 nt2
+            &&& (fun c -> (c, (Css.is_subset IdMap.empty 
+                                 (Css.intersect sel1 sel1')
+                                 (Css.intersect sel2 sel2'))))
 
           (* | TDom _, _ -> subtype_typ env cache (Env.expose_tdoms env t1) (Env.expose_tdoms env (TDom(None, t2, Css.all))) *)
           (* | _, TDom _ -> subtype_typ env cache (Env.expose_tdoms env (TDom(None, t1, Css.all))) (Env.expose_tdoms env t2) *)

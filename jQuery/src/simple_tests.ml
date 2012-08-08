@@ -331,16 +331,13 @@ let subtyping_test () =
   let raw_env = 
     "(Tweet1 : div classes=[tweet]
        (Author : div classes=[author])
-       (Content : div classes=[content])
+       (Content1 : div classes=[content1])
        (Time : div classes=[time]));
      (Tweet2 : div classes=[tweet]
        (Content2 : div classes=[content2]));
      (Tweet3: div classes=[tweet])" in
 
-
   let decls  = (JQEnv.parse_env raw_env "Subtyping test") in
-
-  Printf.eprintf "Length of decls is %n"(List.length decls);
 
   let env = JQEnv.extend_global_env H.env decls in
 
@@ -394,20 +391,28 @@ let subtyping_test () =
        true));
 
     ((fmsg "TDom <: TUnion"),
-     (wrapper 
+     (wrapper
         (H.tdom "Tweet1" "div" ["*"])
-        (H.tu 
+        (H.tu
            (H.tdom "Tweet2" "div" ["*"])
            (H.tdom "Tweet3" "div" ["*"]))
        true));
 
     ((fmsg "TDom </: TUnion"),
-     (wrapper 
+     (wrapper
         (H.tdom "Tweet1" "div" ["*"])
-        (H.tu 
+        (H.tu
            (H.tdom "Author" "div" ["*"])
-           (H.tdom "Content" "div" ["*"]))
-       true));    
+           (H.tdom "Content1" "div" ["*"]))
+       false));
+
+    ((fmsg "TDom </: TUnion t2"),
+     (wrapper
+        (H.tdom "Tweet1" "" ["*"])
+        (H.tu
+           (H.tdom "Tweet2" "div" ["*"])
+           (H.tdom "Tweet3" "div" ["*"]))
+       false));
 
     ((fmsg "TUnion <: TDom"),
      (wrapper 
@@ -422,7 +427,7 @@ let subtyping_test () =
      (wrapper 
         (H.tu 
            (H.tdom "Tweet1" "div" ["*"])
-           (H.tdom "Content" "div" ["*"]))
+           (H.tdom "Content1" "div" ["*"]))
         (H.tdom "Tweet1" "div" ["*"])
         false));
 
@@ -438,7 +443,7 @@ let subtyping_test () =
      (wrapper 
         (H.tu 
            (H.tdom "Author" "div" ["*"])
-           (H.tdom "Content" "div" ["*"]))
+           (H.tdom "Content1" "div" ["*"]))
         (H.tdom "Tweet1" "div" ["*"])
         false));
 
@@ -446,56 +451,45 @@ let subtyping_test () =
      (wrapper 
         (H.tu 
            (H.tdom "Author" "div" ["*"])
-           (H.tdom "Content" "div" ["*"]))
+           (H.tdom "Content1" "div" ["*"]))
         (H.tu 
            (H.tdom "Author" "div" ["*"])
-           (H.tdom "Content" "div" ["*"]))
+           (H.tdom "Content1" "div" ["*"]))
         true));
 
-
-    ((fmsg ""),
+    ((fmsg "inter1 <: inter2 t1"),
      (wrapper 
-       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet1" "div" ["p"])
+       (H.tdom "Tweet1" "div" ["div"])
+       true));
+
+    ((fmsg "inter1 <: inter2 t2"),
+     (wrapper 
+       (H.tdom "Tweet1" "div" [".tweet"])
        (H.tdom "Tweet2" "div" ["*"])
        true));
 
-    ((fmsg ""),
+    ((fmsg "inter1 <: inter2 t3"),
      (wrapper 
-       (H.tdom "Tweet1" "div" ["*"])
-       (H.tdom "Tweet2" "div" ["*"])
+       (H.tdom "Author" "div" [".tweet"])
+       (H.tdom "Content2" "div" [".tweet"])
        true));
 
-    ((fmsg ""),
+    ((fmsg "inter1 </: inter2 t1"),
      (wrapper 
-       (H.tdom "Tweet1" "div" ["*"])
-       (H.tdom "Tweet2" "div" ["*"])
-       true));
+       (H.tdom "Content1" "div" ["* > div.author + *"])
+       (H.tdom "Content2" "div" ["* > div.author + *"])
+       false));
 
-    ((fmsg ""),
+    ((fmsg "inter1 </: inter2 t2"),
      (wrapper 
-       (H.tdom "Tweet1" "div" ["*"])
-       (H.tdom "Tweet2" "div" ["*"])
-       true));
-
-    ((fmsg ""),
-     (wrapper 
-       (H.tdom "Tweet1" "div" ["*"])
-       (H.tdom "Tweet2" "div" ["*"])
-       true));
-
-    ((fmsg ""),
-     (wrapper 
-       (H.tdom "Tweet1" "div" ["*"])
-       (H.tdom "Tweet2" "div" ["*"])
-       true));
-
+       (H.tdom "Author" "div" [".author"])
+       (H.tdom "Author" "div" [".random"])
+       false));
     
-
   ]
 
 (* END subtyping_test *)
-
-
   
 let test1 n =
   let test1_help n a = 
@@ -1364,7 +1358,7 @@ let run_tests () =
     (* well_formed_test (); *)
     (raise_exns [
       expose_tdoms_test;
-      (* subtyping_test; *)
+      subtyping_test;
       structure_well_formed_test;
       structure_compilation_test;
       (* selector_tests; *)
