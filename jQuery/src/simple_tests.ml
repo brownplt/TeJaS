@@ -639,9 +639,10 @@ let test3 n =
 
 let test5 () = 
   let open Typedjs_writtyp.WritTyp in
+  let module H = Helper in
   let helper () = 
-    let text = "type DivElement = #{ name : /\"HTMLDivElement\"/ };
-                (Tweet : \"\"\"A structure for tweets\"\"\"
+    let text =
+              "(Tweet : \"\"\"A structure for tweets\"\"\"
                    DivElement
                    optional classes = [first, last]
                    classes = [tweet]
@@ -653,7 +654,7 @@ let test5 () =
                    ...
                )" in
     let decls = (JQEnv.parse_env text "dummy") in
-    let env = JQEnv.extend_global_env IdMap.empty decls in
+    let env = JQEnv.extend_global_env H.env decls in
     let open Typedjs_writtyp.WritTyp in
     let print_decls () =
       List.iter (fun d -> print_env_decl d Format.std_formatter; Format.print_newline ();) decls in
@@ -762,23 +763,15 @@ let structure_well_formed_test () =
   let module D = Desugar in
   let module W = Typedjs_writtyp.WritTyp in
 
-  (* consumes: 
-     d (string): the local structure declarations
-     fail (bool): indicates whether or not a Local_structure_exception
-                  is expected
-     produces: unit
-     
-     2) parse d
-     3) extend_global_env with parsed decls and some dummy element types *)
   let well_formed_wrapper d pass = 
-    let env = JQEnv.parse_env d 
+    let decls = JQEnv.parse_env d 
       "Simple_tests: Structure well-formedness test" in
 
-    let decls = ListExt.filter_map (fun d -> match d with
-      | W.Decl (_, dc) -> Some dc | _ -> None) env in
+    let structure_decls = ListExt.filter_map (fun d -> match d with
+      | W.Decl (_, dc) -> Some dc | _ -> None) decls in
 
     try
-      ignore(D.well_formed_structure decls);
+      ignore(D.well_formed_structure structure_decls);
       if (not pass) then raise (STest_failure "Well-formed test should have raised an exception")
     with e -> 
       match e with 
@@ -798,40 +791,40 @@ let structure_well_formed_test () =
     
     ((fail_msg "Dupes in two top-level comps"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1])
-       (A : Element classes=[a2])" false ));
+      "(A : div classes=[a1])
+       (A : div classes=[a2])" false ));
     
     ((fail_msg "Nested dupes in same top-level comp"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (B : Element classes=[b1])
-           (C : DivElement classes=[c1]
-             (B : DivElement classes=[b2])))" false));
+      "(A : div classes=[a1]
+         (B : div classes=[b1])
+           (C : div classes=[c1]
+             (B : div classes=[b2])))" false));
 
     ((fail_msg "Dupes on the same level in the same top-level comp"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (B : DivElement classes=[b1])
-         (B : Element classes=[b2]))" false ));
+      "(A : div classes=[a1]
+         (B : div classes=[b1])
+         (B : div classes=[b2]))" false ));
 
 
     ((fail_msg "Dupes in different levels and different top-level comps"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (C : DivElement classes=[c1]
-           (B : Element classes=[b1])))
-       (D : DivElement classes=[d1]
-         (E : Element classes=[e1]
-           (F : DivElement classes=[f1]
-             (B : DivElement classes=[b2]))))" false ));
+      "(A : div classes=[a1]
+         (C : div classes=[c1]
+           (B : div classes=[b1])))
+       (D : div classes=[d1]
+         (E : div classes=[e1]
+           (F : div classes=[f1]
+             (B : div classes=[b2]))))" false ));
 
     ((fail_msg "Can have multiple dupe ids so long as there is only one comp"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (C : DivElement classes=[c1])
-         (B : Element classes=[b1])
+      "(A : div classes=[a1]
+         (C : div classes=[c1])
+         (B : div classes=[b1])
          <B>
-         (D : DivElement classes=[d1])
+         (D : div classes=[d1])
          <B>)" true ));
 
     
@@ -840,106 +833,106 @@ let structure_well_formed_test () =
 
     ((fail_msg "DId cannot appear before comp"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
+      "(A : div classes=[a1]
          <B>
-         (C : DivElement classes=[c1])
-         (B : DivElement classes=[b1]))" false ));
+         (C : div classes=[c1])
+         (B : div classes=[b1]))" false ));
 
     ((fail_msg "DId can appear after comp"),
      (fun _ -> well_formed_wrapper
-       "(A : DivElement classes=[a1]
-         (B : DivElement classes=[b1])
-         (C : DivElement classes=[c1])
+       "(A : div classes=[a1]
+         (B : div classes=[b1])
+         (C : div classes=[c1])
          <B>)" true ));
 
     ((fail_msg ("Can have as many DIds as wanted on the same level so" ^
         "long as they appear after their respective comp")),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (B : DivElement classes=[b1])
+      "(A : div classes=[a1]
+         (B : div classes=[b1])
          <B>
-         (C : DivElement classes=[b1])
+         (C : div classes=[b1])
          <B>
          <B>
          <B>)" true ));
 
     ((fail_msg "Can't be used above"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (C : DivElement classes=[c1]
-           (B : DivElement classes=[b1]))
+      "(A : div classes=[a1]
+         (C : div classes=[c1]
+           (B : div classes=[b1]))
          <B>)" false ));
 
     ((fail_msg "Can be used below"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (B : DivElement classes=[b1])
-         (C : DivElement classes=[c1])
-         (D : DivElement classes=[d1])
+      "(A : div classes=[a1]
+         (B : div classes=[b1])
+         (C : div classes=[c1])
+         (D : div classes=[d1])
          <B>)" true));
 
     ((fail_msg "Crossover nested in a top-level comp"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (C : DivElement classes=[c1]
+      "(A : div classes=[a1]
+         (C : div classes=[c1]
            <B>))
-       (D : DivElement classes=[d1]
-         (B : Element classes=[b2]))" false));
+       (D : div classes=[d1]
+         (B : div classes=[b2]))" false));
 
     ((fail_msg "Crossover with a top-level comp"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
+      "(A : div classes=[a1]
          <B>)
-       (B : DivElement classes=[b1])" false ));
+       (B : div classes=[b1])" false ));
 
     
     (**** Rule 4: Cannot have two consectutive placeholders *)
     
     ((fail_msg "Can't have only two placeholders as children"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
+      "(A : div classes=[a1]
          ...
          ...)" false));
 
 
     ((fail_msg "Can't have only adjacent placeholders at beginning"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
+      "(A : div classes=[a1]
          ...
          ...
-         (B: DivElement classes=[b1])
-         (C: DivElement classes=[c1]))" false));
+         (B: div classes=[b1])
+         (C: div classes=[c1]))" false));
 
 
     ((fail_msg "Can't have two adjacent placeholders in middle"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (B: DivElement classes=[b1])
+      "(A : div classes=[a1]
+         (B: div classes=[b1])
          ...
          ...
-         (C: DivElement classes=[c1]))" false));
+         (C: div classes=[c1]))" false));
 
     ((fail_msg "Can't have two adjacent placeholders at end"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
-         (B: DivElement classes=[b1])
-         (C: DivElement classes=[c1])
+      "(A : div classes=[a1]
+         (B: div classes=[b1])
+         (C: div classes=[c1])
          ...
          ...)" false));
 
     ((fail_msg "Can have alternating placeholders"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
+      "(A : div classes=[a1]
          ...
-         (B: DivElement classes=[b1])
+         (B: div classes=[b1])
          ...
-         (C: DivElement classes=[c1])
+         (C: div classes=[c1])
          ...)" true));
 
 
     ((fail_msg "Can have single placeholder child"),
     (fun _ -> well_formed_wrapper
-      "(A : DivElement classes=[a1]
+      "(A : div classes=[a1]
          ...)" true));
 
 

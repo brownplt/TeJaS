@@ -130,8 +130,9 @@ struct
 	            (Printf.sprintf "synth: could not instantiate variable %s (with unknown bound??)"
                  tvar))) in
       let substituted = List.fold_left apply_typ_var t typ_vars in
-      let resolved = Env.resolve_special_functions env !Env.senv 
-        (Env.expose_tdoms env (canonical_type substituted)) in
+      (* TODO(liam): Test to see if resolved really needs to be called here *)
+      let resolved = Env.resolve_special_functions env !Env.senv
+      (canonical_type substituted) in
       (* Strobe.traceMsg "In do_substitution: original typ is %s" (string_of_typ t); *)
       (* Strobe.traceMsg "In do_substitution: subst'd is %s" (string_of_typ substituted); *)
       (* Strobe.traceMsg "In do_substitution: resolved typ is %s" (string_of_typ resolved); *)
@@ -151,8 +152,10 @@ struct
     | _ -> Strobe.typ_mismatch (Exp.pos exp) (Strobe.FixedString "JQuery.check NYI")
 
   and synth (env : env) (default_typ : typ option) (exp : exp) : typ = 
+    (* Strobe.traceMsg "Attempting to synth %s"(string_of_exp exp); *)
     let res = synth' env default_typ exp in
-    (* Strobe.traceMsg "Result of jQuery_synth is: %s"(string_of_typ res); *) res
+    (* Strobe.traceMsg "Result of jQuery_synth is: %s"(string_of_typ res);  *)
+    res
     (* trace "Synth" (fun _ -> true) (synth' env default_typ) exp *)
   and synth' env default_typ exp : typ = 
     let ret = match exp with
@@ -182,7 +185,7 @@ struct
     | _ ->
       embed_t (StrobeTC.synth env default_typ exp)
     in 
-    Env.resolve_special_functions env !Env.senv (Env.expose_tdoms env (canonical_type ret))
+    Env.resolve_special_functions env !Env.senv (canonical_type ret)
 
   let typecheck env default_typ exp =
     let _ = synth env default_typ exp in

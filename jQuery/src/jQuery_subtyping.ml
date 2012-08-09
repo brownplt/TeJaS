@@ -151,26 +151,6 @@ struct
           let (|||) c thunk = if (snd c) then c else thunk (fst c) in
           let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
           match unwrap_t simpl_t1, unwrap_t simpl_t2 with
-          | TDom (_,id1, nt1, sel1), TDom (_,id2, nt2, sel2) ->
-
-            let sel1', sel2' = match 
-              (Env.expose_tdoms env (JQ.embed_t (Strobe.TId id1))),
-            (Env.expose_tdoms env (JQ.embed_t (Strobe.TId id2))) with
-            | TDom (_,_,_,sel1'),TDom (_,_,_,sel2') -> sel1', sel2'
-            | _ -> failwith "JQuery_subtyping: subtype_typ: IMPOSSIBLE: Should only get TDoms when exposing a TDom's id" 
-            in
-
-            (* When subtyping TDoms, must check that the most precise selectors
-               subtype, and the node types subtype *)
-            subtype_typ env cache nt1 nt2
-            &&& (fun c -> (c, (Css.is_subset IdMap.empty 
-                                 (Css.intersect sel1 sel1')
-                                 (Css.intersect sel2 sel2'))))
-
-          (* | TDom _, _ -> subtype_typ env cache (Env.expose_tdoms env t1) (Env.expose_tdoms env (TDom(None, t2, Css.all))) *)
-          (* | _, TDom _ -> subtype_typ env cache (Env.expose_tdoms env (TDom(None, t1, Css.all))) (Env.expose_tdoms env t2) *)
-
-
           | TApp _, TApp _ -> cache, false
           (* UNSOUND: Type constructor might not be covariant in its arguments *)
           (* | TApp(t1, args1), TApp(t2, args2) -> *)
@@ -194,6 +174,27 @@ struct
           | TStrobe (Strobe.TInter(_, t11, t12)), t2 ->
             subtype_typ env cache (TStrobe t11) t2 ||| (fun c -> subtype_typ env c (TStrobe t12) t2)
 
+   | TDom (_,id1, nt1, sel1), TDom (_,id2, nt2, sel2) ->
+
+            let sel1', sel2' = match 
+              (Env.expose_tdoms env (JQ.embed_t (Strobe.TId id1))),
+            (Env.expose_tdoms env (JQ.embed_t (Strobe.TId id2))) with
+            | TDom (_,_,_,sel1'),TDom (_,_,_,sel2') -> sel1', sel2'
+            | _ -> failwith "JQuery_subtyping: subtype_typ: IMPOSSIBLE: Should only get TDoms when exposing a TDom's id" 
+            in
+
+            (* When subtyping TDoms, must check that the most precise selectors
+               subtype, and the node types subtype *)
+            subtype_typ env cache nt1 nt2
+            &&& (fun c -> (c, (Css.is_subset IdMap.empty 
+                                 (Css.intersect sel1 sel1')
+                                 (Css.intersect sel2 sel2'))))
+
+          (* TODO(liam): Check validity of these rules *)
+          (* If subtyping a TDom with something besides a TUnion or a TInter, 
+             subtype the nodeType against whatever it is *)
+          | TDom (_,_,nodeType,_), _ ->subtype_typ env cache nodeType t2
+          | _, TDom (_,_,nodeType,_) -> subtype_typ env cache t1 nodeType
           | TStrobe t1, TStrobe t2 -> 
             tc_cache := cache; (* checkpoint state *)
             cache, StrobeSub.subtype env t1 t2
@@ -277,10 +278,10 @@ struct
   let subtype_typ lax env t1 t2 =
     (* Strobe.traceMsg "attempting to resolve t1: %s | t2: %s"  *)
     (*   (string_of_typ t1) (string_of_typ t2); *)
-    let t1' = (Env.resolve_special_functions env !Env.senv 
-             (Env.expose_tdoms env (canonical_type t1))) in
-    let t2' = (Env.resolve_special_functions env !Env.senv 
-             (Env.expose_tdoms env (canonical_type t2))) in
+    let t1' = (Env.resolve_special_functions env 
+                 !Env.senv (canonical_type t1)) in
+    let t2' = (Env.resolve_special_functions env 
+                 !Env.senv (canonical_type t2)) in
     (* Strobe.traceMsg "resolved t1: %s | t2: %s" *)
     (*   (string_of_typ t1') (string_of_typ t2'); *)
     let (c, r) = 
