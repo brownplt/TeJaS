@@ -256,7 +256,7 @@ struct
     | MZeroPlus (MId n1), MZeroPlus (MId n2) when n2 = n1 -> cache, true
     | MZeroPlus (MPlain _), _ -> (cache, false)
     | MZeroPlus _, _ -> (cache, false) (* not canonical! *)
-    | MSum _, _
+    | MSum _, _ (* XXX TODO MSum?? *)
     | MPlain _, _ -> (cache, false) (* not canonical! *)
     )
 
@@ -289,22 +289,22 @@ struct
   let subtype_sigma lax env s1 s2 =
     (let (c, r) = (subtype_sigma lax env !tc_cache (canonical_sigma s1) (canonical_sigma s2))
      in tc_cache := c; r)
+  let subtype_mult lax env m1 m2 =
+    (let (c, r) = (subtype_mult lax env !tc_cache (canonical_multiplicity m1) (canonical_multiplicity m2))
+     in tc_cache := c; r)
   let subtype_typ lax env t1 t2 =
     (* Strobe.traceMsg "attempting to resolve t1: %s | t2: %s"  *)
     (*   (string_of_typ t1) (string_of_typ t2); *)
-    let t1' = (Env.resolve_special_functions env 
-                 !Env.senv (canonical_type t1)) in
-    let t2' = (Env.resolve_special_functions env 
-                 !Env.senv (canonical_type t2)) in
+    let t1' = (Env.resolve_special_functions env !Env.senv
+                 (subtype_mult lax) (canonical_type t1)) in
+    let t2' = (Env.resolve_special_functions env !Env.senv
+                 (subtype_mult lax) (canonical_type t2)) in
     (* Strobe.traceMsg "resolved t1: %s | t2: %s" *)
     (*   (string_of_typ t1') (string_of_typ t2'); *)
     let (c, r) = 
        (subtype_typ lax env !tc_cache t1' t2')
 
      in tc_cache := c; r
-  let subtype_mult lax env m1 m2 =
-    (let (c, r) = (subtype_mult lax env !tc_cache (canonical_multiplicity m1) (canonical_multiplicity m2))
-     in tc_cache := c; r)
 
   let subtype = subtype_typ true
 end

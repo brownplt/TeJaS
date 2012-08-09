@@ -630,14 +630,14 @@ struct
           ==================================================
           Transform function for kidMap that takes an id option list and turns it into a multiplicity.
           Match cases:
-          empty list ==> 0<TTop>
+          empty list ==> 0<TBot>
           list with a single id ==> 1<id>
           list with a single None ==> 0+<Element>
           list with more than one entries ==> 
              1+<union of remove_dups of all entries in the list>
       **)
       let transform_children idos = let open JQ in match idos with 
-        | [] -> MZero (MPlain (TStrobe (S.TTop)))
+        | [] -> MZero (MPlain (TStrobe (S.TBot)))
         | [Some id] -> MOne (wrap_id id)
         | [None] -> MZeroPlus (wrap_id element)
         | _ -> match ListExt.remove_dups idos with
@@ -653,7 +653,7 @@ struct
           Transform function for prevSibMap and nextSibMap that takes an id option list and turns it into a multiplicity.
           Match cases:
           empty list ==> fail - should not encounter this case
-          [Some "Any"] -> 0<TTop>
+          [Some "Any"] -> 0<TBot>
           list with a single id ==> 1<id>
           list with a single None ==> 01<Element>
           list with more than one entries ==> 
@@ -663,7 +663,7 @@ struct
       **)
       let transform_sibs idos = let open JQ in match idos with
         | [] -> failwith "Desugar:desugar_structure:transform_sibs: IMPOSSIBLE: should not encounter an empty list of ids."
-        | [Some "Any"] -> MZero (MPlain (TStrobe (S.TTop)))
+        | [Some "Any"] -> MZero (MPlain (TStrobe (S.TBot)))
         | [Some id] -> MOne (wrap_id id)
         | [None] -> MZeroOne (wrap_id element)
         (* Any other list with length > 1 *)

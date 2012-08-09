@@ -146,7 +146,8 @@ module type JQUERY_TYP_ENV = sig
   val expose_tdoms : env -> typ -> typ
   val senv : structureEnv ref
   val print_structureEnv : string -> structureEnv -> FormatExt.printer
-  val resolve_special_functions : env -> structureEnv -> typ -> typ
+  val resolve_special_functions : env -> structureEnv -> 
+    (env -> multiplicity -> multiplicity -> bool) -> typ -> typ
 end
 
 module type JQUERY_TYPECHECKING = sig

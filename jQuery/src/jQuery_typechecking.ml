@@ -133,8 +133,8 @@ struct
                  tvar))) in
       let substituted = List.fold_left apply_typ_var t typ_vars in
       (* TODO(liam): Test to see if resolved really needs to be called here *)
-      let resolved = Env.resolve_special_functions env !Env.senv
-      (canonical_type substituted) in
+      let resolved = Env.resolve_special_functions env !Env.senv (Sub.subtype_mult true)
+        (canonical_type substituted) in
       Strobe.traceMsg "In do_substitution: original typ is %s" (string_of_typ t);
       Strobe.traceMsg "In do_substitution: subst'd is %s" (string_of_typ substituted);
       Strobe.traceMsg "In do_substitution: resolved typ is %s" (string_of_typ resolved);
@@ -187,7 +187,7 @@ struct
     | _ ->
       embed_t (StrobeTC.synth env default_typ exp)
     in 
-    Env.resolve_special_functions env !Env.senv (canonical_type ret)
+    Env.resolve_special_functions env !Env.senv (Sub.subtype_mult true) (canonical_type ret)
 
   let typecheck env default_typ exp =
     let _ = synth env default_typ exp in

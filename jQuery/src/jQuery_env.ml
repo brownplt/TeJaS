@@ -127,7 +127,7 @@ struct
   let msum_ms (ms : multiplicity list) : multiplicity =
     canonical_multiplicity 
       (List.fold_left (fun macc m -> MSum (macc,m)) 
-         (MZero (MPlain (embed_t Strobe.TTop))) ms)
+         (MZero (MPlain (embed_t Strobe.TBot))) ms)
 
 
   let munion_ms (ms : multiplicity list) : multiplicity =
@@ -153,7 +153,7 @@ struct
     let union = List.fold_left (fun t1 t2 -> 
       if t1 = Strobe.TBot then extract_t t2 else Strobe.TUnion(None, t1, extract_t t2))
       Strobe.TBot ts in
-    make (embed_t union)
+    canonical_multiplicity (make (embed_t union))
 
   let children (env : env ) (senv : structureEnv) (t : typ) : multiplicity =
     let cenv = (snd senv) in
@@ -171,66 +171,100 @@ struct
     let cenv = (snd senv) in
     munion_ms (get_all_x_of env cenv.Desugar.next t)
 
-  (* MOne (MPlain (munion_ms (get_all_x_of env cenv.Desugar.next t))) *)
 
 
+  let transitive (op : env -> structureEnv -> typ -> multiplicity) 
+      (included : env -> multiplicity -> multiplicity -> bool)
+      (env : env) (senv : structureEnv) (t : typ) : multiplicity =
+    let rec helper (acc : multiplicity) (m : multiplicity) : multiplicity =
+      Strobe.trace "transitive_helper" 
+        (Printf.sprintf "acc = %s, m = %s" (string_of_mult acc) (string_of_mult m))
+        (fun _ -> true) (fun () -> helper' acc m)
+    and helper' acc m =
+      let ret = 
+        match m with
+        | MZero _ -> acc
+        | _ ->
+          let (t, m') = match extract_mult m with
+            | STyp t, m' -> t, m'
+            | SMult _, _ -> failwith "Got unexpected multiplicity in transitive"
+          in
+          let res_op = op env senv t in
+          let res = canonical_multiplicity (m' (SMult res_op)) in
+          if included env res acc
+          then acc
+          else helper (msum_ms [res; acc]) res
+      in
+      Strobe.traceMsg "Return mult = %s" (string_of_mult ret);
+      ret
+    in
+    Strobe.trace "transitive" (Printf.sprintf "t = %s" (string_of_typ t)) (fun _ -> true)
+      (fun () ->
+        let first = op env senv t in
+        helper first first)
 
 
-    (* The terminating condition of transitive is:
-       1. Two consecutive results of m<Element>, regardless of what m is. 
-       2. Two consecutive results of the exact same multiplicity (including the type inside the multiplicity).
+  let find included env senv t = transitive children included env senv t
+  let nextAll included env senv t = transitive next included env senv t
+  let prevAll included env senv t = transitive prev included env senv t
+  let parentsAll included env senv t = transitive parent included env senv t
 
-       Well-formedness checking should prevent any infinite loops, but this could use more testing.
-    *)
-  let rec transitive (env : env) (senv : structureEnv) (t : typ) (f : structureEnv -> typ -> multiplicity) : multiplicity =
-    Strobe.traceMsg "In transitive, ";
-    let open JQuery in
-    let next = canonical_multiplicity (f senv t) in
-    Strobe.traceMsg "next is: %s" (string_of_mult next);
-    let recur () : multiplicity = 
-      let (s, fs) = extract_mult next in
-      begin
-        match s with
-        | STyp next_t ->
-          if JQuery.equivalent_typ env t next_t then next else
-          MSum (next, fs (SMult (transitive env senv next_t f)))
-        | SMult m -> next
-      end in
-    match next with
-    | MZero _
-    | MSum (_, _)
-    | MId _
-    | _ -> if (t = TStrobe (Strobe.TId "Element")) || (t = TStrobe (Strobe.TTop))
-      then begin match next with
-      | MZeroPlus (MPlain (TStrobe (Strobe.TId "Element")))
-      | MZeroPlus (MPlain (TStrobe Strobe.TTop))
-      | MZeroOne (MPlain (TStrobe (Strobe.TId "Element")))
-      | MZeroOne (MPlain (TStrobe Strobe.TTop))
-      | MZero (MPlain (TStrobe (Strobe.TId "Element")))
-      | MZero (MPlain (TStrobe Strobe.TTop))
-      | MOnePlus (MPlain (TStrobe (Strobe.TId "Element")))
-      | MOnePlus (MPlain (TStrobe Strobe.TTop))
-      | MOne (MPlain (TStrobe (Strobe.TId "Element")))
-      | MOne (MPlain (TStrobe Strobe.TTop)) -> next
-      | _ -> recur ()
-      end
-      else recur ()
 
-  let nextall (env : env) (senv : structureEnv) (t : typ) : multiplicity =
-    MOne (MPlain t)
-    (* transitive env senv t nextsib *)
+  (*   (\* The terminating condition of transitive is: *)
+  (*      1. Two consecutive results of m<Element>, regardless of what m is.  *)
+  (*      2. Two consecutive results of the exact same multiplicity (including the type inside the multiplicity). *)
 
-  let prevall (env : env) (senv : structureEnv) (t : typ) : multiplicity =
-    MOne (MPlain t)
-    (* transitive env senv t prevsib *)
+  (*      Well-formedness checking should prevent any infinite loops, but this could use more testing. *)
+  (*   *\) *)
+  (* let rec transitive (env : env) (senv : structureEnv) (t : typ) (f : structureEnv -> typ -> multiplicity) : multiplicity = *)
+  (*   Strobe.traceMsg "In transitive, "; *)
+  (*   let open JQuery in *)
+  (*   let next = canonical_multiplicity (f senv t) in *)
+  (*   Strobe.traceMsg "next is: %s" (string_of_mult next); *)
+  (*   let recur () : multiplicity =  *)
+  (*     let (s, fs) = extract_mult next in *)
+  (*     begin *)
+  (*       match s with *)
+  (*       | STyp next_t -> *)
+  (*         if JQuery.equivalent_typ env t next_t then next else *)
+  (*         MSum (next, fs (SMult (transitive env senv next_t f))) *)
+  (*       | SMult m -> next *)
+  (*     end in *)
+  (*   match next with *)
+  (*   | MZero _ *)
+  (*   | MSum (_, _) *)
+  (*   | MId _ *)
+  (*   | _ -> if (t = TStrobe (Strobe.TId "Element")) || (t = TStrobe (Strobe.TTop)) *)
+  (*     then begin match next with *)
+  (*     | MZeroPlus (MPlain (TStrobe (Strobe.TId "Element"))) *)
+  (*     | MZeroPlus (MPlain (TStrobe Strobe.TTop)) *)
+  (*     | MZeroOne (MPlain (TStrobe (Strobe.TId "Element"))) *)
+  (*     | MZeroOne (MPlain (TStrobe Strobe.TTop)) *)
+  (*     | MZero (MPlain (TStrobe (Strobe.TId "Element"))) *)
+  (*     | MZero (MPlain (TStrobe Strobe.TTop)) *)
+  (*     | MOnePlus (MPlain (TStrobe (Strobe.TId "Element"))) *)
+  (*     | MOnePlus (MPlain (TStrobe Strobe.TTop)) *)
+  (*     | MOne (MPlain (TStrobe (Strobe.TId "Element"))) *)
+  (*     | MOne (MPlain (TStrobe Strobe.TTop)) -> next *)
+  (*     | _ -> recur () *)
+  (*     end *)
+  (*     else recur () *)
 
-  let parents (env : env) (senv : structureEnv) (t : typ) : multiplicity =
-    MOne (MPlain t)
-    (* transitive env senv t parent *)
+  (* let nextall (env : env) (senv : structureEnv) (t : typ) : multiplicity = *)
+  (*   MOne (MPlain t) *)
+  (*   (\* transitive env senv t nextsib *\) *)
 
-  let find (env : env) (senv : structureEnv) (t : typ) : multiplicity =
-    MOne (MPlain t)
-    (* transitive env senv t children *)
+  (* let prevall (env : env) (senv : structureEnv) (t : typ) : multiplicity = *)
+  (*   MOne (MPlain t) *)
+  (*   (\* transitive env senv t prevsib *\) *)
+
+  (* let parents (env : env) (senv : structureEnv) (t : typ) : multiplicity = *)
+  (*   MOne (MPlain t) *)
+  (*   (\* transitive env senv t parent *\) *)
+
+  (* let find (env : env) (senv : structureEnv) (t : typ) : multiplicity = *)
+  (*   MOne (MPlain t) *)
+  (*   (\* transitive env senv t children *\) *)
 
   (** Function: filterSel
       ==============================
@@ -261,12 +295,12 @@ struct
 
   let filterJQ (benv : Desugar.backformEnv) (typ : typ) : multiplicity =
     let open JQuery in
-    MZero (MPlain (TStrobe (Strobe.TTop)))
+    MZero (MPlain (TStrobe (Strobe.TBot)))
 
 
   (* returns an MSum of TDoms *)
   let jQuery (env : env) (benv : Desugar.backformEnv) (sel : string) : multiplicity =
-    MOne (MPlain (TStrobe Strobe.TTop))
+    MOne (MPlain (TStrobe Strobe.TBot))
     (* (\* check whether sel is legal in the context of given local structure *\) *)
     (* let env_specs = List.flatten (List.map Css.speclist (List.map snd2 benv)) in *)
     (* let sel_specs = Css.speclist (Css.singleton sel) in *)
@@ -561,7 +595,8 @@ struct
   (* let rec resolve_special_functions env senv t =  *)
   (*   Strobe.traceMsg "Attempting to resolve: %s" (string_of_typ t); *)
   (*   resolve_special_functions' env senv t *)
-  let rec resolve_special_functions (env : env) (senv : structureEnv) (t : typ) =
+  let rec resolve_special_functions (env : env) (senv : structureEnv) 
+      (included : env -> multiplicity -> multiplicity -> bool) (t : typ) =
     let rec resolve_sigma s = match s with
       | STyp t -> STyp (rjq t)
       | SMult m -> SMult (resolve_mult m) 
@@ -608,13 +643,21 @@ struct
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), [SMult m])))), m1
-          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), [SMult m])))), m1 -> 
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), [SMult m])))), m1
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), [SMult m])))), m1 
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), [SMult m])))), m1 
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), [SMult m])))), m1 
+            -> 
             let op = match oper with
               | "childrenOf" -> children
               | "nextSibOf" -> next
               | "prevSibOf" -> prev
               | "parentOf" -> parent
-              | _ -> failwith "impossible: we only matched on four strings" in
+              | "findOf" -> find included
+              | "nextAllOf" -> nextAll included
+              | "prevAllOf" -> prevAll included
+              | "parentsAllOf" -> parentsAll included
+              | _ -> failwith "impossible: we only matched known strings" in
             let (s', m2) = extract_mult m in begin match s' with
               | STyp t -> SMult 
                 (canonical_multiplicity 
@@ -625,7 +668,12 @@ struct
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), _)), _)
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), _)), _)
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), _)), _)
-          | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), _)), _) ->
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), _)), _)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), _)), _) 
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), _)), _) 
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), _)), _) 
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentsAllOf" as oper))), _)), _) 
+            ->
             failwith (oper ^ " not called with a single mult argument")
           (* | SMult m -> begin match extract_mult m with *)
           (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TRegex pat))])), m1) -> *)

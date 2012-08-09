@@ -32,7 +32,6 @@ type o1 = jQ<1<Other>, AnyJQ>;
 
 */
 
-
 var e1 = /*: cheat jQ<1<Element>, AnyJQ> */0;
 var e1p = /*: cheat jQ<1+<Element>, AnyJQ> */0;
 
@@ -58,6 +57,9 @@ var fc1p = /*: cheat jQ<1+<Followers+Content>, AnyJQ> */0;
 
 var ta1 = /*: cheat jQ<1<Tweet+Author>, AnyJQ> */0;
 var ta1p = /*: cheat jQ<1+<Tweet+Author>, AnyJQ> */0;
+
+var at1 = /*: cheat jQ<1<Author+Time>, AnyJQ> */0;
+var at1p = /*: cheat jQ<1+<Author+Time>, AnyJQ> */0;
 
 /**** TId subtyping tests ****
 * Several tests with TIds, as they can cause some weird edge-cases
@@ -122,7 +124,7 @@ var ta1p = /*: cheat jQ<1+<Tweet+Author>, AnyJQ> */0;
 
 
 
-/**** Next, prev tests ****/
+// /**** Next, prev tests ****/
 
 // // top-level next/prev
 // /*: jQ<01<Element>, AnyJQ> */t1.next();
@@ -190,27 +192,27 @@ var ta1p = /*: cheat jQ<1+<Tweet+Author>, AnyJQ> */0;
 
 
 
-/**** Parent tests ****/
+// /**** Parent tests ****/
 
-var t1_parent = t1.parent();
-var t1p_parent = t1p.parent();
+// var t1_parent = t1.parent();
+// var t1p_parent = t1p.parent();
 
-var a1_parent = a1.parent();
-var a1p_parent = a1p.parent();
+// var a1_parent = a1.parent();
+// var a1p_parent = a1p.parent();
 
-var f1_parent = f1.parent();
-var f1p_parent = f1p.parent();
-
-
-var e1_parent = e1.parent();
-var e1p_parent = e1p.parent();
-
-var fc1_parent = fc1.parent();
-var fc1p_parent = fc1p.parent();
+// var f1_parent = f1.parent();
+// var f1p_parent = f1p.parent();
 
 
-var ta1_parent = ta1.parent();
-var ta1p_parent = ta1p.parent();
+// var e1_parent = e1.parent();
+// var e1p_parent = e1p.parent();
+
+// var fc1_parent = fc1.parent();
+// var fc1p_parent = fc1p.parent();
+
+
+// var ta1_parent = ta1.parent();
+// var ta1p_parent = ta1p.parent();
 
 // // /*: jQ<01<Num>, AnyJQ> */t1_parent;
 // /*: jQ<01<Element>, AnyJQ> */t1_parent;
@@ -237,19 +239,63 @@ var ta1p_parent = ta1p.parent();
 // /*: jQ<0+<Element>, AnyJQ> */e1p_parent;
 
 
-// /*: jQ<1<Num>,AnyJQ> */fc1_parent;
-// // /*: jQ<1<Author+Tweet>,AnyJQ> */fc1_parent;
+// // /*: jQ<1<Num>,AnyJQ> */fc1_parent;
+// /*: jQ<1<Author+Tweet>,AnyJQ> */fc1_parent;
 
-// /*: jQ<1+<Num>, AnyJQ> */fc1p_parent;
-// // /*: jQ<1+<Author+Tweet>, AnyJQ> */fc1p_parent;
+// // /*: jQ<1+<Num>, AnyJQ> */fc1p_parent;
+// /*: jQ<1+<Author+Tweet>, AnyJQ> */fc1p_parent;
 
-// /*: jQ<01<Num>, AnyJQ> */ta1_parent;
-// // /*: jQ<01<Element>, AnyJQ> */ta1_parent;
+// // /*: jQ<01<Num>, AnyJQ> */ta1_parent;
+// /*: jQ<01<Element>, AnyJQ> */ta1_parent;
 
-// /*: jQ<0+<Num>, AnyJQ> */ta1p_parent;
-// // /*: jQ<0+<Element>, AnyJQ> */ta1p_parent;
+// // /*: jQ<0+<Num>, AnyJQ> */ta1p_parent;
+// /*: jQ<0+<Element>, AnyJQ> */ta1p_parent;
+
+// /**** END parent tests ****/
+
+// /**** More elaborate chaining tests ****/
+
+// var t1_cn = t1.children().next();
+
+// var a1_nnpp = a1.next().next().prev().prev();
+
+// var at1_n = at1.next();
+// var at1p_n = at1p.next();
+
+// var a1_nnn = a1.next().next().next();
 
 
-// var tweet_element = /*: cheat JQ<1+<Tweet+Element>, AnyJQ> */0;
+// // /*: jQ<0+<Num>, AnyJQ >*/t1_cn;
+// /*: jQ<0+<Time+Content>, AnyJQ> */t1_cn;
 
-// tweet_element.children();
+// // /*: jQ<1<Num>, AnyJQ> */at1_n;
+// /*: jQ<1<Time+Content>, AnyJQ> */at1_n;
+
+// // /*: jQ<1+<Num>, AnyJQ> */at1p_n;
+// /*: jQ<1+<Time+Content>, AnyJQ> */at1p_n;
+
+// // /*: jQ<1<Num>, AnyJQ> */a1_nnpp;
+// /*: jQ<1<Author+Content+Time>, AnyJQ> */a1_nnpp;
+
+// // /*: jQ<01<Num>, AnyJQ> */a1_nnn;
+// /*: jQ<01<Content>, AnyJQ> */a1_nnn;
+
+
+/*** Find tests ****/
+
+var t1_find = t1.find();
+
+
+///*: jQ<1+<Author+Content+Time+Followers>, AnyJQ> */t1_find;
+
+
+///*: jQ<0<Any>, AnyJQ> */a1.prevAll();
+/*: jQ<0+<Author+Content+Time>, AnyJQ> */t1_find.prev();
+/*: jQ<0+<Author+Content+Time>, AnyJQ> */t1_find.prevAll();
+
+
+
+
+
+
+

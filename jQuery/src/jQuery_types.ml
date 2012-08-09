@@ -676,7 +676,7 @@ struct
     | MOnePlus (MZeroOne m) -> c (MZeroPlus m)
     | MOnePlus (MOnePlus m) -> c (MOnePlus m)
     | MOnePlus (MZeroPlus m) -> c (MZeroPlus m)
-    | MOnePlus (MSum (m1, m2)) -> let m' = MOnePlus (c (MSum (m1, m2))) in if m' = m then m else c m'
+    | MOnePlus (MSum (m1, m2)) -> let m' = MOnePlus (c (MSum (m1, m2))) in if m' = m then m else c m' (* XXX TODO MSum?? *)
     | MZeroPlus (MPlain t) -> MZeroPlus (MPlain (canonical_type t))
     | MZeroPlus (MId _) -> m
     | MZeroPlus (MZero m) -> c (MZero m)
@@ -684,8 +684,8 @@ struct
     | MZeroPlus (MZeroOne m) -> c (MZeroPlus m)
     | MZeroPlus (MOnePlus m) -> c (MZeroPlus m)
     | MZeroPlus (MZeroPlus m) -> c (MZeroPlus m)
-    | MZeroPlus (MSum (m1, m2)) -> let m' = MZeroPlus (c (MSum (m1, m2))) in if m' = m then m else c m'
-    | MSum(m1, m2) -> 
+    | MZeroPlus (MSum (m1, m2)) -> let m' = MZeroPlus (c (MSum (m1, m2))) in if m' = m then m else c m' (* XXX TODO MSum?? *)
+    | MSum(m1, m2) -> (* XXX TODO MSum?? *)
       let c_u t1 t2 = canonical_type (embed_t (Strobe.TUnion(None, extract_t t1, extract_t t2))) in
       match c m1, c m2 with
       | MZero _, t2 -> t2
