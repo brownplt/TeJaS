@@ -243,8 +243,8 @@ struct
     | _ -> None
 
 
-  let trace (msg : string) (success : 'a -> bool) (thunk : exp -> 'a) (exp : exp) = thunk exp
-    (* Typ.trace msg (simpl_print exp) success (fun () -> thunk exp) *)
+  let trace (msg : string) (success : 'a -> bool) (thunk : exp -> 'a) (exp : exp) = thunk exp 
+  (* Typ.trace msg (simpl_print exp) success (fun () -> thunk exp) *)
 
   let rec check (env : env) (default_typ : Typ.extTyp option) (exp : exp) (typ : Typ.typ) : unit =
     try trace "Check" (fun _ -> true) (fun exp -> check' env default_typ exp typ) exp
@@ -382,7 +382,7 @@ struct
       (*   (string_of_typ synthed)  (string_of_typ synth_typ); *)
       (* traceMsg "About to subtype:  %s <?: %s" (string_of_typ synth_typ)  *)
       (*   (string_of_typ (expose_simpl_typ env typ)); *)
-      if not (Sub.subtype env synth_typ (expose_simpl_typ env typ)) then begin
+      if not (Sub.subtype env synth_typ typ) then begin
         (* Printf.printf "failed.\n"; *)
         Sub.typ_mismatch (Exp.pos exp)
           (Sub.TypTyp((fun t1 t2 -> sprintf "%%expected %s to have type %s, got %s" (string_of_exp exp) (string_of_typ (collapse_if_possible env t1)) (string_of_typ (collapse_if_possible env t2))), (expose_simpl_typ env typ), synth_typ))
@@ -820,7 +820,8 @@ struct
     | ECheat (p, t, _) -> 
       let t = Ext.extract_t t in
       (* traceMsg "Cheating to %s" (string_of_typ (replace_name None t)); *)
-      let simpl_t = Typ.trace "Exposing type" "" (fun _ -> true) (fun () -> expose_simpl_typ env (check_kind p env t)) in
+      let simpl_t = check_kind p env t in
+      (* let simpl_t = Typ.trace "Exposing type" "" (fun _ -> true) (fun () -> expose_simpl_typ env (check_kind p env t)) in *)
       (* traceMsg "Exposed typ is %s" (string_of_typ (replace_name None simpl_t)); *)
       simpl_t
     | EParen (p, e) ->  synth env default_typ e

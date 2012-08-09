@@ -90,7 +90,14 @@ struct
   let rec unwrap_bb b =
     match b with Strobe.BEmbed (BStrobe b) -> unwrap_bb b | _ -> b
   let rec unwrap_t t =
-    match t with TStrobe (Strobe.TEmbed t) -> unwrap_t t | _ -> t
+    match t with 
+    | TStrobe (Strobe.TEmbed t) -> unwrap_t t 
+    | TStrobe (Strobe.TUninit inner) -> begin
+      match !inner with
+      | None -> t
+      | Some t' -> embed_t t'
+    end
+    | _ -> t
   let rec unwrap_k k =
     match k with KStrobe (Strobe.KEmbed k) -> unwrap_k k | _ -> k
   let rec unwrap_b b =
@@ -785,20 +792,20 @@ struct
     squash_t t
 
   let rec collapse_if_possible env typ = match unwrap_t typ with
-    | TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> begin
-      let ofields = Strobe.fields o in
-      try
-        let (_, _, thisTyp) = List.find (fun (p, _, _) ->
-          Pat.is_equal p (Pat.singleton "__this__")) ofields in
-        begin
-          match embed_t thisTyp with
-          | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m; prev]) as collapsed ->
-            if typ = (simpl_typ env collapsed)
-            then collapsed else typ
-          | _ -> typ
-        end
-      with Not_found -> TStrobe (Strobe.TObject o)
-    end
+    (* | TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> begin *)
+    (*   let ofields = Strobe.fields o in *)
+    (*   try *)
+    (*     let (_, _, thisTyp) = List.find (fun (p, _, _) -> *)
+    (*       Pat.is_equal p (Pat.singleton "__this__")) ofields in *)
+    (*     begin *)
+    (*       match embed_t thisTyp with *)
+    (*       | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m; prev]) as collapsed -> *)
+    (*         if typ = (simpl_typ env collapsed) *)
+    (*         then collapsed else typ *)
+    (*       | _ -> typ *)
+    (*     end *)
+    (*   with Not_found -> TStrobe (Strobe.TObject o) *)
+    (* end *)
     | t -> t
 
 

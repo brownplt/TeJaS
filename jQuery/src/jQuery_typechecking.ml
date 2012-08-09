@@ -45,7 +45,7 @@ struct
   open JQ
 
 
-  let trace msg success thunk exp = thunk exp (* StrobeTC.trace msg success thunk exp *)
+  let trace msg success thunk exp = StrobeTC.trace msg success thunk exp
     
   let bind_sigma x s e = match s with
     | STyp t -> Env.bind_typ_id x t e
@@ -73,7 +73,9 @@ struct
     end
     | _ -> None
 
-  let assoc_sub env t1 t2 = 
+  let rec assoc_sub env t1 t2 = 
+    Strobe.trace "JQuery:Assoc_sub" (Printf.sprintf "assoc %s with %s" (string_of_typ t1) (string_of_typ t2)) (fun _ -> true) (fun () -> assoc_sub' env t1 t2)
+  and assoc_sub' env t1 t2 =
     (* Strobe.traceMsg "associating %s with %s" (string_of_typ t1) (string_of_typ t2); *)
     (* let t1' = (Env.resolve_special_functions env !Env.senv (Env.expose_tdoms env (canonical_type t1))) in *)
     (* let t2' = (Env.resolve_special_functions env !Env.senv (Env.expose_tdoms env (canonical_type t2))) in *)
@@ -133,9 +135,9 @@ struct
       (* TODO(liam): Test to see if resolved really needs to be called here *)
       let resolved = Env.resolve_special_functions env !Env.senv
       (canonical_type substituted) in
-      (* Strobe.traceMsg "In do_substitution: original typ is %s" (string_of_typ t); *)
-      (* Strobe.traceMsg "In do_substitution: subst'd is %s" (string_of_typ substituted); *)
-      (* Strobe.traceMsg "In do_substitution: resolved typ is %s" (string_of_typ resolved); *)
+      Strobe.traceMsg "In do_substitution: original typ is %s" (string_of_typ t);
+      Strobe.traceMsg "In do_substitution: subst'd is %s" (string_of_typ substituted);
+      Strobe.traceMsg "In do_substitution: resolved typ is %s" (string_of_typ resolved);
       resolved in
     do_substitution
 
@@ -153,10 +155,10 @@ struct
 
   and synth (env : env) (default_typ : typ option) (exp : exp) : typ = 
     (* Strobe.traceMsg "Attempting to synth %s"(string_of_exp exp); *)
-    let res = synth' env default_typ exp in
-    (* Strobe.traceMsg "Result of jQuery_synth is: %s"(string_of_typ res);  *)
-    res
-    (* trace "Synth" (fun _ -> true) (synth' env default_typ) exp *)
+    (* let res = synth' env default_typ exp in *)
+    (* Strobe.traceMsg "Result of jQuery_synth is: %s"(string_of_typ res); *)
+    (* res *)
+    trace "JQuery:Synth" (fun _ -> true) (synth' env default_typ) exp
   and synth' env default_typ exp : typ = 
     let ret = match exp with
     | ETypApp (p, e, u) ->

@@ -82,145 +82,61 @@ struct
             (Strobe.FixedString (sprintf "Malformed TDom: %s"(string_of_typ t)))))
     end
 
-(* match (unwrap_t t) with *)
-(*     | TDom (s, _, sel) when Css.is_empty sel ->  *)
-(*       Strobe.traceMsg "Expose_tdom:EMPTY? %s" (string_of_typ t); *)
-(*       embed_t Strobe.TBot *)
-(*     | TDom (s, inner, sel) -> *)
-(*       begin match (unwrap_t inner) with *)
-(*       | (TDom (_,t,sel2)) -> *)
-(*         expose_tdoms env (TDom (s, t, Css.intersect sel2 sel)) *)
-(*       | _ -> *)
-(*         begin match extract_t inner with *)
-(*         | (Strobe.TId id) -> *)
-(*           Strobe.traceMsg "Expose_tdom:TId of %s" id; *)
-(*           expose_tdoms env (TDom (s, fst (lookup_typ_id id env), sel)) *)
-(*         | (Strobe.TUnion (s2, t1 ,t2)) -> *)
-(*           Strobe.traceMsg "Expose_tdom:TUnion of %s and %s" (string_of_typ (embed_t t1)) (string_of_typ (embed_t t2)); *)
-(*           let t1' = expose_tdoms env (TDom (s, TStrobe t1, sel)) in *)
-(*           let t2' = expose_tdoms env (TDom (s, TStrobe t2, sel)) in *)
-(*           embed_t (Strobe.TUnion (s2, extract_t t1', extract_t t2')) *)
-(*         | (Strobe.TInter (s2, t1 ,t2)) -> *)
-(*           let t1' = expose_tdoms env (TDom (s, TStrobe t1, sel)) in *)
-(*           let t2' = expose_tdoms env (TDom (s, TStrobe t2, sel)) in *)
-(*           Strobe.traceMsg "Expose_tdom:TInter of %s and %s" (string_of_typ t1') (string_of_typ t2'); *)
-(*           embed_t (Strobe.TInter (s2, extract_t t1', extract_t t2')) *)
-(*         | Strobe.TEmbed _ -> Strobe.traceMsg "TEmbed"; TDom (s, inner, sel) *)
-(*         | _ ->  *)
-(*           Strobe.traceMsg "Expose_tdom:other of TDom(_, %s, %s)" (string_of_typ inner) (Css.pretty sel); *)
-(*           TDom (s, inner, sel) *)
-(*         end *)
-(*       end *)
-(*     | _ -> t *)
 
-  (* TODO: after backforming, check for legal selectors *)
+    (* Consumes: 
+       env : env
+       cm : clauseMap
+       t : typ
 
-  (* let backform (benv : Desugar.backformEnv) (sels : Css.t) : id list =  *)
-  (*   let open Typedjs_desugar in *)
-  (*   let open Desugar in *)
-  (*   let pairs = List.filter (fun (elem : (id * Css.t)) ->  *)
-  (*     let inter = Css.intersect (snd elem) sels in *)
-  (*     Strobe.traceMsg "Backform: Intersected %s with %s and got %s" *)
-  (*       (Css.pretty (snd elem)) (Css.pretty sels) (Css.pretty inter); *)
-  (*     Css.is_overlapped (snd elem) sels) benv in *)
-  (*   (\* List.iter (fun pair -> Strobe.traceMsg "%s" (Css.pretty (snd pair))) pairs; *\) *)
-  (*   let union = List.fold_left Css.union Css.empty (List.map snd pairs) in *)
-  (*   if Css.is_empty union then [] (\* should give a warning here *\) *)
-  (*   else (List.map fst pairs) *)
+       expose_tdoms t, then MSums the lookups for each TDom in t.
+       Produces: the canonicalized  MSum *)
+  let rec lookup_cm (env : env) (cm : Desugar.clauseMap) (t : typ) 
+      : (typ * (typ -> multiplicity)) = 
 
-  (* if Css.is_subset IdMap.empty sels union then (List.map fst pairs) else  begin *)
-  (* Strobe.traceMsg "%s is not a subset of %s" (Css.pretty sels) (Css.pretty union); *)
-  (* "Element"::(List.map fst pairs) *)
-  (* end *)
-
-
-
-  (** Function: x_of
-      ==============================
-      This function is the common operation on types shared by children, parent, prevsib and nextsib. It takes a backform environment benv, a clausemap cm (different in each of the four functions mentioned), a type t and a transform_sel function. It uses the backform environment (when necessary) to obtain an type id from t, and then looks up the type's child/parent/prev/next in the clauseMap. It then extracts a type t' from the multiplicity returned and wraps t' in a TDom, with the transformed selector resulting from applying transform_sel to the selector that t corresponds to.
-      Possible Improvement: (commented-out code) By looking up the TId in cm, we are not using all the information we have to get the type of the child/parent/prev/next. We can use benv to backform from the transformed selector, and then intersect the resulting ids with the ids obtained from the lookup in cm. (The result of the lookup is a multiplicity, but it is possible to extract the id list from the multiplicity) The intersected result will be more precise and plausible than simply the result from the lookup in cm.
-      Example:
-      Suppose the argument t to x_of is TId "Content", and there are the following two decls:
-      (Tweet1 div classes = [t1] (Author [a]) (Content [c]))
-      (Tweet2 div classes = [t2] <Author> (Forward [f]) <Content>)
-      Then the prev() of a jQ containing a TDom of Contents with a selector (.tweet1 > .a+.c) should be 1+<Author>, not 1+<Author + Forward>, but without backforming there is no way to restrict the result to Author.
-  **)
-  (* TODO: backform of div.!tweet>* returns author, time, content and tweet because div.!tweet>* intersected with div.!tweet produces div.!tweet >div.!tweet, but backforming from div.!tweet>* should only get children of tweets.*)
-  let rec x_of (benv : Desugar.backformEnv) (cm : Desugar.clauseMap) (t : typ) (transform_sel : Css.t -> Css.t) : multiplicity =
     let open JQuery in
+
+    (* Turns a typ or a TUnion of TUnions into a list of typs *)
+    let rec to_list t = match (unwrap_t t) with
+      | TStrobe (Strobe.TUnion (_,t1,t2)) ->
+        (to_list (embed_t t1)) @ (to_list (embed_t t2))
+      | _ -> [t] in
+
+    (* Turns a list of TDoms into a multiplicity by summing the results
+       the lookup of each TDom in the given cm *)
+    let rec helper ts = match ts with 
+      | [TDom (_,id,_,_)] -> IdMap.find id cm
+      | (TDom (_,id,_,_))::rest ->
+        MSum ((IdMap.find id cm), helper rest)
+      | [] -> failwith "impossible: empty list"
+      | _ -> failwith "JQuery_env: mult_of: found something other than a TDom in ts"; in
     
-    MOne (MPlain (TStrobe Strobe.TTop)) 
+    let (s, mf) = extract_mult
+      (canonical_multiplicity (helper (to_list (expose_tdoms env t)))) in
 
-    (* (\*   match t with *\) *)
-    (* (\*   | (Strobe.TUnion (_, t1, t2)) ->  *\) *)
-    (* (\*     begin match (expand_ids t1), (expand_ids t2) with *\) *)
-    (* (\*     | Some ids1, Some ids2 -> Some (ids1 @ ids2) *\) *)
-    (* (\*     | ids, None *\) *)
-    (* (\*     | None, ids -> ids *\) *)
-    (* (\*   end *\) *)
-    (* (\*   | (Strobe.TId id) -> Some [id] *\) *)
-    (* (\*   | _ -> None in *\) *)
-    (* match t with *)
-    (* | TDom (s,t,sels) -> *)
-    (*   let new_sel = transform_sel sels in *)
-    (*   (\* let backform_ids = backform benv new_sel in *\) *)
-    (*   let ids = backform benv sels in *)
-    (*   (List.fold_left (fun acc id -> *)
-    (*     (try *)
-    (*        Strobe.traceMsg "nextSib of %s is %s" id (string_of_mult (IdMap.find id cm)); *)
-    (*        let (s, fs) = extract_mult (IdMap.find id cm) in *)
-    (*        match s with *)
-    (*        | STyp t ->  *)
-    (*          Strobe.traceMsg "creating a TDom with TIds"; *)
-    (*          (\* let clause_ids = expand_ids (extract_t t) in *\) *)
-    (*          (\* begin match clause_ids with *\) *)
-    (*          MSum (acc, fs (STyp (TDom (None, t, new_sel)))) *)
-    (*          (\* | Some clause_ids ->  *\) *)
-    (*          (\*   MSum (acc,  *\) *)
-    (*          (\*         fs (STyp (TDom (None, embed_t (List.fold_left (fun acc id -> Strobe.TUnion (None, acc, Strobe.TId id)) Strobe.TBot (List.filter (fun i -> List.mem i clause_ids) backform_ids)), new_sel)))) *\) *)
-    (*          (\* end *\) *)
-    (*        | SMult m ->  *)
-    (*          MSum (acc, fs s) *)
-    (*      with Not_found -> failwith "impossible") (\* Backform has ALL ids *\)) *)
-    (*      (MZero (MPlain (TStrobe Strobe.TTop))))  (\* This will disappear anyway *\) *)
-    (*      ids *)
-    (* | TStrobe (Strobe.TId id) -> *)
-    (*   (\* TODO: is this ok? *\) *)
-    (*   begin *)
-    (*   let sel = try List.assoc id benv with Not_found -> raise Not_found in *)
-    (*   let mult = try IdMap.find id cm with Not_found -> raise Not_found in *)
-    (*   let (s, fs) = extract_mult mult in begin *)
-    (*     match s with *)
-    (*     | STyp t -> *)
-    (*       Strobe.traceMsg "creating a TDom with TIds"; *)
-    (*       fs (STyp (TDom (None, t, transform_sel sel))) *)
-    (*     | SMult _ -> mult *)
-    (*   end *)
-    (*   end       *)
-    (* | TStrobe (Strobe.TUnion (_, t1, t2)) -> *)
-    (* (\* TODO: is it ok to reduce TUnions to MSums? *\) *)
-    (*   MSum (x_of benv cm (TStrobe t1) transform_sel, x_of benv cm (TStrobe t2) transform_sel) *)
-    (* (\* This is bad, but let it through so it can be caught elsewhere (it *)
-    (*    probably already was, in association) *\) *)
-    (* | _ ->  MOne (MPlain t) *)
+    match s with 
+    | STyp t -> (t, (fun t -> mf (STyp t)))
+    | _ -> failwith "JQuery_env: lookup_cm: failed to properly canonicalize return mult"
 
-  let children (senv : structureEnv) (t : typ) : multiplicity =
-    let (benv,cenv) = senv in
-    x_of benv cenv.Desugar.children t (fun sel -> Css.concat_selectors sel Css_syntax.Kid Css.all)
+  (* end of lookup_cm *)
 
-  (* TODO: write a selector function that returns the parent element selector of the current selector *)
-  let parent (senv : structureEnv) (t : typ) : multiplicity =
-    let (benv,cenv) = senv in
-    x_of benv cenv.Desugar.parent t (fun sel -> Css.all)
+  let children (env : env ) (senv : structureEnv) (m : multiplicity)
+      : multiplicity =
+    let (_,cenv) = senv in
+    let (s, mf) = extract_mult m in
+    match s with 
+    | STyp t ->
+      let (t', mf') = (lookup_cm env cenv.Desugar.children t) in
+      (mf (SMult (mf' t')))
+    | SMult _ -> m (* Can't extract all the way, pass through *)
+    
+  let parent (env : env) (senv : structureEnv) (m : multiplicity) 
+      : multiplicity = m
 
-  (* TODO: write a selector function that returns the prevsib element selector of the current selector *)
-  let prevsib (senv : structureEnv) (t : typ) : multiplicity =
-    let (benv,cenv) = senv in
-    x_of benv cenv.Desugar.prev t (fun sel -> Css.all)
+  let prev (env : env) (senv : structureEnv) (m : multiplicity)
+      : multiplicity = m
 
-  let nextsib (senv : structureEnv) (t : typ) : multiplicity =
-    let (benv,cenv) = senv in
-    x_of benv cenv.Desugar.next t (fun sel -> Css.concat_selectors sel Css_syntax.Adj Css.all)
+  let next (env : env) (senv : structureEnv) (m : multiplicity)
+      : multiplicity = m
 
 
 
@@ -265,16 +181,20 @@ struct
       else recur ()
 
   let nextall (env : env) (senv : structureEnv) (t : typ) : multiplicity =
-    transitive env senv t nextsib
+    MOne (MPlain t)
+    (* transitive env senv t nextsib *)
 
   let prevall (env : env) (senv : structureEnv) (t : typ) : multiplicity =
-    transitive env senv t prevsib
+    MOne (MPlain t)
+    (* transitive env senv t prevsib *)
 
   let parents (env : env) (senv : structureEnv) (t : typ) : multiplicity =
-    transitive env senv t parent
+    MOne (MPlain t)
+    (* transitive env senv t parent *)
 
   let find (env : env) (senv : structureEnv) (t : typ) : multiplicity =
-    transitive env senv t children
+    MOne (MPlain t)
+    (* transitive env senv t children *)
 
   (** Function: filterSel
       ==============================
@@ -442,11 +362,8 @@ struct
   (* Consumes an env and a list of declarations 
      1) Gathers all top level declComps, and desugars them.
      2) Updates senv with compiled structureEnv
-     3) Adds all other original, non-structure declarations to the env
-     4) Adds local structure bindings returned from desugar into the env
-     The reason that #4 has to happen after #3 is that certain ids,
-     such as DivElement and Element, may have not yet been added to
-     the environment. *)
+     3) Add local structure bindings returned form desugar into the env
+     4) Add all non-structure decls into the env *)
   let extend_global_env env lst = 
     let open Typedjs_writtyp.WritTyp in
 
@@ -471,7 +388,19 @@ struct
     (* 2) Update senv *)
     senv := compiled_senv;
 
-    (* 3) Extend env with all other declarations *)
+
+    (* 3) Add bindings compiled in desugar_structure to the env *)
+    let env = IdMap.fold (fun id t new_env ->
+      (try
+         ignore (lookup_typ_id id new_env);
+         raise (Not_wf_typ (sprintf "the type %s is already defined" id))
+       with Not_found ->
+         let k = kind_check new_env [] (STyp t) in
+         raw_bind_typ_id id (extract_t (apply_name (Some id) t)) (extract_k k) new_env))
+      bindings env in
+
+
+    (* 4) Finally add all non-structure decls to the env *)
 
     let lst = non_structure_decls in
            
@@ -588,20 +517,14 @@ struct
           
     in 
     
-    let env = List.fold_left (add []) env lst in
+    List.fold_left (add []) env lst
 
-    (* 4) Finally add bindings created during desugar_structure to the env *)
-    IdMap.fold (fun id t new_env ->
-      (try
-         ignore (lookup_typ_id id new_env);
-         raise (Not_wf_typ (sprintf "the type %s is already defined" id))
-       with Not_found ->
-         let k = kind_check new_env [] (STyp t) in
-         raw_bind_typ_id id (extract_t (apply_name (Some id) t)) (extract_k k) new_env))
-      bindings env
 
   (* End of extend_global_env *)
 
+  (* let rec resolve_special_functions env senv t =  *)
+  (*   Strobe.traceMsg "Attempting to resolve: %s" (string_of_typ t); *)
+  (*   resolve_special_functions' env senv t *)
   let rec resolve_special_functions (env : env) (senv : structureEnv) (t : typ) =
     let rec resolve_sigma s = match s with
       | STyp t -> STyp (rjq t)
@@ -673,70 +596,72 @@ struct
           | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), _)), _) ->
             failwith "oneOf not called with a single mult argument"
           | (STyp (TApp ((TStrobe (Strobe.TPrim "childrenOf")), [SMult m])), m1) ->
-            let (s, m2) = extract_mult m in
-            begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (children senv (rjq t)))))))
-            | SMult _ -> s
-            end
+            SMult (canonical_multiplicity (m1 (SMult (children env senv (resolve_mult m)))))
           | (STyp (TApp ((TStrobe (Strobe.TPrim "childrenOf")), _)), _) ->
             failwith "childrenOf not called with a single mult argument"
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), [SMult m])), m1) ->
-            let (s, m2) = extract_mult m in
-            begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (parent senv (rjq t)))))))
-            | SMult _ -> s
-            end
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), _)), _) ->
-            failwith "parentOf not called with a single mult argument"
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), [SMult m])), m1) ->
-            let (s, m2) = extract_mult m in
-            begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (prevsib senv (rjq t)))))))
-            | SMult _ -> s
-            end
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), _)), _) ->
-            failwith "prevSibOf not called with a single mult argument"
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), [SMult m])), m1) ->
-            let (s, m2) = extract_mult m in
-            begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (nextsib senv (rjq t)))))))
-            | SMult _ -> s
-            end
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), _)), _) ->
-            failwith "nextSibOf not called with a single mult argument"
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), [SMult m])), m1) ->
-            let (s, m2) = extract_mult m in
-            begin match s with
-            | STyp t -> 
-              SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (find env senv (rjq t)))))))
-            | SMult _ -> s
-            end
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), _)), _) ->
-            failwith "findOf not called with a single mult argument"
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), [SMult m])), m1) ->
-            let (s, m2) = extract_mult m in
-            begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (parents env senv (rjq t)))))))
-            | SMult _ -> s
-            end
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), _)), _) ->
-            failwith "parentsOf not called with a single mult argument"
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), [SMult m])), m1) ->
-            let (s, m2) = extract_mult m in
-            begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (prevall env senv (rjq t)))))))
-            | SMult _ -> s
-            end
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), _)), _) ->
-            failwith "prevAllOf not called with a single mult argument"
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), [SMult m])), m1) ->
-            let (s, m2) = extract_mult m in
-            begin match s with
-            | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (nextall env senv (rjq t)))))))
-            | SMult _ -> s
-            end
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), _)), _) ->
-            failwith "nextAllOf not called with a single mult argument"
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), [SMult m])), m1) -> *)
+          (*   let (s, m2) = extract_mult m in *)
+          (*   begin match s with *)
+          (*   | STyp t ->  *)
+          (*     SMult (canonical_multiplicity  *)
+          (*              (m1 (SMult (m2 (SMult (parent env senv (rjq t))))))) *)
+          (*   | SMult _ -> s *)
+          (*   end *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), _)), _) -> *)
+          (*   failwith "parentOf not called with a single mult argument" *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), [SMult m])), m1) -> *)
+          (*   let (s, m2) = extract_mult m in *)
+          (*   begin match s with *)
+          (*   | STyp t ->  *)
+          (*     SMult (canonical_multiplicity  *)
+          (*              (m1 (SMult (m2 (SMult (prevsib env senv (rjq t))))))) *)
+          (*   | SMult _ -> s *)
+          (*   end *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), _)), _) -> *)
+          (*   failwith "prevSibOf not called with a single mult argument" *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), [SMult m])), m1) -> *)
+          (*   let (s, m2) = extract_mult m in *)
+          (*   begin match s with *)
+          (*   | STyp t ->  *)
+          (*     SMult (canonical_multiplicity  *)
+          (*              (m1 (SMult (m2 (SMult (nextsib env senv (rjq t))))))) *)
+          (*   | SMult _ -> s *)
+          (*   end *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), _)), _) -> *)
+          (*   failwith "nextSibOf not called with a single mult argument" *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), [SMult m])), m1) -> *)
+          (*   let (s, m2) = extract_mult m in *)
+          (*   begin match s with *)
+          (*   | STyp t ->  *)
+          (*     SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (find env senv (rjq t))))))) *)
+          (*   | SMult _ -> s *)
+          (*   end *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), _)), _) -> *)
+          (*   failwith "findOf not called with a single mult argument" *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), [SMult m])), m1) -> *)
+          (*   let (s, m2) = extract_mult m in *)
+          (*   begin match s with *)
+          (*   | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (parents env senv (rjq t))))))) *)
+          (*   | SMult _ -> s *)
+          (*   end *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), _)), _) -> *)
+          (*   failwith "parentsOf not called with a single mult argument" *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), [SMult m])), m1) -> *)
+          (*   let (s, m2) = extract_mult m in *)
+          (*   begin match s with *)
+          (*   | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (prevall env senv (rjq t))))))) *)
+          (*   | SMult _ -> s *)
+          (*   end *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), _)), _) -> *)
+          (*   failwith "prevAllOf not called with a single mult argument" *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), [SMult m])), m1) -> *)
+          (*   let (s, m2) = extract_mult m in *)
+          (*   begin match s with *)
+          (*   | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (nextall env senv (rjq t))))))) *)
+          (*   | SMult _ -> s *)
+          (*   end *)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), _)), _) -> *)
+          (*   failwith "nextAllOf not called with a single mult argument" *)
           | _ -> s
         end
         | STyp t -> s

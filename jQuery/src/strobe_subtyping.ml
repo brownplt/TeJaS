@@ -219,11 +219,7 @@ struct
     with Invalid_parent msg -> raise (Typ_error (p, FixedString msg))
 
   (* and subt env cache s t = *)
-  (*   let res = subt' env cache s t in *)
-  (*   let eq_str = if (snd res) then "<:" else "</:" in *)
-  (*   traceMsg "STROBE_subt %s %s %s"(string_of_typ s) eq_str (string_of_typ t); *)
-  (*   res *)
-  (*   (\* trace "STROBE_subt" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subt' env cache s t) *\) *)
+  (*   trace "STROBE_subt" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subt' env cache s t) *)
   and subt (env : env) (cache : bool TPMap.t) s t : bool TPMap.t * bool = 
     let open TypPair in
     let (|||) c thunk = if (snd c) then c else thunk (fst c) in

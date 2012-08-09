@@ -156,15 +156,15 @@ struct
           (* | TApp(t1, args1), TApp(t2, args2) -> *)
           (*   if (List.length args1 <> List.length args2) then (cache, false) *)
           (*   else List.fold_left2 subtype_sigma_list (cache, true) ((STyp t1)::args1) ((STyp t2)::args2) *)
-          | TForall (_, x1, s1, t1), TForall (_, x2, s2, t2) -> 
+          | TForall (_, x1, s1, t1'), TForall (_, x2, s2, t2') -> 
             (* Kernel rule *)
             if not (equivalent_sigma env s1 s2) then cache, false
             else 
-              let t2 = canonical_type (typ_typ_subst x2 (embed_t (Strobe.TId x1)) t2) in
+              let t2' = canonical_type (typ_typ_subst x2 (embed_t (Strobe.TId x1)) t2') in
               let env' = match s2 with
                 | STyp t -> Env.bind_typ_id x1 t env
                 | SMult m -> Env.bind_mult_id x1 m env in
-              subtype_typ env' cache t1 t2
+              subtype_typ env' cache t1' t2'
           | TStrobe (Strobe.TUnion(_, t11, t12)), t2 -> (* order matters -- left side must be split first! *)
             subtype_typ env cache (embed_t t11) t2 &&& (fun c -> subtype_typ env c (embed_t t12) t2)
           | t1, TStrobe (Strobe.TUnion(_, t21, t22)) ->
@@ -174,7 +174,7 @@ struct
           | TStrobe (Strobe.TInter(_, t11, t12)), t2 ->
             subtype_typ env cache (TStrobe t11) t2 ||| (fun c -> subtype_typ env c (TStrobe t12) t2)
 
-   | TDom (_,id1, nt1, sel1), TDom (_,id2, nt2, sel2) ->
+          | TDom (_,id1, nt1, sel1), TDom (_,id2, nt2, sel2) ->
 
             let sel1', sel2' = match 
               (Env.expose_tdoms env (JQ.embed_t (Strobe.TId id1))),
@@ -194,23 +194,25 @@ struct
           (* If subtyping a TDom with something besides a TUnion or a TInter, 
              subtype the nodeType against whatever it is *)
           | TDom (_,_,nodeType,_), _ ->subtype_typ env cache nodeType t2
-          | _, TDom (_,_,nodeType,_) -> subtype_typ env cache t1 nodeType
+          | _, TDom (_,_,nodeType,sel) -> 
+            subtype_typ env cache t1 nodeType 
+            &&& (fun c -> (c, (Css.is_subset IdMap.empty sel Css.all)))
           | TStrobe t1, TStrobe t2 -> 
             tc_cache := cache; (* checkpoint state *)
             cache, StrobeSub.subtype env t1 t2
           | _ -> (cache, false))
     end
       
-  and subtype_mult lax env cache m1 m2 =
-    Strobe.trace "JQUERY_subtype_mult" (string_of_mult m1 ^ " <?: " ^ string_of_mult m2) snd2 (fun () -> subtype_mult' lax env cache m1 m2)
-  and subtype_mult' lax (env : env) cache m1 m2 = 
+  (* and subtype_mult lax env cache m1 m2 = *)
+  (*   Strobe.trace "JQUERY_subtype_mult" (string_of_mult m1 ^ " <?: " ^ string_of_mult m2) snd2 (fun () -> subtype_mult' lax env cache m1 m2) *)
+  and subtype_mult lax (env : env) cache m1 m2 = 
     let subtype_mult = subtype_mult lax env in
     let subtype_typ = subtype_typ lax env in (* ok for now because there are no MId binding forms in Mult *)
     let open SigmaPair in
     let addToCache (cache, ret) = (SPMap.add (project_mults m1 m2 env, SMults (m1, m2)) ret cache, ret) in
     try incr cache_hits; (cache, SPMap.find (project_mults m1 m2 env, SMults (m1, m2)) cache)
     with Not_found -> decr cache_hits; incr cache_misses; addToCache (match m1, m2 with
-    | MId n1, t2 when t2 = MId n1 -> cache, true (* SA-Refl-TVar *)
+    | MId n1, MId n2 when n2 = n1 -> cache, true (* SA-Refl-TVar *)
     | MId n1, _ -> (* SA-Trans-TVar *)
       (try
          let m1 = Env.lookup_mult_id n1 env in
@@ -222,24 +224,36 @@ struct
     | MOne (MPlain t1), MOnePlus (MPlain t2)
     | MOne (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
     | MOne (MPlain _), MZero _ -> (cache, false)
+    | MOne (MId n1), MOne (MId n2) 
+    | MOne (MId n1), MZeroOne (MId n2)
+    | MOne (MId n1), MOnePlus (MId n2)
+    | MOne (MId n1), MZeroPlus (MId n2) when n2 = n1 -> cache, true
     | MOne _, _ -> (cache, false) (* not canonical! *)
     | MZero (MPlain t1), MZero (MPlain t2)
     | MZero (MPlain t1), MZeroOne (MPlain t2)
     | MZero (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
+    | MZero (MId n1), MZero (MId n2)
+    | MZero (MId n1), MZeroOne (MId n2)
+    | MZero (MId n1), MZeroPlus (MId n2) when n2 = n1 -> cache, true
     | MZero _, _ -> (cache, false)
     | MZeroOne (MPlain t1), MZeroOne (MPlain t2)
     | MZeroOne (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
+    | MZeroOne (MId n1), MZeroOne (MId n2)
+    | MZeroOne (MId n1), MZeroPlus (MId n2) when n2 = n1 -> cache, true
     | MZeroOne (MPlain _), MOne (MPlain _)
     | MZeroOne (MPlain _), MZero _
     | MZeroOne (MPlain _), MOnePlus (MPlain _) -> (cache, false)
     | MZeroOne _, _ -> (cache, false) (* not canonical! *)
     | MOnePlus (MPlain t1), MOnePlus (MPlain t2)
     | MOnePlus (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
+    | MOnePlus (MId n1), MOnePlus (MId n2)
+    | MOnePlus (MId n1), MZeroPlus (MId n2) when n2 = n1 -> cache, true
     | MOnePlus (MPlain _), MZero _
     | MOnePlus (MPlain _), MOne _
     | MOnePlus (MPlain _), MZeroOne _ -> (cache, false)
     | MOnePlus _, _ -> (cache, false) (* not canonical! *)
     | MZeroPlus (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
+    | MZeroPlus (MId n1), MZeroPlus (MId n2) when n2 = n1 -> cache, true
     | MZeroPlus (MPlain _), _ -> (cache, false)
     | MZeroPlus _, _ -> (cache, false) (* not canonical! *)
     | MSum _, _
