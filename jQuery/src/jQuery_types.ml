@@ -792,20 +792,20 @@ struct
     squash_t t
 
   let rec collapse_if_possible env typ = match unwrap_t typ with
-    (* | TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> begin *)
-    (*   let ofields = Strobe.fields o in *)
-    (*   try *)
-    (*     let (_, _, thisTyp) = List.find (fun (p, _, _) -> *)
-    (*       Pat.is_equal p (Pat.singleton "__this__")) ofields in *)
-    (*     begin *)
-    (*       match embed_t thisTyp with *)
-    (*       | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m; prev]) as collapsed -> *)
-    (*         if typ = (simpl_typ env collapsed) *)
-    (*         then collapsed else typ *)
-    (*       | _ -> typ *)
-    (*     end *)
-    (*   with Not_found -> TStrobe (Strobe.TObject o) *)
-    (* end *)
+    | TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> begin
+      let ofields = Strobe.fields o in
+      try
+        let (_, _, thisTyp) = List.find (fun (p, _, _) ->
+          Pat.is_equal p (Pat.singleton "__this__")) ofields in
+        begin
+          match embed_t thisTyp with
+          | TApp(TStrobe (Strobe.TFix(Some "jQ", _, _, _)), [SMult m; prev]) as collapsed ->
+            if typ = (simpl_typ env collapsed)
+            then collapsed else typ
+          | _ -> typ
+        end
+      with Not_found -> TStrobe (Strobe.TObject o)
+    end
     | t -> t
 
 

@@ -73,70 +73,106 @@ struct
     | TDom _ -> t
     | _ -> begin match extract_t t with
       | Strobe.TUnion (s,t1,t2) -> 
-        embed_t (Strobe.TUnion (s, (extract_t (expose_tdoms env (embed_t t1))), 
-                                (extract_t (expose_tdoms env (embed_t t2)))))
+        embed_t (Strobe.TUnion 
+                   (s, (extract_t (expose_tdoms env (embed_t t1))), 
+                    (extract_t (expose_tdoms env (embed_t t2)))))
+      | Strobe.TInter (s,t1,t2) -> 
+        embed_t (Strobe.TInter 
+                   (s, (extract_t (expose_tdoms env (embed_t t1))), 
+                    (extract_t (expose_tdoms env (embed_t t2)))))
+      | Strobe.TId "Element" -> t
       | Strobe.TId id -> expose_tdoms env (fst (lookup_typ_id id env))
-      | _ ->  raise (* If it's anything else, then reject, and fail with a type error *)     
+      | t' ->  raise
         (Strobe.Typ_error 
            (Pos.dummy,
             (Strobe.FixedString (sprintf "Malformed TDom: %s"(string_of_typ t)))))
     end
 
-
-    (* Consumes: 
-       env : env
-       cm : clauseMap
-       t : typ
-
-       expose_tdoms t, then MSums the lookups for each TDom in t.
-       Produces: the canonicalized  MSum *)
-  let rec lookup_cm (env : env) (cm : Desugar.clauseMap) (t : typ) 
-      : (typ * (typ -> multiplicity)) = 
+  (* Produces a multiplicity list *)
+  let rec get_all_x_of (env : env) (cm : Desugar.clauseMap) (t : typ) 
+      : multiplicity list = 
 
     let open JQuery in
-
-    (* Turns a typ or a TUnion of TUnions into a list of typs *)
+  
+    (* Turns a TDoms or a TUnion of TDoms into a list of mults *)
     let rec to_list t = match (unwrap_t t) with
       | TStrobe (Strobe.TUnion (_,t1,t2)) ->
         (to_list (embed_t t1)) @ (to_list (embed_t t2))
-      | _ -> [t] in
+      | TDom (_,id,_,_) -> [IdMap.find id cm] 
+      | TStrobe (Strobe.TId "Element") -> [IdMap.find "Element" cm]
+      | _ -> failwith "JQuery_env: get_all_x_of: encountered something other than a TDom"
+    in
 
-    (* Turns a list of TDoms into a multiplicity by summing the results
-       the lookup of each TDom in the given cm *)
-    let rec helper ts = match ts with 
-      | [TDom (_,id,_,_)] -> IdMap.find id cm
-      | (TDom (_,id,_,_))::rest ->
-        MSum ((IdMap.find id cm), helper rest)
-      | [] -> failwith "impossible: empty list"
-      | _ -> failwith "JQuery_env: mult_of: found something other than a TDom in ts"; in
-    
-    let (s, mf) = extract_mult
-      (canonical_multiplicity (helper (to_list (expose_tdoms env t)))) in
+    to_list (expose_tdoms env t)
 
-    match s with 
-    | STyp t -> (t, (fun t -> mf (STyp t)))
-    | _ -> failwith "JQuery_env: lookup_cm: failed to properly canonicalize return mult"
+  (* (\* Turns a list of TDoms into a multiplicity by summing the results *)
+  (*    the lookup of each TDom in the given cm *\) *)
+  (* let rec helper ts = match ts with  *)
+  (*   | [TDom (_,id,_,_)] -> IdMap.find id cm *)
+  (*   | (TDom (_,id,_,_))::rest -> *)
+  (*     MSum ((IdMap.find id cm), helper rest) *)
+  (*   | [] -> failwith "impossible: empty list" *)
+  (*   | _ -> failwith "JQuery_env: mult_of: found something other than a TDom in ts"; in *)
+      
+  (* let (s, mf) = extract_mult *)
+  (*   (canonical_multiplicity (helper (to_list (expose_tdoms env t)))) in *)
+
+  (* match s with  *)
+  (* | STyp t -> (t, (fun t -> mf (STyp t))) *)
+  (* | _ -> failwith "JQuery_env: lookup_cm: failed to properly canonicalize return mult" *)
 
   (* end of lookup_cm *)
+      
+  (* MSum every mult in ms and canonicalize *)
+  let msum_ms (ms : multiplicity list) : multiplicity =
+    canonical_multiplicity 
+      (List.fold_left (fun macc m -> MSum (macc,m)) 
+         (MZero (MPlain (embed_t Strobe.TTop))) ms)
 
-  let children (env : env ) (senv : structureEnv) (m : multiplicity)
-      : multiplicity =
-    let (_,cenv) = senv in
-    let (s, mf) = extract_mult m in
-    match s with 
-    | STyp t ->
-      let (t', mf') = (lookup_cm env cenv.Desugar.children t) in
-      (mf (SMult (mf' t')))
-    | SMult _ -> m (* Can't extract all the way, pass through *)
+
+  let munion_ms (ms : multiplicity list) : multiplicity =
+    let (mmin, mmax) = List.fold_left (fun (mmin, mmax) m -> match m with
+      | MZero _ -> (min mmin 0, max mmax 0)
+      | MOne _ -> (min mmin 1, max mmax 1)
+      | MPlain _ -> (min mmin 1, max mmax 1)
+      | MOnePlus _ -> (min mmin 1, max mmax 2)
+      | MZeroOne _ -> (min mmin 0, max mmax 1)
+      | MZeroPlus _ -> (min mmin 0, max mmax 2)
+      | MSum _ -> failwith "Got MSum where we didn't expect any"
+      | MId _ -> failwith "Got MId where we didn't expect any") (2, 0) ms in
+    let make t = match (mmin, mmax) with
+      | 0, 0 -> MZero (MPlain t)
+      | 1, 1 -> MOne (MPlain t)
+      | 0, 1 -> MZeroOne (MPlain t)
+      | 1, 2 -> MOnePlus (MPlain t)
+      | 0, 2 -> MZeroPlus (MPlain t)
+      | _ -> failwith (Printf.sprintf "Weird min/max combo: (%d, %d)" mmin mmax) in
+    let ts = List.map (fun m -> match extract_mult m with
+      | STyp t, _ -> t
+      | SMult _, _ -> failwith (Printf.sprintf "Found a multiplicity with no type: %s" (string_of_mult m))) ms in
+    let union = List.fold_left (fun t1 t2 -> 
+      if t1 = Strobe.TBot then extract_t t2 else Strobe.TUnion(None, t1, extract_t t2))
+      Strobe.TBot ts in
+    make (embed_t union)
+
+  let children (env : env ) (senv : structureEnv) (t : typ) : multiplicity =
+    let cenv = (snd senv) in
+    msum_ms (get_all_x_of env cenv.Desugar.children t)
     
-  let parent (env : env) (senv : structureEnv) (m : multiplicity) 
-      : multiplicity = m
+  let parent (env : env) (senv : structureEnv) (t : typ) : multiplicity = 
+    let cenv = (snd senv) in
+    munion_ms (get_all_x_of env cenv.Desugar.parent t)
+    
+  let prev (env : env) (senv : structureEnv) (t : typ) : multiplicity =
+    let cenv = (snd senv) in
+    munion_ms (get_all_x_of env cenv.Desugar.prev t)
 
-  let prev (env : env) (senv : structureEnv) (m : multiplicity)
-      : multiplicity = m
+  let next (env : env) (senv : structureEnv) (t : typ) : multiplicity = 
+    let cenv = (snd senv) in
+    munion_ms (get_all_x_of env cenv.Desugar.next t)
 
-  let next (env : env) (senv : structureEnv) (m : multiplicity)
-      : multiplicity = m
+  (* MOne (MPlain (munion_ms (get_all_x_of env cenv.Desugar.next t))) *)
+
 
 
 
@@ -552,53 +588,65 @@ struct
           TApp (TStrobe (Strobe.TId "jQ"), [(SMult m); STyp (TStrobe (Strobe.TId "AnyJQ"))])
         | None -> failwith "pattern cannot be converted to string??"
         end
-      | TApp(TStrobe (Strobe.TPrim "childrenOf"), [STyp t]) ->
-        failwith "childrenOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "parentOf"), [STyp t]) ->
-        failwith "parentOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "prevSibOf"), [STyp t]) ->
-        failwith "prevSibOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "nextSibOf"), [STyp t]) ->
-        failwith "nextSibOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "findOf"), [STyp t]) ->
-        failwith "findOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "parentsOf"), [STyp t]) ->
-        failwith "parentAllOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "prevAllOf"), [STyp t]) ->
-        failwith "prevAllOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "nextAllOf"), [STyp t]) ->
-        failwith "nextAllOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "oneOf"), [STyp t]) ->
-        failwith "oneOf at outermost level"
-      | TApp(TStrobe (Strobe.TPrim "filterSel"), [STyp t]) ->
-        failwith "filterSel at outermost level"
+      | TApp (TStrobe (Strobe.TPrim "selector"), _) ->
+        failwith "selector not called with a single pattern argument"
+      | TApp(TStrobe (Strobe.TPrim ("childrenOf" as oper)), [STyp t])
+      | TApp(TStrobe (Strobe.TPrim ("parentOf" as oper)), [STyp t])
+      | TApp(TStrobe (Strobe.TPrim ("prevSibOf" as oper)), [STyp t])
+      | TApp(TStrobe (Strobe.TPrim ("nextSibOf" as oper)), [STyp t])
+      | TApp(TStrobe (Strobe.TPrim ("findOf" as oper)), [STyp t])
+      | TApp(TStrobe (Strobe.TPrim ("parentsOf" as oper)), [STyp t])
+      | TApp(TStrobe (Strobe.TPrim ("prevAllOf" as oper)), [STyp t])
+      | TApp(TStrobe (Strobe.TPrim ("nextAllOf" as oper)), [STyp t])
+      | TApp(TStrobe (Strobe.TPrim ("oneOf" as oper)), [STyp t])
+      | TApp(TStrobe (Strobe.TPrim ("filterSel" as oper)), [STyp t]) ->
+        failwith (oper ^ " at outermost level")
       | TApp(t, args) ->
         (* Strobe.traceMsg "rjq called with TApp : %s" (string_of_typ t); *)
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult m with
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TRegex pat))])), m1) ->
-            let (s, m2) = extract_mult m in
-              begin match s with
-                | STyp t -> 
-                  SMult (canonical_multiplicity (m2 (SMult (m1 (SMult (filterSel env (fst senv) t (match Strobe.Pat.singleton_string pat with Some s -> s | None -> failwith "regex argument to @filterSel cannot be converted to string")))))))
-                | SMult m -> s
-              end
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TId _))])), _) -> s
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), l)), _) ->
-            failwith "filterSel not called with a mult argument and a string"
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), [SMult m])), m1) ->
-            let (s, _) = extract_mult m in SMult (
-              begin 
-                match s with
-                | STyp t -> MOne (MPlain t)
-                | SMult m -> (canonical_multiplicity (MOne m))
-              end)
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), _)), _) ->
-            failwith "oneOf not called with a single mult argument"
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "childrenOf")), [SMult m])), m1) ->
-            SMult (canonical_multiplicity (m1 (SMult (children env senv (resolve_mult m)))))
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "childrenOf")), _)), _) ->
-            failwith "childrenOf not called with a single mult argument"
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), [SMult m])))), m1
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), [SMult m])))), m1
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), [SMult m])))), m1
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), [SMult m])))), m1 -> 
+            let op = match oper with
+              | "childrenOf" -> children
+              | "nextSibOf" -> next
+              | "prevSibOf" -> prev
+              | "parentOf" -> parent
+              | _ -> failwith "impossible: we only matched on four strings" in
+            let (s', m2) = extract_mult m in begin match s' with
+              | STyp t -> SMult 
+                (canonical_multiplicity 
+                   (m1 (SMult (m2 (SMult (op env senv (rjq t)))))))
+              | SMult _ -> s
+          (* Could not extract down to a type. Return ORIGINAL sigma *)
+            end
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), _)), _)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), _)), _)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), _)), _)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), _)), _) ->
+            failwith (oper ^ " not called with a single mult argument")
+          (* | SMult m -> begin match extract_mult m with *)
+          (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TRegex pat))])), m1) -> *)
+          (*     let (s, m2) = extract_mult m in *)
+          (*       begin match s with *)
+          (*         | STyp t ->  *)
+          (*           SMult (canonical_multiplicity (m2 (SMult (m1 (SMult (filterSel env (fst senv) t (match Strobe.Pat.singleton_string pat with Some s -> s | None -> failwith "regex argument to @filterSel cannot be converted to string"))))))) *)
+          (*         | SMult m -> s *)
+          (*       end *)
+          (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TId _))])), _) -> s *)
+          (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), l)), _) -> *)
+          (*     failwith "filterSel not called with a mult argument and a string" *)
+          (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), [SMult m])), m1) -> *)
+          (*     let (s, _) = extract_mult m in SMult ( *)
+          (*       begin  *)
+          (*         match s with *)
+          (*         | STyp t -> MOne (MPlain t) *)
+          (*         | SMult m -> (canonical_multiplicity (MOne m)) *)
+          (*       end) *)
+          (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), _)), _) -> *)
+          (*     failwith "oneOf not called with a single mult argument" *)
           (* | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), [SMult m])), m1) -> *)
           (*   let (s, m2) = extract_mult m in *)
           (*   begin match s with *)
@@ -607,65 +655,10 @@ struct
           (*              (m1 (SMult (m2 (SMult (parent env senv (rjq t))))))) *)
           (*   | SMult _ -> s *)
           (*   end *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), _)), _) -> *)
-          (*   failwith "parentOf not called with a single mult argument" *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), [SMult m])), m1) -> *)
-          (*   let (s, m2) = extract_mult m in *)
-          (*   begin match s with *)
-          (*   | STyp t ->  *)
-          (*     SMult (canonical_multiplicity  *)
-          (*              (m1 (SMult (m2 (SMult (prevsib env senv (rjq t))))))) *)
-          (*   | SMult _ -> s *)
-          (*   end *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "prevSibOf")), _)), _) -> *)
-          (*   failwith "prevSibOf not called with a single mult argument" *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), [SMult m])), m1) -> *)
-          (*   let (s, m2) = extract_mult m in *)
-          (*   begin match s with *)
-          (*   | STyp t ->  *)
-          (*     SMult (canonical_multiplicity  *)
-          (*              (m1 (SMult (m2 (SMult (nextsib env senv (rjq t))))))) *)
-          (*   | SMult _ -> s *)
-          (*   end *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "nextSibOf")), _)), _) -> *)
-          (*   failwith "nextSibOf not called with a single mult argument" *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), [SMult m])), m1) -> *)
-          (*   let (s, m2) = extract_mult m in *)
-          (*   begin match s with *)
-          (*   | STyp t ->  *)
-          (*     SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (find env senv (rjq t))))))) *)
-          (*   | SMult _ -> s *)
-          (*   end *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "findOf")), _)), _) -> *)
-          (*   failwith "findOf not called with a single mult argument" *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), [SMult m])), m1) -> *)
-          (*   let (s, m2) = extract_mult m in *)
-          (*   begin match s with *)
-          (*   | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (parents env senv (rjq t))))))) *)
-          (*   | SMult _ -> s *)
-          (*   end *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "parentsOf")), _)), _) -> *)
-          (*   failwith "parentsOf not called with a single mult argument" *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), [SMult m])), m1) -> *)
-          (*   let (s, m2) = extract_mult m in *)
-          (*   begin match s with *)
-          (*   | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (prevall env senv (rjq t))))))) *)
-          (*   | SMult _ -> s *)
-          (*   end *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "prevAllOf")), _)), _) -> *)
-          (*   failwith "prevAllOf not called with a single mult argument" *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), [SMult m])), m1) -> *)
-          (*   let (s, m2) = extract_mult m in *)
-          (*   begin match s with *)
-          (*   | STyp t -> SMult (canonical_multiplicity (m1 (SMult (m2 (SMult (nextall env senv (rjq t))))))) *)
-          (*   | SMult _ -> s *)
-          (*   end *)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "nextAllOf")), _)), _) -> *)
-          (*   failwith "nextAllOf not called with a single mult argument" *)
-          | _ -> s
+          | _ -> s (* Any other pattern, return original sigma *)
         end
-        | STyp t -> s
-        ) args)
+        (* Can't handle STyps here, return original sigma *)
+        | STyp _ -> s) args)
       | TDom (s,id, t, sel) -> TDom (s,id,rjq t, sel)
       | TStrobe t -> TStrobe (rs t)
     and rs t = 
