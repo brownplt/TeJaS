@@ -39,25 +39,49 @@ module RealCSS = struct
 
   type regsel = Css_syntax.regsel
 
-  module SelOrdered = struct
-    type t = sel
-    let compare = compare
-  end
-  module KidOrdered = struct
-    type t = kid
-    let compare = compare
-  end
-  module SibOrdered = struct
-    type t = sib
-    let compare = compare
+  module SimpleOrdered = struct
+    type t = simple
+    let compare = compare_simple
   end
   module AdjOrdered = struct
     type t = adj
-    let compare = compare
+    let rec compare a1 a2 = match a1, a2 with
+    | AS s1, AS s2 -> SimpleOrdered.compare s1 s2
+    | AS _, A _ -> -1
+    | A _, AS _ -> 1
+    | A (a1, a1s), A (a2, a2s) ->
+      let a = compare a1 a2 in
+      if a != 0 then a else SimpleOrdered.compare a1s a2s
   end
-  module SimpleOrdered = struct
-    type t = simple
-    let compare = compare
+  module SibOrdered = struct
+    type t = sib
+    let rec compare s1 s2 = match s1, s2 with
+    | SA a1, SA a2 -> AdjOrdered.compare a1 a2
+    | SA _, S _ -> -1
+    | S _, SA _ -> 1
+    | S (s1, s1a), S (s2, s2a) ->
+      let s = compare s1 s2 in
+      if s != 0 then s else AdjOrdered.compare s1a s2a
+  end
+  module KidOrdered = struct
+    type t = kid
+    let rec compare k1 k2 = match k1, k2 with
+    | KS s1, KS s2 -> SibOrdered.compare s1 s2
+    | KS _, K _ -> -1
+    | K _, KS _ -> 1
+    | K (k1, k1s), K (k2, k2s) ->
+      let k = compare k1 k2 in
+      if k != 0 then k else SibOrdered.compare k1s k2s
+  end
+  module SelOrdered = struct
+    type t = sel
+    let rec compare d1 d2 = match d1, d2 with
+    | DK k1, DK k2 -> KidOrdered.compare k1 k2
+    | DK _, D _ -> -1
+    | D _, DK _ -> 1
+    | D (d1, d1k), D (d2, d2k) ->
+      let d = compare d1 d2 in
+      if d != 0 then d else KidOrdered.compare d1k d2k
   end
   module SelSet = Set.Make (SelOrdered)
   module KidSet = Set.Make (KidOrdered)
