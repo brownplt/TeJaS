@@ -256,11 +256,11 @@ let expose_tdoms_test () =
  
   let module H = Helper in
 
-  let raw_structure = 
-    "(Tweet : div classes=[tweet])" in
+  let raw_decls = 
+   " (Tweet : div classes=[tweet])" in
   
 
-  let decls = JQEnv.parse_env raw_structure "Expose TDoms test" in
+  let decls = JQEnv.parse_env raw_decls "Expose TDoms test" in
 
   let env = JQEnv.extend_global_env H.env decls in
 
@@ -294,7 +294,10 @@ let expose_tdoms_test () =
      wrapper (JQ.embed_t (S.TId "Tweet")) true);
 
     ((fmsg "TId that does NOT resolve to a TDom"),
-     wrapper (JQ.embed_t (S.TId "Element")) false);
+     wrapper (JQ.embed_t (S.TId "DivElement")) false);
+
+    ((fmsg "Element is ok at the moment"),
+     wrapper (JQ.embed_t (S.TId "Element")) true);
 
     ((fmsg "TUnion of TDoms with ids that resolve to a TDom"),
      wrapper (H.tu 
@@ -309,7 +312,7 @@ let expose_tdoms_test () =
      wrapper (H.tu
                 (H.tu
                    (H.tdom "Tweet" "div" ["*"])
-                   (H.tid "Element"))
+                   (H.tid "DivElement"))
                 (H.tid "Tweet")) false);
 
     ((fmsg "Some non-TDom JQ.typ"),
@@ -947,24 +950,7 @@ let structure_compilation_test () =
   let module Css = JQueryMod.Css in
   let open S in
   let open JQ in
-
-  (* Helper: builds an MPlain from a list of ids. *)
-  let b_mp (ts : string list) : JQ.multiplicity = match ts with
-    | [] -> failwith "Can't build type with no ids"
-    | _ -> 
-      let catch_tany t = if t = "Any" then TTop else TId t in
-      let built_typ = List.fold_left (fun acc t -> 
-        (* Fix so that we can represent Any in string form *)
-        TUnion (None, catch_tany t, acc))
-        (catch_tany (List.hd ts)) (List.tl ts) in
-      MPlain (TStrobe built_typ) in
-
-  (* Helper: builds a clauseMap from a (id * multiplicity) list.
-     Adds to the original clauseMap, cm *)
-  let b_cm cm (cs : (id * multiplicity) list ) : D.clauseMap =
-    List.fold_left (fun acc (id, mult) -> 
-      IdMap.add id mult acc) cm cs in
-
+  let module H = Helper in
 
   (* Consumes:
      d (string): structure declarations to be parsed
@@ -973,19 +959,30 @@ let structure_compilation_test () =
   let wrapper d (exp_backform_env : D.backformEnv) (exp_clause_env : D.clauseEnv)
       : unit  = 
 
-    let mock_elements = 
-      "type Element = #{ name : Str }; " ^
-        "type DivElement = #{ name : /\"HTMLDivElement\"/ };" in
+    let decls = JQEnv.parse_env d "Simple_tests: Structure Compilation Test" in
 
-    let env = JQEnv.parse_env (mock_elements ^ d) 
-      "Simple_tests: Structure Compilation Test" in
 
-    let decls = ListExt.filter_map (fun d -> match d with
-      | W.Decl (_, dc) -> Some dc | _ -> None) env in
+
+    (* IMPORTANT: This is an uncomfortable dependency; in order to compute the
+       env, we must use desugar_structure, which is what we're testing
+       here. We need the env, however, to test equivalent multiplicities.
+       equivalent_multiplicity is not enough - we need to check for invariant 
+       subtyping. But to do that we need the env.
+
+       I believe what we're doing is ok, however. The reason for this is that
+       the parts of the env that are RELEVANT to subtype_multiplicity are
+       the results of gen_bindings in desugar structure, and H.env. So,
+       computation of the env does NOT depend on the clauseMaps. It seems,
+       therefore, that this is ok because it is a a ONE-WAY dependency. *)
+
+    let env = JQEnv.extend_global_env H.env decls in
+
+    let structure_decls = ListExt.filter_map (fun d -> match d with
+      | W.Decl (_, dc) -> Some dc | _ -> None) decls in
 
     let expected_senv = (exp_backform_env, exp_clause_env) in
 
-    let (_, senv) = D.desugar_structure decls in
+    let (_, senv) = D.desugar_structure structure_decls in
     let (backform_env, clause_env) = senv in
 
     (* Note this does not check to make sure that the SelSets have
@@ -995,7 +992,9 @@ let structure_compilation_test () =
     let beq = D.benv_eq exp_backform_env backform_env in
 
     let ceq = 
-      let cm_eq m1 m2 = IdMap.equal (JQ.equivalent_multiplicity IdMap.empty) m1 m2 in
+      let cm_eq m1 m2 = IdMap.equal (fun m1 m2 ->
+      JQuerySub.subtype_mult true env m1 m2 &&
+        JQuerySub.subtype_mult true env m2 m1) m1 m2 in
       cm_eq clause_env.D.children exp_clause_env.D.children &&      
         cm_eq clause_env.D.parent exp_clause_env.D.parent &&      
         cm_eq clause_env.D.prev exp_clause_env.D.prev &&      
@@ -1021,8 +1020,22 @@ let structure_compilation_test () =
 
     end in
 
-  let fmsg d n = "Structure compilation test #" ^ (string_of_int n) ^
-    "failed. Test description: " ^ d ^ "\n" in
+  (* Helper: builds an MPlain from a list of ids. *)
+  let b_mp (ts : string list) : JQ.multiplicity = match ts with
+    | [] -> failwith "Can't build type with no ids"
+    | _ -> 
+      let catch_tany t = if t = "Bot" then TBot else TId t in
+      let built_typ = List.fold_left (fun acc t -> 
+        (* Fix so that we can represent Any in string form *)
+        TUnion (None, catch_tany t, acc))
+        (catch_tany (List.hd ts)) (List.tl ts) in
+      MPlain (TStrobe built_typ) in
+
+  (* Helper: builds a clauseMap from a (id * multiplicity) list.
+     Adds to the original clauseMap, cm *)
+  let b_cm cm (cs : (id * multiplicity) list ) : D.clauseMap =
+    List.fold_left (fun acc (id, mult) -> 
+      IdMap.add id mult acc) cm cs in
   
   (* base clauseMap with Element clauses *)
   let base_clauseMap =
@@ -1031,13 +1044,23 @@ let structure_compilation_test () =
       D.prev = b_cm IdMap.empty [("Element", MZeroOne (b_mp ["Element"]))];
       D.next = b_cm IdMap.empty [("Element", MZeroOne (b_mp ["Element"]))] } in
 
+
+  (* Helper: builds an MSum from a list of multiplicities *)
+  let b_msum (ms : multiplicity list) : multiplicity = match ms with
+    | [] -> failwith "Simple_tests: structure_compilation_test: Need at least two multiplicites to build an MSum, fool!"
+    | [m] -> failwith "Simple_tests: structure_compilation_test: Need at least two multiplicities to build an MSum, fool!"
+    | hd::tl -> List.fold_left (fun acc m -> MSum (m,acc)) hd tl in
+
+
   (* Helper: builds a clauseMap by extending the base clauseMap *)
   let ch cs = b_cm base_clauseMap.D.children cs in
   let par cs = b_cm base_clauseMap.D.parent cs in
   let prev cs = b_cm base_clauseMap.D.prev cs in
   let next cs = b_cm base_clauseMap.D.next cs in
 
-  let module H = Helper in
+
+  let fmsg d n = "Structure compilation test #" ^ (string_of_int n) ^
+    "failed. Test description: " ^ d ^ "\n" in
 
   test_harness_many [
 
@@ -1047,7 +1070,7 @@ let structure_compilation_test () =
      (fun _ -> wrapper
        "(Tweet : div classes=[t1])"
        ["Tweet", H.sel ["div.!t1"]]
-       { D.children = ch [("Tweet", MZero (b_mp ["Any"]))];
+       { D.children = ch [("Tweet", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]))];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]))] }));
@@ -1060,13 +1083,13 @@ let structure_compilation_test () =
        [("Tweet", H.sel ["div.!t1"]);
         ("Author", H.sel ["div.!t1 > div.!a1"]);]
        { D.children = ch [("Tweet", MOne (b_mp ["Author"]));
-                          ("Author", MZero (b_mp ["Any"]))];
+                          ("Author", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
-                        ("Author", MZero (b_mp ["Any"]))];
+                        ("Author", MZero (b_mp ["Bot"]))];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
-                        ("Author", MZero (b_mp ["Any"]))]; }));
+                        ("Author", MZero (b_mp ["Bot"]))]; }));
 
     ((fmsg "Multiple top-level declComps"),
      (fun _ -> wrapper
@@ -1074,8 +1097,8 @@ let structure_compilation_test () =
         (B : div classes=[b1])"
        [("A", H.sel ["div.!a1"]);
         ("B", H.sel ["div.!b1"])]
-       { D.children = ch [("A", MZero (b_mp ["Any"]));
-                          ("B", MZero (b_mp ["Any"]))];
+       { D.children = ch [("A", MZero (b_mp ["Bot"]));
+                          ("B", MZero (b_mp ["Bot"]))];
          D.parent = par [("A", MZeroOne (b_mp ["Element"]));
                          ("B", MZeroOne (b_mp ["Element"]))];
          D.prev = prev [("A", MZeroOne (b_mp ["Element"]));
@@ -1100,10 +1123,10 @@ let structure_compilation_test () =
         ("F", H.sel ["div.!d1 > div.!e1 > div.!f1"])]
        { D.children = ch [("A", MOne (b_mp ["B"]));
                           ("B", MOne (b_mp ["C"]));
-                          ("C", MZero (b_mp ["Any"]));
+                          ("C", MZero (b_mp ["Bot"]));
                           ("D", MOne (b_mp ["E"]));
                           ("E", MOne (b_mp ["F"]));
-                          ("F", MZero (b_mp ["Any"]))];
+                          ("F", MZero (b_mp ["Bot"]))];
          D.parent = par  [("A", MZeroOne (b_mp ["Element"]));
                           ("B", MOne (b_mp ["A"]));
                           ("C", MOne (b_mp ["B"]));
@@ -1111,22 +1134,19 @@ let structure_compilation_test () =
                           ("E", MOne (b_mp ["D"]));
                           ("F", MOne (b_mp ["E"]))];
          D.prev = prev  [("A", MZeroOne (b_mp ["Element"]));
-                         ("B", MZero (b_mp ["Any"]));
-                         ("C", MZero (b_mp ["Any"]));
+                         ("B", MZero (b_mp ["Bot"]));
+                         ("C", MZero (b_mp ["Bot"]));
                          ("D", MZeroOne (b_mp ["Element"]));
-                         ("E", MZero (b_mp ["Any"]));
-                         ("F", MZero (b_mp ["Any"]))];
+                         ("E", MZero (b_mp ["Bot"]));
+                         ("F", MZero (b_mp ["Bot"]))];
          D.next = next  [("A", MZeroOne (b_mp ["Element"]));
-                         ("B", MZero (b_mp ["Any"]));
-                         ("C", MZero (b_mp ["Any"]));
+                         ("B", MZero (b_mp ["Bot"]));
+                         ("C", MZero (b_mp ["Bot"]));
                          ("D", MZeroOne (b_mp ["Element"]));
-                         ("E", MZero (b_mp ["Any"]));
-                         ("F", MZero (b_mp ["Any"]))]; }));
+                         ("E", MZero (b_mp ["Bot"]));
+                         ("F", MZero (b_mp ["Bot"]))]; }));
 
 
-    (* Current bugs: 
-       1) Prevsib and Nextsib of Author is 1<Author>, not 01<Author>
-    *)
     ((fmsg "Multiple children with the same name"),
      (fun _ -> wrapper
        "(Tweet : div classes=[t1]
@@ -1136,7 +1156,7 @@ let structure_compilation_test () =
        [("Tweet", H.sel ["div.!t1"]);
         ("Author", H.sel ["div.!t1 > div.!a1"])]
        { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"]));
-                          ("Author", MZero (b_mp ["Any"]))];
+                          ("Author", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
@@ -1156,8 +1176,9 @@ let structure_compilation_test () =
           <Author>)"
        [("Tweet", H.sel ["div.!t1"]);
         ("Author", H.sel ["div.!t1 > div.!a1"])]
-       { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"; "Element"]));
-                          ("Author", MZero (b_mp ["Any"]))];
+       { D.children = ch [("Tweet", b_msum [MOnePlus (b_mp ["Author"]);
+                                            MZeroPlus (b_mp ["Element"])]);
+                          ("Author", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
@@ -1187,9 +1208,13 @@ let structure_compilation_test () =
         ("Content", 
          H.sel ["div.!t1 > div.!a1 ~ div.!a1 + div.!c1";
               "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1"])]
-       { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"; "Element"; "Content"]));
-                          ("Author", MZero (b_mp ["Any"]));
-                          ("Content", MZero (b_mp ["Any"]))];
+       { D.children = ch [("Tweet", 
+                           b_msum [
+                             MOnePlus (b_mp ["Author"]);
+                             MZeroPlus (b_mp ["Element"]);
+                             MOnePlus (b_mp ["Content"];)]);
+                           ("Author", MZero (b_mp ["Bot"]));
+                           ("Content", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]));
                          ("Content", MOne (b_mp ["Tweet"]))];
@@ -1220,12 +1245,13 @@ let structure_compilation_test () =
           ...)"
        [("Tweet", H.sel ["div.!t1"]);
        ("Author", H.sel ["div.!t1 > div.!a1"])]
-       { D.children = ch [("Tweet", MOnePlus (b_mp ["Element"; "Author"]));
-                          ("Author", MZero (b_mp ["Any"]))];
+       { D.children = ch [("Tweet", b_msum [MOne (b_mp ["Author"]);
+                                            MZeroPlus (b_mp ["Element"])]);
+                          ("Author", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
-                        ("Author", MZero (b_mp ["Any"]))];
+                        ("Author", MZero (b_mp ["Bot"]))];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
                         ("Author", MZeroOne (b_mp ["Element"]))]; }));
 
@@ -1236,14 +1262,15 @@ let structure_compilation_test () =
           (Author : div classes=[a1]))"
        [("Tweet", H.sel ["div.!t1"]);
        ("Author", H.sel ["div.!t1 > div.!a1"])]
-       { D.children = ch [("Tweet", MOnePlus (b_mp ["Element"; "Author"]));
-                          ("Author", MZero (b_mp ["Any"]))];
+       { D.children = ch [("Tweet", b_msum [MOne (b_mp ["Author"]);
+                                            MZeroPlus (b_mp ["Element"])]);
+                          ("Author", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));
                         ("Author", MZeroOne (b_mp ["Element"]))];
          D.next = next [("Tweet", MZeroOne (b_mp ["Element"]));
-                        ("Author", MZero (b_mp ["Any"]))]; }));
+                        ("Author", MZero (b_mp ["Bot"]))]; }));
 
 
     
@@ -1268,12 +1295,17 @@ let structure_compilation_test () =
                        "div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image"]);
         ("Time", H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image + div.!time"]);]
        { D.children = ch
-           [("Tweet", MOnePlus (b_mp ["Element"; "Author"; "Content"; "Image"; "Time";]));
-            ("Author", MOnePlus (b_mp ["Bio"; "Element"]));
+           [("Tweet", b_msum [MOne (b_mp ["Author"]);
+                              MOne (b_mp ["Content"]);
+                              MOne (b_mp ["Time"]);
+                              MOnePlus (b_mp ["Image"]);
+                              MZeroPlus (b_mp ["Element"]);]);
+            ("Author", b_msum [MOne (b_mp ["Bio"]);
+                               MZeroPlus (b_mp ["Element"])]);
             ("Bio", MZeroPlus (b_mp ["Element"]));
-            ("Content", MZero (b_mp ["Any"]));
-            ("Image", MZero (b_mp ["Any"]));
-            ("Time", MZero (b_mp ["Any"]));];
+            ("Content", MZero (b_mp ["Bot"]));
+            ("Image", MZero (b_mp ["Bot"]));
+            ("Time", MZero (b_mp ["Bot"]));];
          D.parent = par 
            [("Tweet", MZeroOne (b_mp ["Element"]));
             ("Author", MOne (b_mp ["Tweet"]));
@@ -1284,7 +1316,7 @@ let structure_compilation_test () =
          D.prev = prev 
            [("Tweet", MZeroOne (b_mp ["Element"]));
             ("Author", MZeroOne (b_mp ["Element"]));
-            ("Bio", MZero (b_mp ["Any"]));
+            ("Bio", MZero (b_mp ["Bot"]));
             ("Content", MOne (b_mp ["Author"]));
             ("Image", MOne (b_mp ["Element";"Content";"Image";]));
             ("Time", MOne (b_mp ["Image"]));];
@@ -1294,11 +1326,10 @@ let structure_compilation_test () =
             ("Bio", MZeroOne (b_mp ["Element"]));
             ("Content", MOne (b_mp ["Element";"Image"]));
             ("Image", MOne (b_mp ["Image"; "Time"]));
-            ("Time", MZero (b_mp ["Any"]));]; }));
+            ("Time", MZero (b_mp ["Bot"]));]; }));
 
   ]
-(* end structure_well_formed_test *)
-
+(* end structure_compilation_test *)
 
 
 let selector_tests () =
@@ -1318,19 +1349,19 @@ let selector_tests () =
       end
     in
 
-    let fail_msg desc n =
+    let fail_msg s1 s2 n =
       "Selector_test #" ^ (string_of_int (n+1)) ^ " failed.\n" ^
-        "Description: "^ desc in
+        (Css.pretty s1) ^ " <?: " ^ (Css.pretty s2) in
 
 
     test_harness_many [
-      ((fail_msg "None"),
+      ((fail_msg s1 time),
        (fun _ -> subset_wrapper s1 time false));
 
-      ((fail_msg "None"),
-       (fun _ -> subset_wrapper s1 author true));
+      ((fail_msg s1 author),
+       (fun _ -> subset_wrapper s1 author false));
      
-      ((fail_msg "None"),
+      ((fail_msg a1 a2),
        (fun _ -> subset_wrapper a1 a2 false));
       
     ]
@@ -1354,7 +1385,7 @@ let run_tests () =
       subtyping_test;
       structure_well_formed_test;
       structure_compilation_test;
-      (* selector_tests; *)
+      selector_tests;
     ]);
     (* test5 (); *)
     Printf.eprintf "All tests passed!";

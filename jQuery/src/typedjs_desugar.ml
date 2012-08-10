@@ -636,7 +636,7 @@ struct
         | [] -> MZero (MPlain (TStrobe (S.TBot)))
         | [Some id] -> MOne (wrap_id id)
         | (Some id)::_ -> MOnePlus (wrap_id id)
-        | [None] -> MZeroOne (wrap_id element)
+        | [None]
         | None::_ -> MZeroPlus (wrap_id element) in
       (** Function: transform_children
           ==================================================
