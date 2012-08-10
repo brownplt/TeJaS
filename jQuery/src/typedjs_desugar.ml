@@ -626,6 +626,18 @@ struct
         | Some id -> S.TId id
         | None -> S.TId element in
 
+      let rec partition list = match list with
+        | [] -> []
+        | hd::tl -> 
+          let (hds, tls) = List.partition (fun x -> x = hd) tl in
+          (hd::hds)::(partition tls) in
+      let to_mult group = 
+        let open JQ in match group with
+        | [] -> MZero (MPlain (TStrobe (S.TBot)))
+        | [Some id] -> MOne (wrap_id id)
+        | (Some id)::_ -> MOnePlus (wrap_id id)
+        | [None] -> MZeroOne (wrap_id element)
+        | None::_ -> MZeroPlus (wrap_id element) in
       (** Function: transform_children
           ==================================================
           Transform function for kidMap that takes an id option list and turns it into a multiplicity.
@@ -636,18 +648,14 @@ struct
           list with more than one entries ==> 
              1+<union of remove_dups of all entries in the list>
       **)
-      let transform_children idos = let open JQ in match idos with 
+      let transform_children idos = 
+        let open JQ in 
+        let grouped_idos = partition idos in
+        match grouped_idos with 
         | [] -> MZero (MPlain (TStrobe (S.TBot)))
-        | [Some id] -> MOne (wrap_id id)
-        | [None] -> MZeroPlus (wrap_id element)
-        | _ -> match ListExt.remove_dups idos with
-          | [] -> failwith 
-            "Desugar:desugar_structure:transform_children: IMPOSSIBLE:";
-          | [ido] -> MOnePlus (MPlain (TStrobe (extract_id ido)))
-          | hd::tail -> 
-            MOnePlus (MPlain (TStrobe (List.fold_left (fun acc ido ->
-              S.TUnion (None,acc, (extract_id ido))) 
-                                         (extract_id hd) tail))) in
+        | group::groups ->
+          List.fold_left (fun acc group -> MSum(to_mult group, acc))
+            (to_mult group) groups in
       (** Function: transform_sibs
           ==================================================
           Transform function for prevSibMap and nextSibMap that takes an id option list and turns it into a multiplicity.

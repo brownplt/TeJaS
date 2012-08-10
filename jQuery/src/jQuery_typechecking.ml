@@ -73,8 +73,8 @@ struct
     end
     | _ -> None
 
-  let rec assoc_sub env t1 t2 = 
-    Strobe.trace "JQuery:Assoc_sub" (Printf.sprintf "assoc %s with %s" (string_of_typ t1) (string_of_typ t2)) (fun _ -> true) (fun () -> assoc_sub' env t1 t2)
+  let rec assoc_sub env t1 t2 = assoc_sub' env t1 t2
+    (* Strobe.trace "JQuery:Assoc_sub" (Printf.sprintf "assoc %s with %s" (string_of_typ t1) (string_of_typ t2)) (fun _ -> true) (fun () -> assoc_sub' env t1 t2) *)
   and assoc_sub' env t1 t2 =
     (* Strobe.traceMsg "associating %s with %s" (string_of_typ t1) (string_of_typ t2); *)
     (* let t1' = (Env.resolve_special_functions env !Env.senv (Env.expose_tdoms env (canonical_type t1))) in *)
@@ -135,9 +135,9 @@ struct
       (* TODO(liam): Test to see if resolved really needs to be called here *)
       let resolved = Env.resolve_special_functions env !Env.senv (Sub.subtype_mult true)
         (canonical_type substituted) in
-      Strobe.traceMsg "In do_substitution: original typ is %s" (string_of_typ t);
-      Strobe.traceMsg "In do_substitution: subst'd is %s" (string_of_typ substituted);
-      Strobe.traceMsg "In do_substitution: resolved typ is %s" (string_of_typ resolved);
+      (* Strobe.traceMsg "In do_substitution: original typ is %s" (string_of_typ t); *)
+      (* Strobe.traceMsg "In do_substitution: subst'd is %s" (string_of_typ substituted); *)
+      (* Strobe.traceMsg "In do_substitution: resolved typ is %s" (string_of_typ resolved) ;*)
       resolved in
     do_substitution
 

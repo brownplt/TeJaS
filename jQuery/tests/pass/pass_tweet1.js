@@ -95,11 +95,6 @@ var at1p = /*: cheat jQ<1+<Author+Time>, AnyJQ> */0;
 
 
 
-/******************************************************************************/
-/****----------- Broken tests that haven't been considered yet  -----------****/
-/******************************************************************************/
-
-
 // /**** Children tests ****/
 
 // var temp = /*:cheat jQ<1<Tweet>, AnyJQ>*/null;
@@ -257,7 +252,9 @@ var at1p = /*: cheat jQ<1+<Author+Time>, AnyJQ> */0;
 
 // var t1_cn = t1.children().next();
 
-// var a1_nnpp = a1.next().next().prev().prev();
+var a1_nnpp = a1.next().next().prev().prev();
+
+/*:Num*/a1_nnpp;;
 
 // var at1_n = at1.next();
 // var at1p_n = at1p.next();
@@ -288,14 +285,9 @@ var t1_find = t1.find();
 
 ///*: jQ<1+<Author+Content+Time+Followers>, AnyJQ> */t1_find;
 
+//var t = (/*:jQ<1<Any>, jQ<Sum<1<Followers>, Sum<1<Author>, Sum<1<Time>, 1+<Content>>>>, AnyJQ>>*/null);
+///*: jQ<1<Any>, AnyJQ>*/t;
 
 ///*: jQ<0<Any>, AnyJQ> */a1.prevAll();
-/*: jQ<0+<Author+Content+Time>, AnyJQ> */t1_find.prev();
-/*: jQ<0+<Author+Content+Time>, AnyJQ> */t1_find.prevAll();
-
-
-
-
-
-
-
+///*: jQ<Sum<1<Author>, 1+<Content + Time>>, AnyJQ> */t1_find.prev();
+/*: jQ<1+<Author+Content+Time>, AnyJQ> */t1_find.prevAll();

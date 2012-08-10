@@ -845,9 +845,9 @@ struct
     | TForall _ -> typ
     | TWith(t, flds) -> expose_twith typenv typ
     | TFix (n, x, k, t) -> 
-      (* Printf.eprintf "Substituting %s[%s/%s]\n" (string_of_typ t) (string_of_typ typ) x; *)
+      (* traceMsg "Substituting %s[%s/%s]\n" (string_of_typ t) (string_of_typ typ) x; *)
       let ret = apply_name n (simpl_typ typenv (typ_subst x typ t)) in
-      (* Printf.eprintf "STROBETFix: simpl_typ (%s) = %s\n" (string_of_typ typ) (string_of_typ ret); *)
+      (* traceMsg "STROBETFix: simpl_typ (%s) = %s\n" (string_of_typ typ) (string_of_typ ret); *)
       ret
     | TRec (n, x, t) -> apply_name n (simpl_typ typenv (typ_subst x typ t))
     | TApp (t1, ts) -> 
@@ -859,7 +859,7 @@ struct
           | TRef (n, t) -> TRef (n, t)
           | TSource (n, t) -> TRef (n, t)
           | TSink (n, t) -> TRef (n, t)
-          | _ -> raise (Invalid_argument "Expected a TRef, TSoruce or TSink argument to Mutable<T>")
+          | _ -> raise (Invalid_argument "Expected a TRef, TSource or TSink argument to Mutable<T>")
         end
         | _ ->  raise (Invalid_argument "Expected one argument to Mutable<T>")
       end
@@ -869,7 +869,7 @@ struct
           | TRef (n, t) -> TSource (n, t)
           | TSource (n, t) -> TSource (n, t)
           | TSink (n, t) -> TSource (n, t)
-          | _ -> raise (Invalid_argument "Expected a TRef, TSoruce or TSink argument to Immutable<T>")
+          | _ -> raise (Invalid_argument "Expected a TRef, TSource or TSink argument to Immutable<T>")
         end
         | _ ->  raise (Invalid_argument "Expected one argument to Mutable<T>")
       end
@@ -917,10 +917,10 @@ struct
     | None, None -> None)
 
 
-  let rec typ_assoc add merge env t1 t2 =
-    trace "STROBEtyp_assoc" 
-      (Pretty.simpl_typ t1 ^ " with " ^ Pretty.simpl_typ t2)
-      (fun _ -> true) (fun () -> typ_assoc' add merge env t1 t2)
+  let rec typ_assoc add merge env t1 t2 = typ_assoc' add merge env t1 t2
+    (* trace "STROBEtyp_assoc"  *)
+    (*   (Pretty.simpl_typ t1 ^ " with " ^ Pretty.simpl_typ t2) *)
+    (*   (fun _ -> true) (fun () -> typ_assoc' add merge env t1 t2) *)
   and typ_assoc' add merge (env : env) (typ1 : typ) (typ2 : typ) =
     let typ_assoc = typ_assoc add merge in
     match (typ1, typ2) with

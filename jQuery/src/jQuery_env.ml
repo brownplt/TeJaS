@@ -157,7 +157,11 @@ struct
 
   let children (env : env ) (senv : structureEnv) (t : typ) : multiplicity =
     let cenv = (snd senv) in
-    msum_ms (get_all_x_of env cenv.Desugar.children t)
+    let gotten = get_all_x_of env cenv.Desugar.children t in
+    let ret = msum_ms gotten in
+    Strobe.traceMsg "In children, getChildren(%s) = %s ==> %s"
+      (string_of_typ t) (String.concat ", " (List.map string_of_mult gotten)) (string_of_mult ret);
+    ret
     
   let parent (env : env) (senv : structureEnv) (t : typ) : multiplicity = 
     let cenv = (snd senv) in
@@ -172,28 +176,43 @@ struct
     munion_ms (get_all_x_of env cenv.Desugar.next t)
 
 
+  let rec extract_sum m = match m with
+    | MSum (m1, m2) -> extract_sum m1 @ extract_sum m2
+    | _ -> [m]
 
   let transitive (op : env -> structureEnv -> typ -> multiplicity) 
       (included : env -> multiplicity -> multiplicity -> bool)
       (env : env) (senv : structureEnv) (t : typ) : multiplicity =
-    let rec helper (acc : multiplicity) (m : multiplicity) : multiplicity =
-      Strobe.trace "transitive_helper" 
-        (Printf.sprintf "acc = %s, m = %s" (string_of_mult acc) (string_of_mult m))
-        (fun _ -> true) (fun () -> helper' acc m)
+    let rec helper (acc : multiplicity list) (m : multiplicity) : multiplicity =
+      helper' acc m
+      (* Strobe.trace "transitive_helper"  *)
+      (*   (Printf.sprintf "acc = [%s], m = %s" (String.concat ", " (List.map string_of_mult acc)) (string_of_mult m)) *)
+      (*   (fun _ -> true) (fun () -> helper' acc m) *)
     and helper' acc m =
       let ret = 
         match m with
-        | MZero _ -> acc
+        | MZero _ -> msum_ms acc
         | _ ->
-          let (t, m') = match extract_mult m with
-            | STyp t, m' -> t, m'
+          let res = match extract_mult (canonical_multiplicity m) with
+            | STyp t, m' ->
+              let res_op = op env senv t in
+              let res = canonical_multiplicity (m' (SMult res_op)) in
+              res
+            | SMult (MSum _ as sum), _ -> begin
+              let sum_pieces = extract_sum sum in
+              let oper_pieces = List.map (fun p ->
+                let (s, m) = extract_mult p in
+                match s with
+                | STyp t -> m (SMult (op env senv t))
+                | SMult m -> m) sum_pieces in
+              let combined = msum_ms oper_pieces in
+              canonical_multiplicity combined
+            end
             | SMult _, _ -> failwith "Got unexpected multiplicity in transitive"
           in
-          let res_op = op env senv t in
-          let res = canonical_multiplicity (m' (SMult res_op)) in
-          if included env res acc
-          then acc
-          else helper (msum_ms [res; acc]) res
+          if List.mem res acc
+          then msum_ms acc
+          else helper (res::acc) res
       in
       Strobe.traceMsg "Return mult = %s" (string_of_mult ret);
       ret
@@ -201,7 +220,7 @@ struct
     Strobe.trace "transitive" (Printf.sprintf "t = %s" (string_of_typ t)) (fun _ -> true)
       (fun () ->
         let first = op env senv t in
-        helper first first)
+        helper [first] first)
 
 
   let find included env senv t = transitive children included env senv t
@@ -597,6 +616,10 @@ struct
   (*   resolve_special_functions' env senv t *)
   let rec resolve_special_functions (env : env) (senv : structureEnv) 
       (included : env -> multiplicity -> multiplicity -> bool) (t : typ) =
+    resolve_special_functions' env senv included t
+    (* Strobe.trace "Resolve_special" (string_of_typ t) (fun _ -> true) *)
+    (*   (fun () -> resolve_special_functions' env senv included t) *)
+  and resolve_special_functions' env senv included t =
     let rec resolve_sigma s = match s with
       | STyp t -> STyp (rjq t)
       | SMult m -> SMult (resolve_mult m) 
@@ -639,7 +662,7 @@ struct
       | TApp(t, args) ->
         (* Strobe.traceMsg "rjq called with TApp : %s" (string_of_typ t); *)
         TApp(rjq t, List.map (fun s -> match s with
-        | SMult m -> begin match extract_mult m with
+        | SMult m -> begin match extract_mult (canonical_multiplicity m) with
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), [SMult m])))), m1
@@ -662,6 +685,16 @@ struct
               | STyp t -> SMult 
                 (canonical_multiplicity 
                    (m1 (SMult (m2 (SMult (op env senv (rjq t)))))))
+              | SMult (MSum _ as sum) -> begin
+                let sum_pieces = extract_sum sum in
+                let oper_pieces = List.map (fun p ->
+                  let (s, m) = extract_mult p in
+                  match s with
+                  | STyp t -> m (SMult (op env senv (rjq t)))
+                  | SMult m -> m) sum_pieces in
+                let combined = msum_ms oper_pieces in
+                SMult (canonical_multiplicity (m1 (SMult combined)))
+              end
               | SMult _ -> s
           (* Could not extract down to a type. Return ORIGINAL sigma *)
             end

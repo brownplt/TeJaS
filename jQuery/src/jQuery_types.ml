@@ -649,8 +649,7 @@ struct
 
   and canonical_multiplicity m =
     let c = canonical_multiplicity in
-    (* Invariant: will never return MPlain or MId, and
-     * if there are no MIds then it will never return MSum *)
+    (* Invariant: will never return MPlain or MId *)
     match m with
     | MPlain t -> MOne (MPlain (canonical_type t))
     | MId _ -> MOne m
@@ -668,7 +667,10 @@ struct
     | MZeroOne (MZeroOne m) -> c (MZeroOne m)
     | MZeroOne (MOnePlus m) -> c (MZeroPlus m)
     | MZeroOne (MZeroPlus m) -> c (MZeroPlus m)
-    | MZeroOne (MSum (m1, m2)) -> let m' = MZeroOne (c (MSum (m1, m2))) in if m' = m then m else c m'
+    | MZeroOne (MSum (m1, m2)) -> begin match c (MSum (m1, m2)) with
+      | MSum(m1', m2') -> c (MSum (MZeroOne m1', MZeroOne m2'))
+      | m -> c (MZeroOne m)
+    end
     | MOnePlus (MPlain t) -> MOnePlus (MPlain (canonical_type t))
     | MOnePlus (MId _) -> m
     | MOnePlus (MZero m) -> c (MZero m)
@@ -676,7 +678,10 @@ struct
     | MOnePlus (MZeroOne m) -> c (MZeroPlus m)
     | MOnePlus (MOnePlus m) -> c (MOnePlus m)
     | MOnePlus (MZeroPlus m) -> c (MZeroPlus m)
-    | MOnePlus (MSum (m1, m2)) -> let m' = MOnePlus (c (MSum (m1, m2))) in if m' = m then m else c m' (* XXX TODO MSum?? *)
+    | MOnePlus (MSum (m1, m2)) -> begin match c (MSum (m1, m2)) with
+      | MSum(m1', m2') -> c (MSum (MOnePlus m1', MOnePlus m2'))
+      | m -> c (MOnePlus m)
+    end
     | MZeroPlus (MPlain t) -> MZeroPlus (MPlain (canonical_type t))
     | MZeroPlus (MId _) -> m
     | MZeroPlus (MZero m) -> c (MZero m)
@@ -684,33 +689,17 @@ struct
     | MZeroPlus (MZeroOne m) -> c (MZeroPlus m)
     | MZeroPlus (MOnePlus m) -> c (MZeroPlus m)
     | MZeroPlus (MZeroPlus m) -> c (MZeroPlus m)
-    | MZeroPlus (MSum (m1, m2)) -> let m' = MZeroPlus (c (MSum (m1, m2))) in if m' = m then m else c m' (* XXX TODO MSum?? *)
-    | MSum(m1, m2) -> (* XXX TODO MSum?? *)
-      let c_u t1 t2 = canonical_type (embed_t (Strobe.TUnion(None, extract_t t1, extract_t t2))) in
+    | MZeroPlus (MSum (m1, m2)) -> begin match c (MSum (m1, m2)) with
+      | MSum(m1', m2') -> c (MSum (MZeroPlus m1', MZeroPlus m2'))
+      | m -> c (MZeroPlus m)
+    end
+    | MSum(m1, m2) -> begin
       match c m1, c m2 with
       | MZero _, t2 -> t2
       | t1, MZero _ -> t1
-      | MOne (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MOne (MPlain t1), MZeroOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MOne (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MOne (MPlain t1), MZeroPlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MZeroOne (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MZeroOne (MPlain t1), MZeroOne (MPlain t2) -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
-      | MZeroOne (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MZeroOne (MPlain t1), MZeroPlus (MPlain t2) -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
-      | MOnePlus (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MOnePlus (MPlain t1), MZeroOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MOnePlus (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MOnePlus (MPlain t1), MZeroPlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MZeroPlus (MPlain t1), MOne (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MZeroPlus (MPlain t1), MZeroOne (MPlain t2) -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
-      | MZeroPlus (MPlain t1), MOnePlus (MPlain t2) -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
-      | MZeroPlus (MPlain t1), MZeroPlus (MPlain t2) -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
-      | MPlain _, _
-      | MId _, _
-      | _, MPlain _
-      | _, MId _ -> failwith "impossible 8"
+      | MSum (m1, m2), m3 -> MSum(m1, c (MSum (m2, m3)))
       | t1, t2 -> MSum (t1, t2)
+    end
 
   let rec simpl_typ env typ =
     match typ with
@@ -824,10 +813,10 @@ struct
     | None, None -> None)
 
 
-  let rec typ_assoc env t1 t2  =
-    Strobe.trace "JQtyp_assoc" 
-      (string_of_typ t1 ^ " with " ^ string_of_typ t2) 
-      (fun _ -> true) (fun () -> typ_assoc' env t1 t2)
+  let rec typ_assoc env t1 t2  = typ_assoc' env t1 t2
+    (* Strobe.trace "JQtyp_assoc"  *)
+    (*   (string_of_typ t1 ^ " with " ^ string_of_typ t2)  *)
+    (*   (fun _ -> true) (fun () -> typ_assoc' env t1 t2) *)
   and typ_assoc' env t1 t2 : binding IdMap.t =
 
     let add_strobe x t m = 
@@ -847,7 +836,7 @@ struct
       (* Cases for two-arg jq *)
     | TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult; STyp prev]), 
       TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> 
-      Strobe.traceMsg "JQUERY_typ_assoc: associating jq with an obj";
+      (* Strobe.traceMsg "JQUERY_typ_assoc: associating jq with an obj"; *)
       begin
         match embed_t (get_this o) with
         | (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
@@ -860,7 +849,7 @@ struct
       end
     |  (TStrobe (Strobe.TSource (_, Strobe.TObject o))),
         (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult; STyp prev])) -> 
-      Strobe.traceMsg "JQuery_typ_assoc: associating an obj with a jq";
+      (* Strobe.traceMsg "JQuery_typ_assoc: associating an obj with a jq"; *)
       begin
         match embed_t (get_this o) with
         | (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), 
@@ -895,7 +884,7 @@ struct
         typ_assoc env t1 t2 else IdMap.empty
     | _ -> IdMap.empty
   and mult_assoc env m1 m2 =
-    Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2);
+    (* Strobe.traceMsg "JQmult_assoc %s with %s\n" (string_of_mult m1) (string_of_mult m2); *)
     match m1, m2 with
     | MId m, _ -> IdMap.singleton m (BMultBound(m2, KMult (KStrobe Strobe.KStar)))
     | MPlain t1, MPlain t2 -> typ_assoc env t1 t2

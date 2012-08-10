@@ -116,9 +116,9 @@ struct
     (* ************************** *)
     | STyp t, SMult m -> (cache, false)
 
-  (* and subtype_typ lax env cache s t = *)
-  (*   Strobe.trace "JQUERY_subtype_typ" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subtype_typ' lax env cache s t) *)
-  and subtype_typ lax (env : env) cache t1 t2 : (bool SPMap.t * bool) =
+  and subtype_typ lax env cache s t = subtype_typ' lax env cache s t
+    (* Strobe.trace "JQUERY_subtype_typ" (string_of_typ s ^ " <?: " ^ string_of_typ t) snd2 (fun () -> subtype_typ' lax env cache s t) *)
+  and subtype_typ' lax (env : env) cache t1 t2 : (bool SPMap.t * bool) =
     let subtype_sigma = subtype_sigma lax in
     let subtype_typ = subtype_typ lax in
     let open SigmaPair in
@@ -129,6 +129,12 @@ struct
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
       else match unwrap_t t1, unwrap_t t2 with
       (* Case for handling two-arg jQ types *)
+      | TApp (TStrobe (Strobe.TId "jQ"), args), t2 ->
+        let jQ_exposed = embed_t (fst2 (Strobe.lookup_typ env "jQ")) in
+        subtype_typ env cache (TApp (jQ_exposed, args)) t2
+      | t1, TApp (TStrobe (Strobe.TId "jQ"), args)->
+        let jQ_exposed = embed_t (fst2 (Strobe.lookup_typ env "jQ")) in
+        subtype_typ env cache t1 (TApp (jQ_exposed, args))
       | ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m1; p1])) (* as jq1 *)),
         ((TApp (TStrobe (Strobe.TFix(Some "jQ", "jq", _,_)), [m2; p2])) (* as jq2 *)) ->
         List.fold_left2 subtype_sigma_list (cache, true) [m1;p1] [m2;p2]
@@ -203,9 +209,59 @@ struct
           | _ -> (cache, false))
     end
       
-  (* and subtype_mult lax env cache m1 m2 = *)
-  (*   Strobe.trace "JQUERY_subtype_mult" (string_of_mult m1 ^ " <?: " ^ string_of_mult m2) snd2 (fun () -> subtype_mult' lax env cache m1 m2) *)
-  and subtype_mult lax (env : env) cache m1 m2 = 
+  and simplify_msum m = 
+    let c_u t1 t2 = canonical_type (embed_t (Strobe.TUnion(None, extract_t t1, extract_t t2))) in
+    let s m = simplify_msum m in match canonical_multiplicity m with
+    | MSum (m1, m2) -> begin match s m1, s m2 with
+      | MZero _, m2 -> m2
+      | m1, MZero _ -> m1
+      | MOne (MPlain t1), MOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne (MPlain t1), MZeroOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne (MPlain t1), MOnePlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne (MPlain t1), MZeroPlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MZeroOne (MPlain t2)
+        -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MOnePlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MZeroPlus (MPlain t2)
+        -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MZeroOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MOnePlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MZeroPlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MZeroOne (MPlain t2)
+        -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MOnePlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MZeroPlus (MPlain t2)
+        -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne _, _
+      | MZeroOne _, _
+      | MOnePlus _, _
+      | MZeroPlus _, _
+      | MPlain _, _
+      | MId _, _
+        -> failwith "canonicalization should have simplified these"
+      | MSum _, _ 
+        -> failwith "canonicalization should not leave MSum on left"
+    end
+    | _ -> m
+
+  and subtype_mult lax env cache m1 m2 = subtype_mult' lax env cache m1 m2
+    (* Strobe.trace "JQUERY_subtype_mult" (string_of_mult m1 ^ " <?: " ^ string_of_mult m2) snd2 (fun () -> subtype_mult' lax env cache m1 m2) *)
+  and subtype_mult' lax (env : env) cache m1 m2 = 
     let subtype_mult = subtype_mult lax env in
     let subtype_typ = subtype_typ lax env in (* ok for now because there are no MId binding forms in Mult *)
     let open SigmaPair in
@@ -256,7 +312,23 @@ struct
     | MZeroPlus (MId n1), MZeroPlus (MId n2) when n2 = n1 -> cache, true
     | MZeroPlus (MPlain _), _ -> (cache, false)
     | MZeroPlus _, _ -> (cache, false) (* not canonical! *)
-    | MSum _, _ (* XXX TODO MSum?? *)
+    | MSum _, MSum _ -> begin
+      (* MSum has to subtype invariantly, so we extract all the parts from each,
+         and check if each part is contained in a counterpart in the other *)
+      let rec extract_sum m = match m with
+        | MSum (m1, m2) -> extract_sum m1 @ extract_sum m2
+        | _ -> [m] in
+      let m1_parts = extract_sum m1 in
+      let m2_parts = extract_sum m2 in
+      let (|||) c thunk = if (snd c) then c else thunk (fst c) in
+      let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
+      List.fold_left (fun c  m1_part ->
+        c &&& (fun c -> 
+          List.fold_left 
+            (fun c m2_part -> c ||| (fun c -> subtype_mult c m1_part m2_part))
+            (c, false) m2_parts)) (cache, true) m1_parts
+    end
+    | MSum _, _ -> subtype_mult cache (simplify_msum m1) m2 (* S-Transitive *)
     | MPlain _, _ -> (cache, false) (* not canonical! *)
     )
 
