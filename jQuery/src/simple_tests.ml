@@ -192,7 +192,7 @@ let test_harness_many (tests : (( int -> string) * ( _ -> unit )) list)
       match l with
       | [] -> a
       | hd::tl ->  
-        helper (n+1) (f n a hd) tl in
+        helper (n+1) (f (n+1) a hd) tl in
     helper 0 s l in
 
   (* let iteri (f : int -> 'a -> unit) (l : 'a list) : unit = *)
@@ -209,6 +209,7 @@ let test_harness_many (tests : (( int -> string) * ( _ -> unit )) list)
 (************************** Testing helper functions **************************)
 
 module Helper = struct    
+
 
 (* Helper: creates a sel from a list of selectors *)
   let sel sels = 
@@ -232,17 +233,38 @@ module Helper = struct
     JQ.embed_t (S.TUnion (None, (JQ.extract_t t1), (JQ.extract_t t2))) 
 
   let tid id = JQ.embed_t (Strobe.TId id)
-
+    
   let env = 
     let raw = 
       "type Element = #{ name : Str };
        type DivElement = #{ name : /\"HTMLDivElement\"/ };" in
-
+    
     let decls = JQEnv.parse_env raw "Helper env" in
     
     JQEnv.extend_global_env IdMap.empty decls
-  
-    
+
+
+  let msums (ms : JQ.multiplicity list) = match ms with
+      | []
+      | [_] -> failwith "Simple_tests: Helper: need 2+ multiplicities to create an msum here"
+      | hd::tl -> List.fold_left (fun acc m -> JQ.MSum (m,acc)) hd tl 
+                                          
+
+  (* Constructs an MPlain from a list of ids. 
+     Produces either: 
+     MPlain (TStrobe (TId x)) OR
+     MPlain (TStrobe (TUnion (TId x, TUnion (....))))
+     
+     Also turns TId "Any" into TTop as a convenience *)
+  let mp (ts : string list) : JQ.multiplicity = match ts with
+    | [] -> failwith "Can't build type with no ids"
+    | _ -> 
+      let catch_tany t = if t = "Bot" then S.TBot else S.TId t in
+      let built_typ = List.fold_left (fun acc t -> 
+        (* Fix so that we can represent Any in string form *)
+        S.TUnion (None, catch_tany t, acc))
+        (catch_tany (List.hd ts)) (List.tl ts) in
+      JQ.MPlain (JQ.TStrobe built_typ)
 
 end
 
@@ -344,7 +366,7 @@ let subtyping_test () =
 
   let env = JQEnv.extend_global_env H.env decls in
 
-  let wrapper t1 t2 pass = 
+  let wrapper_t t1 t2 pass = 
     (fun _ -> 
       match (JQuerySub.subtype_typ true env t1 t2), pass with
       | true, true
@@ -356,140 +378,285 @@ let subtyping_test () =
         (STest_failure (sprintf "%s SHOULD subtype %s, but it does not"
                           (JQ.string_of_typ t1) (JQ.string_of_typ t2)))) in
 
+  let wrapper_m m1 m2 pass = 
+    (fun _ -> 
+      match (JQuerySub.subtype_mult true env m1 m2), pass with
+      | true, true
+      | false, false -> ()
+      | true, false -> raise 
+        (STest_failure (sprintf "%s should NOT subtype %s, but it does"
+                          (JQ.string_of_mult m1) (JQ.string_of_mult m2)))
+      | false, true -> raise 
+        (STest_failure (sprintf "%s SHOULD subtype %s, but it does not"
+                          (JQ.string_of_mult m1) (JQ.string_of_mult m2)))) in
+
 
   let fmsg d n = (sprintf "Subtyping test %n failed.\nDescription: %s"n d) in
+
+  let mp = H.mp in
+
+  let open JQ in
 
   test_harness_many [
 
     (*** TDom subtyping tests ***)
     
-    ((fmsg "DivElement <: DivElement"),
-     (wrapper 
-       (H.tdom "Tweet1" "div" ["*"])
-       (H.tdom "Tweet1" "div" ["*"])
-       true));
+    (* ((fmsg "DivElement <: DivElement"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Tweet1" "div" ["*"]) *)
+    (*    (H.tdom "Tweet1" "div" ["*"]) *)
+    (*    true)); *)
 
-    ((fmsg "DivElement <: Element"),
-     (wrapper 
-       (H.tdom "Tweet1" "div" ["*"])
-       (H.tdom "Tweet1" "" ["*"])
-       true));
+    (* ((fmsg "DivElement <: Element"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Tweet1" "div" ["*"]) *)
+    (*    (H.tdom "Tweet1" "" ["*"]) *)
+    (*    true)); *)
 
-    ((fmsg "Element </: DivElement"),
-     (wrapper 
-       (H.tdom "Tweet1" "" ["*"])
-       (H.tdom "Tweet1" "div" ["*"])
-       false));
+    (* ((fmsg "Element </: DivElement"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Tweet1" "" ["*"]) *)
+    (*    (H.tdom "Tweet1" "div" ["*"]) *)
+    (*    false)); *)
 
-    ((fmsg "Tweet1 <: Tweet2"),
-     (wrapper 
-       (H.tdom "Tweet1" "div" ["*"])
-       (H.tdom "Tweet2" "div" ["*"])
-       true));
+    (* ((fmsg "Tweet1 <: Tweet2"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Tweet1" "div" ["*"]) *)
+    (*    (H.tdom "Tweet2" "div" ["*"]) *)
+    (*    true)); *)
 
-    ((fmsg "Tweet2 <: Tweet1"),
-     (wrapper 
-       (H.tdom "Tweet2" "div" ["*"])
-       (H.tdom "Tweet1" "div" ["*"])
-       true));
+    (* ((fmsg "Tweet2 <: Tweet1"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Tweet2" "div" ["*"]) *)
+    (*    (H.tdom "Tweet1" "div" ["*"]) *)
+    (*    true)); *)
 
-    ((fmsg "TDom <: TUnion"),
-     (wrapper
-        (H.tdom "Tweet1" "div" ["*"])
-        (H.tu
-           (H.tdom "Tweet2" "div" ["*"])
-           (H.tdom "Tweet3" "div" ["*"]))
-       true));
+    (* ((fmsg "TDom <: TUnion"), *)
+    (*  (wrapper_t *)
+    (*     (H.tdom "Tweet1" "div" ["*"]) *)
+    (*     (H.tu *)
+    (*        (H.tdom "Tweet2" "div" ["*"]) *)
+    (*        (H.tdom "Tweet3" "div" ["*"])) *)
+    (*    true)); *)
 
-    ((fmsg "TDom </: TUnion"),
-     (wrapper
-        (H.tdom "Tweet1" "div" ["*"])
-        (H.tu
-           (H.tdom "Author" "div" ["*"])
-           (H.tdom "Content1" "div" ["*"]))
-       false));
+    (* ((fmsg "TDom </: TUnion"), *)
+    (*  (wrapper_t *)
+    (*     (H.tdom "Tweet1" "div" ["*"]) *)
+    (*     (H.tu *)
+    (*        (H.tdom "Author" "div" ["*"]) *)
+    (*        (H.tdom "Content1" "div" ["*"])) *)
+    (*    false)); *)
 
-    ((fmsg "TDom </: TUnion t2"),
-     (wrapper
-        (H.tdom "Tweet1" "" ["*"])
-        (H.tu
-           (H.tdom "Tweet2" "div" ["*"])
-           (H.tdom "Tweet3" "div" ["*"]))
-       false));
+    (* ((fmsg "TDom </: TUnion t2"), *)
+    (*  (wrapper_t *)
+    (*     (H.tdom "Tweet1" "" ["*"]) *)
+    (*     (H.tu *)
+    (*        (H.tdom "Tweet2" "div" ["*"]) *)
+    (*        (H.tdom "Tweet3" "div" ["*"])) *)
+    (*    false)); *)
 
-    ((fmsg "TUnion <: TDom"),
-     (wrapper 
-        (H.tu 
-           (H.tdom "Tweet2" "div" ["*"])
-           (H.tdom "Tweet3" "div" ["*"]))
-        (H.tdom "Tweet1" "div" ["*"])
+    (* ((fmsg "TUnion <: TDom"), *)
+    (*  (wrapper_t  *)
+    (*     (H.tu  *)
+    (*        (H.tdom "Tweet2" "div" ["*"]) *)
+    (*        (H.tdom "Tweet3" "div" ["*"])) *)
+    (*     (H.tdom "Tweet1" "div" ["*"]) *)
+    (*     true)); *)
+
+
+    (* ((fmsg "TUnion </: TDom t1"), *)
+    (*  (wrapper_t  *)
+    (*     (H.tu  *)
+    (*        (H.tdom "Tweet1" "div" ["*"]) *)
+    (*        (H.tdom "Content1" "div" ["*"])) *)
+    (*     (H.tdom "Tweet1" "div" ["*"]) *)
+    (*     false)); *)
+
+    (* ((fmsg "TUnion </: TDom t2"), *)
+    (*  (wrapper_t  *)
+    (*     (H.tu  *)
+    (*        (H.tdom "Author" "div" ["*"]) *)
+    (*        (H.tdom "Tweet1" "div" ["*"])) *)
+    (*     (H.tdom "Tweet1" "div" ["*"]) *)
+    (*     false)); *)
+
+    (* ((fmsg "TUnion </: TDom t3"), *)
+    (*  (wrapper_t  *)
+    (*     (H.tu  *)
+    (*        (H.tdom "Author" "div" ["*"]) *)
+    (*        (H.tdom "Content1" "div" ["*"])) *)
+    (*     (H.tdom "Tweet1" "div" ["*"]) *)
+    (*     false)); *)
+
+    (* ((fmsg "TUnion <: TUnion t1"), *)
+    (*  (wrapper_t  *)
+    (*     (H.tu  *)
+    (*        (H.tdom "Author" "div" ["*"]) *)
+    (*        (H.tdom "Content1" "div" ["*"])) *)
+    (*     (H.tu  *)
+    (*        (H.tdom "Author" "div" ["*"]) *)
+    (*        (H.tdom "Content1" "div" ["*"])) *)
+    (*     true)); *)
+
+    (* ((fmsg "inter1 <: inter2 t1"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Tweet1" "div" ["p"]) *)
+    (*    (H.tdom "Tweet1" "div" ["div"]) *)
+    (*    true)); *)
+
+    (* ((fmsg "inter1 <: inter2 t2"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Tweet1" "div" [".tweet"]) *)
+    (*    (H.tdom "Tweet2" "div" ["*"]) *)
+    (*    true)); *)
+
+    (* ((fmsg "inter1 <: inter2 t3"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Author" "div" [".tweet"]) *)
+    (*    (H.tdom "Content2" "div" [".tweet"]) *)
+    (*    true)); *)
+
+    (* ((fmsg "inter1 </: inter2 t1"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Content1" "div" ["* > div.author + *"]) *)
+    (*    (H.tdom "Content2" "div" ["* > div.author + *"]) *)
+    (*    false)); *)
+
+    (* ((fmsg "inter1 </: inter2 t2"), *)
+    (*  (wrapper_t  *)
+    (*    (H.tdom "Author" "div" [".author"]) *)
+    (*    (H.tdom "Author" "div" [".random"]) *)
+    (*    false)); *)
+
+    (*** MSum subtyping tests ***)
+
+    ((fmsg "Nothing can subtype an MSum" ),
+     (wrapper_m
+        (MOne (mp ["Element"]))
+        (H.msums [MOne (mp ["Element"]);
+                  MOne (mp ["Element"]);]))
+       false);
+
+    ((fmsg "MSum MSum subtyping invariant 1"),
+     (wrapper_m
+        (H.msums [MOne (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);])
+        (H.msums [MZeroOne (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);])
+        false));
+
+
+
+    ((fmsg "MSum MSum subtyping invariant 2"),
+     (wrapper_m
+        (H.msums [MZero (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);])
+        (H.msums [MOnePlus (mp ["Element"]);
+                  MZero (mp ["Element"]);])
         true));
 
-
-    ((fmsg "TUnion </: TDom t1"),
-     (wrapper 
-        (H.tu 
-           (H.tdom "Tweet1" "div" ["*"])
-           (H.tdom "Content1" "div" ["*"]))
-        (H.tdom "Tweet1" "div" ["*"])
-        false));
-
-    ((fmsg "TUnion </: TDom t2"),
-     (wrapper 
-        (H.tu 
-           (H.tdom "Author" "div" ["*"])
-           (H.tdom "Tweet1" "div" ["*"]))
-        (H.tdom "Tweet1" "div" ["*"])
-        false));
-
-    ((fmsg "TUnion </: TDom t3"),
-     (wrapper 
-        (H.tu 
-           (H.tdom "Author" "div" ["*"])
-           (H.tdom "Content1" "div" ["*"]))
-        (H.tdom "Tweet1" "div" ["*"])
-        false));
-
-    ((fmsg "TUnion <: TUnion t1"),
-     (wrapper 
-        (H.tu 
-           (H.tdom "Author" "div" ["*"])
-           (H.tdom "Content1" "div" ["*"]))
-        (H.tu 
-           (H.tdom "Author" "div" ["*"])
-           (H.tdom "Content1" "div" ["*"]))
+    ((fmsg "MSum MSum subtyping invariant 3"),
+     (wrapper_m
+        (H.msums [MZeroOne (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);])
+        (H.msums [MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);])
         true));
-
-    ((fmsg "inter1 <: inter2 t1"),
-     (wrapper 
-       (H.tdom "Tweet1" "div" ["p"])
-       (H.tdom "Tweet1" "div" ["div"])
-       true));
-
-    ((fmsg "inter1 <: inter2 t2"),
-     (wrapper 
-       (H.tdom "Tweet1" "div" [".tweet"])
-       (H.tdom "Tweet2" "div" ["*"])
-       true));
-
-    ((fmsg "inter1 <: inter2 t3"),
-     (wrapper 
-       (H.tdom "Author" "div" [".tweet"])
-       (H.tdom "Content2" "div" [".tweet"])
-       true));
-
-    ((fmsg "inter1 </: inter2 t1"),
-     (wrapper 
-       (H.tdom "Content1" "div" ["* > div.author + *"])
-       (H.tdom "Content2" "div" ["* > div.author + *"])
-       false));
-
-    ((fmsg "inter1 </: inter2 t2"),
-     (wrapper 
-       (H.tdom "Author" "div" [".author"])
-       (H.tdom "Author" "div" [".random"])
-       false));
     
+    ((fmsg "MSum MSum subtyping invariant 5"),
+     (wrapper_m
+        (H.msums [MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);])
+        (H.msums [MZeroOne (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);
+                  MOne (mp ["Element"])])
+      false));
+
+
+    ((fmsg "MSum MSum subtyping invariant 6"),
+     (wrapper_m
+        (H.msums [MZeroOne (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);
+                  MOne (mp ["Element"])])
+        (H.msums [MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);
+                  MOnePlus (mp ["Element"]);])
+        false));
+
+
+    ((fmsg "MSum MSum subtyping invariant 7"),
+     (wrapper_m
+        (H.msums [MOne (mp ["Element"]);
+                  MOne (mp ["Element"]);])
+        (H.msums [MOne (mp ["Element"]);
+                  MZeroOne (mp ["Element"]);])
+        false));
+
+    ((fmsg "MSum: Canonicalization required"),
+     (wrapper_m
+        (H.msums [MZero (mp ["Element"]);
+                  MOne (mp ["Element"]);
+                  MZero (mp ["Element"]);
+                  MOne (mp ["Element"]);])
+        (H.msums [MOne (mp ["Element"]);
+                  MOne (mp ["Element"])])
+        true));
+
+    ((fmsg "MSum: Canonicalization required, but MSum eliminated"),
+     (wrapper_m
+        (H.msums [MZero (mp ["Element"]);
+                  MOne (mp ["Element"]);
+                  MZero (mp ["Element"]);
+                  MZero (mp ["Element"]);])
+        (H.msums [MOne (mp ["Element"]);
+                  MOne (mp ["Element"])])
+        false));
+
+
+    ((fmsg "MSum: contained typs do not subtype"),
+     (wrapper_m
+        (H.msums [MOne (mp ["Element"]);
+                  MOne (mp ["DivElement"]);])
+        (H.msums [MOne (mp ["DivElement"]);
+                  MOne (mp ["DivElement"])])
+        false));
+
+
+    (* This currently subtypes. Need to think harder about MSum subtyping rules *)
+    ((fmsg "MSum: contained typs do not subtype t2"),
+     (wrapper_m
+        (H.msums [MOne (mp ["DivElement"]);
+                  MOne (mp ["DivElement"]);])
+        (H.msums [MOne (mp ["DivElement"]);
+                  MOne (mp ["Element"])])
+        false));
+
+
+    ((fmsg "MSum: contained typs do not subtype t2"),
+     (wrapper_m
+        (H.msums [MOne (mp ["DivElement"]);
+                  MOne (mp ["DivElement"]);])
+        (H.msums [MOne (mp ["DivElement"]);
+                  MOne (mp ["Element"])])
+        false));
+
   ]
 
 (* END subtyping_test *)
@@ -1021,15 +1188,7 @@ let structure_compilation_test () =
     end in
 
   (* Helper: builds an MPlain from a list of ids. *)
-  let b_mp (ts : string list) : JQ.multiplicity = match ts with
-    | [] -> failwith "Can't build type with no ids"
-    | _ -> 
-      let catch_tany t = if t = "Bot" then TBot else TId t in
-      let built_typ = List.fold_left (fun acc t -> 
-        (* Fix so that we can represent Any in string form *)
-        TUnion (None, catch_tany t, acc))
-        (catch_tany (List.hd ts)) (List.tl ts) in
-      MPlain (TStrobe built_typ) in
+  let b_mp = H.mp in
 
   (* Helper: builds a clauseMap from a (id * multiplicity) list.
      Adds to the original clauseMap, cm *)
@@ -1047,8 +1206,8 @@ let structure_compilation_test () =
 
   (* Helper: builds an MSum from a list of multiplicities *)
   let b_msum (ms : multiplicity list) : multiplicity = match ms with
-    | [] -> failwith "Simple_tests: structure_compilation_test: Need at least two multiplicites to build an MSum, fool!"
-    | [m] -> failwith "Simple_tests: structure_compilation_test: Need at least two multiplicities to build an MSum, fool!"
+    | []
+    | [_] -> failwith "Simple_tests: structure_compilation_test: Need at least two multiplicities to build an MSum, fool!"
     | hd::tl -> List.fold_left (fun acc m -> MSum (m,acc)) hd tl in
 
 
@@ -1381,11 +1540,11 @@ let run_tests () =
     (* test7 (); *)
     (* well_formed_test (); *)
     (raise_exns [
-      expose_tdoms_test;
+      (* expose_tdoms_test; *)
       subtyping_test;
-      structure_well_formed_test;
-      structure_compilation_test;
-      selector_tests;
+      (* structure_well_formed_test; *)
+      (* structure_compilation_test; *)
+      (* selector_tests; *)
     ]);
     (* test5 (); *)
     Printf.eprintf "All tests passed!";

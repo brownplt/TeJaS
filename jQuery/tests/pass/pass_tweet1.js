@@ -5,10 +5,10 @@
                    div
                    optional classes = [first, last]
                    classes = [tweet]
-                   (Author : div classes = [author]
+                   (Author : div classes = [author] optional classes=[tag]
                      (Followers: div classes=[followers] optional classes = [hidden]))
                    (Time : div classes = [time] )
-                   (Content : div classes = [content])
+                   (Content : div classes = [content] optional classes=[tag])
                    <Content>
                )
 
@@ -280,7 +280,7 @@ var a1_nnpp = t1.children().next().next().prev().prev();
 
 /*** Find tests ****/
 
-var t1_find = t1.find();
+// var t1_find = t1.find();
 
 
 ///*: Num */a1.prevAll();
@@ -299,4 +299,7 @@ var t1_find = t1.find();
 ///*: jQ<Sum<1<Author>, 1+<Content + Time>>, AnyJQ> */t1_find.prev();
 
 ///*: Num  */t1_find.prevAll();
-/*: jQ<1+<Author+Content+Time>, AnyJQ> */t1_find.prevAll();
+// /*: jQ<1+<Author+Content+Time>, AnyJQ> */t1_find.prevAll();
+
+
+/*: Num */$(".tweet > *");

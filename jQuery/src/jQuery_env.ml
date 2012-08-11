@@ -229,62 +229,6 @@ struct
   let parentsAll included env senv t = transitive parent included env senv t
 
 
-  (*   (\* The terminating condition of transitive is: *)
-  (*      1. Two consecutive results of m<Element>, regardless of what m is.  *)
-  (*      2. Two consecutive results of the exact same multiplicity (including the type inside the multiplicity). *)
-
-  (*      Well-formedness checking should prevent any infinite loops, but this could use more testing. *)
-  (*   *\) *)
-  (* let rec transitive (env : env) (senv : structureEnv) (t : typ) (f : structureEnv -> typ -> multiplicity) : multiplicity = *)
-  (*   Strobe.traceMsg "In transitive, "; *)
-  (*   let open JQuery in *)
-  (*   let next = canonical_multiplicity (f senv t) in *)
-  (*   Strobe.traceMsg "next is: %s" (string_of_mult next); *)
-  (*   let recur () : multiplicity =  *)
-  (*     let (s, fs) = extract_mult next in *)
-  (*     begin *)
-  (*       match s with *)
-  (*       | STyp next_t -> *)
-  (*         if JQuery.equivalent_typ env t next_t then next else *)
-  (*         MSum (next, fs (SMult (transitive env senv next_t f))) *)
-  (*       | SMult m -> next *)
-  (*     end in *)
-  (*   match next with *)
-  (*   | MZero _ *)
-  (*   | MSum (_, _) *)
-  (*   | MId _ *)
-  (*   | _ -> if (t = TStrobe (Strobe.TId "Element")) || (t = TStrobe (Strobe.TTop)) *)
-  (*     then begin match next with *)
-  (*     | MZeroPlus (MPlain (TStrobe (Strobe.TId "Element"))) *)
-  (*     | MZeroPlus (MPlain (TStrobe Strobe.TTop)) *)
-  (*     | MZeroOne (MPlain (TStrobe (Strobe.TId "Element"))) *)
-  (*     | MZeroOne (MPlain (TStrobe Strobe.TTop)) *)
-  (*     | MZero (MPlain (TStrobe (Strobe.TId "Element"))) *)
-  (*     | MZero (MPlain (TStrobe Strobe.TTop)) *)
-  (*     | MOnePlus (MPlain (TStrobe (Strobe.TId "Element"))) *)
-  (*     | MOnePlus (MPlain (TStrobe Strobe.TTop)) *)
-  (*     | MOne (MPlain (TStrobe (Strobe.TId "Element"))) *)
-  (*     | MOne (MPlain (TStrobe Strobe.TTop)) -> next *)
-  (*     | _ -> recur () *)
-  (*     end *)
-  (*     else recur () *)
-
-  (* let nextall (env : env) (senv : structureEnv) (t : typ) : multiplicity = *)
-  (*   MOne (MPlain t) *)
-  (*   (\* transitive env senv t nextsib *\) *)
-
-  (* let prevall (env : env) (senv : structureEnv) (t : typ) : multiplicity = *)
-  (*   MOne (MPlain t) *)
-  (*   (\* transitive env senv t prevsib *\) *)
-
-  (* let parents (env : env) (senv : structureEnv) (t : typ) : multiplicity = *)
-  (*   MOne (MPlain t) *)
-  (*   (\* transitive env senv t parent *\) *)
-
-  (* let find (env : env) (senv : structureEnv) (t : typ) : multiplicity = *)
-  (*   MOne (MPlain t) *)
-  (*   (\* transitive env senv t children *\) *)
-
   (** Function: filterSel
       ==============================
       filterSel takes a type environment env, a backform environment benv, a type t, and a selector sel. It extracts the selector corresponding to its type argument, and intersects that selector with sel, resulting in inter. inter is then backformed into ids and both are wrapped in an MSum of TDoms. filterSel only deals with TDoms, TIds and TUnions. It should not encounter any other type.
@@ -317,9 +261,50 @@ struct
     MZero (MPlain (TStrobe (Strobe.TBot)))
 
 
-  (* returns an MSum of TDoms *)
-  let jQuery (env : env) (benv : Desugar.backformEnv) (sel : string) : multiplicity =
-    MOne (MPlain (TStrobe Strobe.TBot))
+  (* Fold over every selector in benv. Intersect each, return MSum of 1+ of the 
+     TDoms for each id found, tacking on the given sel to maintain precision. 
+
+
+     Proposed algorithm:
+
+     1) parse sel into regsel
+     2) Find the leftmost simple that matches a toplevel structure decl
+     3) Intersect next simple with x_of those structures where 'x' is the 
+        combinator.
+     4) Keep going until you get nothing OR you reach the rightmost simple sel
+
+     ... or something like that.. *)
+
+
+  let jQuery (env : env) (benv : Desugar.backformEnv) (select_str : string) 
+      : multiplicity =
+
+    (* (\* Convert sel to list of regsels. This should be a singleton list *\) *)
+    (* let select_rs = match Css.sel2regsels select_str with  *)
+    (*   | [rs] -> rs  *)
+    (*   | failwith "JQuery_env: jQuery: should have gotten just one regsel from sel" in *)
+
+    (* (\* Convert backform map to a map of regsel lists *\) *)
+    (* let structure_rss = List.map (fun (id, sel) -> *)
+    (*   (id, Css.sel2regsels) benv) in *)
+
+
+    (* (\* Find the part of select_rs that starts matching something in *)
+    (*    the local structure *\)  *)
+    (* let get_start = List.fold_left (fun rest (comb,simple) -> *)
+      
+      
+    List.fold_left (fun m (id,sel2) -> 
+      if (Css.is_overlapped sel sel2) then
+        let nodeType = match fst (lookup_typ_id id env) with 
+          | TDom (_,_,nt,_) -> nt 
+          | _ -> failwith 
+            "JQuery_env: jQuery: should have exposed a TDom" in
+        let m_piece = MOnePlus (MPlain (TDom (None,id,nodeType,sel))) in
+        if m = MZero (MPlain (TStrobe Strobe.TBot)) then m_piece else MSum (m, m_piece)
+      else m) (MZero (MPlain (TStrobe Strobe.TBot))) benv
+      
+
     (* (\* check whether sel is legal in the context of given local structure *\) *)
     (* let env_specs = List.flatten (List.map Css.speclist (List.map snd2 benv)) in *)
     (* let sel_specs = Css.speclist (Css.singleton sel) in *)
@@ -641,7 +626,7 @@ struct
         Strobe.traceMsg "resolving selector primitive";
         begin match Strobe.Pat.singleton_string pat with
         | Some s -> 
-          let m = canonical_multiplicity (jQuery env (fst senv) s) in
+          let m = (jQuery env (fst senv) s) in
           Strobe.traceMsg "jQuery(%s) returns %s" s (string_of_mult m);
           TApp (TStrobe (Strobe.TId "jQ"), [(SMult m); STyp (TStrobe (Strobe.TId "AnyJQ"))])
         | None -> failwith "pattern cannot be converted to string??"

@@ -209,7 +209,12 @@ struct
           | _ -> (cache, false))
     end
       
-  and simplify_msum m = 
+
+  and simplify_msum m =
+    simplify_msum' m
+    (* Strobe.trace "JQUERYsubtyping: simplify_msum" (string_of_mult m) *)
+    (* (fun _ -> true) (fun _ -> simplify_msum' m) *)
+  and simplify_msum' m = 
     let c_u t1 t2 = canonical_type (embed_t (Strobe.TUnion(None, extract_t t1, extract_t t2))) in
     let s m = simplify_msum m in match canonical_multiplicity m with
     | MSum (m1, m2) -> begin match s m1, s m2 with
@@ -259,7 +264,8 @@ struct
     end
     | _ -> m
 
-  and subtype_mult lax env cache m1 m2 = subtype_mult' lax env cache m1 m2
+  and subtype_mult lax env cache m1 m2 = 
+    subtype_mult' lax env cache m1 m2
     (* Strobe.trace "JQUERY_subtype_mult" (string_of_mult m1 ^ " <?: " ^ string_of_mult m2) snd2 (fun () -> subtype_mult' lax env cache m1 m2) *)
   and subtype_mult' lax (env : env) cache m1 m2 = 
     let subtype_mult = subtype_mult lax env in
@@ -284,7 +290,7 @@ struct
     | MOne (MId n1), MZeroOne (MId n2)
     | MOne (MId n1), MOnePlus (MId n2)
     | MOne (MId n1), MZeroPlus (MId n2) when n2 = n1 -> cache, true
-    | MOne _, _ -> (cache, false) (* not canonical! *)
+    | MOne _, _ ->  (cache, false) (* not canonical! *)
     | MZero (MPlain t1), MZero (MPlain t2)
     | MZero (MPlain t1), MZeroOne (MPlain t2)
     | MZero (MPlain t1), MZeroPlus (MPlain t2) -> subtype_typ cache t1 t2
@@ -329,6 +335,7 @@ struct
             (c, false) m2_parts)) (cache, true) m1_parts
     end
     | MSum _, _ -> subtype_mult cache (simplify_msum m1) m2 (* S-Transitive *)
+    | _, MSum _ (* Unsound: simplfied MSum is a supertype of original MSum *)
     | MPlain _, _ -> (cache, false) (* not canonical! *)
     )
 

@@ -9,6 +9,7 @@ module type CSS = sig
   val p_css : t -> FormatExt.printer
   val targets : t -> Css_syntax.SimpleSelSet.t
   val speclist : t -> Css_syntax.spec list
+  val sel2regsels : t -> Css_syntax.regsel list
 end
 
 module Map2Sets (Src : Set.S) (Dst : Set.S) = struct
@@ -119,6 +120,8 @@ module RealCSS = struct
   let sib2regsel = sib2regsel Sib
   let kid2regsel = kid2regsel Kid
   let desc2regsel = desc2regsel Desc
+
+  let sel2regsels sel = SelSet.fold (fun s rs -> (desc2regsel s)::rs) sel []
 
   let speclist sels =
     let regsels = SelSet.fold (fun d acc -> (desc2regsel d)::acc) sels [] in

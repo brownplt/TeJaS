@@ -11,7 +11,6 @@
                           (PlayTitle : td classes = [title])
                           (PlayGenre : td classes = [genre])
                           (PlayYear : td classes = [year]))
-              <PlaysRow>
               <PlaysRow>);
 
 (Sonnets : h2
