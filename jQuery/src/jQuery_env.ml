@@ -18,7 +18,7 @@ module MakeExt
   with type baseKind = JQuery.baseKind
   with type baseBinding = JQuery.baseBinding
   with type sel = JQuery.sel
-  with type env = JQuery.env) 
+  with type env = JQuery.env)
   (Env : TYP_ENV
    with type typ = JQuery.typ
   with type kind = JQuery.kind
@@ -60,7 +60,7 @@ struct
   let (senv : structureEnv ref) = ref Desugar.empty_structureEnv
 
   (* Consumes:
-     env 
+     env
      t (typ)
 
      Produces t if t is of the form:
@@ -72,33 +72,33 @@ struct
     match unwrap_t t with
     | TDom _ -> t
     | _ -> begin match extract_t t with
-      | Strobe.TUnion (s,t1,t2) -> 
-        embed_t (Strobe.TUnion 
-                   (s, (extract_t (expose_tdoms env (embed_t t1))), 
+      | Strobe.TUnion (s,t1,t2) ->
+        embed_t (Strobe.TUnion
+                   (s, (extract_t (expose_tdoms env (embed_t t1))),
                     (extract_t (expose_tdoms env (embed_t t2)))))
-      | Strobe.TInter (s,t1,t2) -> 
-        embed_t (Strobe.TInter 
-                   (s, (extract_t (expose_tdoms env (embed_t t1))), 
+      | Strobe.TInter (s,t1,t2) ->
+        embed_t (Strobe.TInter
+                   (s, (extract_t (expose_tdoms env (embed_t t1))),
                     (extract_t (expose_tdoms env (embed_t t2)))))
       | Strobe.TId "Element" -> t
       | Strobe.TId id -> expose_tdoms env (fst (lookup_typ_id id env))
       | t' ->  raise
-        (Strobe.Typ_error 
+        (Strobe.Typ_error
            (Pos.dummy,
             (Strobe.FixedString (sprintf "Malformed TDom: %s"(string_of_typ t)))))
     end
 
   (* Produces a multiplicity list *)
-  let rec get_all_x_of (env : env) (cm : Desugar.clauseMap) (t : typ) 
-      : multiplicity list = 
+  let rec get_all_x_of (env : env) (cm : Desugar.clauseMap) (t : typ)
+      : multiplicity list =
 
     let open JQuery in
-  
+
     (* Turns a TDoms or a TUnion of TDoms into a list of mults *)
     let rec to_list t = match (unwrap_t t) with
       | TStrobe (Strobe.TUnion (_,t1,t2)) ->
         (to_list (embed_t t1)) @ (to_list (embed_t t2))
-      | TDom (_,id,_,_) -> [IdMap.find id cm] 
+      | TDom (_,id,_,_) -> [IdMap.find id cm]
       | TStrobe (Strobe.TId "Element") -> [IdMap.find "Element" cm]
       | _ -> failwith "JQuery_env: get_all_x_of: encountered something other than a TDom"
     in
@@ -113,7 +113,7 @@ struct
   (*     MSum ((IdMap.find id cm), helper rest) *)
   (*   | [] -> failwith "impossible: empty list" *)
   (*   | _ -> failwith "JQuery_env: mult_of: found something other than a TDom in ts"; in *)
-      
+
   (* let (s, mf) = extract_mult *)
   (*   (canonical_multiplicity (helper (to_list (expose_tdoms env t)))) in *)
 
@@ -122,11 +122,11 @@ struct
   (* | _ -> failwith "JQuery_env: lookup_cm: failed to properly canonicalize return mult" *)
 
   (* end of lookup_cm *)
-      
+
   (* MSum every mult in ms and canonicalize *)
   let msum_ms (ms : multiplicity list) : multiplicity =
-    canonical_multiplicity 
-      (List.fold_left (fun macc m -> MSum (macc,m)) 
+    canonical_multiplicity
+      (List.fold_left (fun macc m -> MSum (macc,m))
          (MZero (MPlain (embed_t Strobe.TBot))) ms)
 
 
@@ -150,7 +150,7 @@ struct
     let ts = List.map (fun m -> match extract_mult m with
       | STyp t, _ -> t
       | SMult _, _ -> failwith (Printf.sprintf "Found a multiplicity with no type: %s" (string_of_mult m))) ms in
-    let union = List.fold_left (fun t1 t2 -> 
+    let union = List.fold_left (fun t1 t2 ->
       if t1 = Strobe.TBot then extract_t t2 else Strobe.TUnion(None, t1, extract_t t2))
       Strobe.TBot ts in
     canonical_multiplicity (make (embed_t union))
@@ -162,16 +162,16 @@ struct
     Strobe.traceMsg "In children, getChildren(%s) = %s ==> %s"
       (string_of_typ t) (String.concat ", " (List.map string_of_mult gotten)) (string_of_mult ret);
     ret
-    
-  let parent (env : env) (senv : structureEnv) (t : typ) : multiplicity = 
+
+  let parent (env : env) (senv : structureEnv) (t : typ) : multiplicity =
     let cenv = (snd senv) in
     munion_ms (get_all_x_of env cenv.Desugar.parent t)
-    
+
   let prev (env : env) (senv : structureEnv) (t : typ) : multiplicity =
     let cenv = (snd senv) in
     munion_ms (get_all_x_of env cenv.Desugar.prev t)
 
-  let next (env : env) (senv : structureEnv) (t : typ) : multiplicity = 
+  let next (env : env) (senv : structureEnv) (t : typ) : multiplicity =
     let cenv = (snd senv) in
     munion_ms (get_all_x_of env cenv.Desugar.next t)
 
@@ -180,7 +180,7 @@ struct
     | MSum (m1, m2) -> extract_sum m1 @ extract_sum m2
     | _ -> [m]
 
-  let transitive (op : env -> structureEnv -> typ -> multiplicity) 
+  let transitive (op : env -> structureEnv -> typ -> multiplicity)
       (included : env -> multiplicity -> multiplicity -> bool)
       (env : env) (senv : structureEnv) (t : typ) : multiplicity =
     let rec helper (acc : multiplicity list) (m : multiplicity) : multiplicity =
@@ -189,7 +189,7 @@ struct
       (*   (Printf.sprintf "acc = [%s], m = %s" (String.concat ", " (List.map string_of_mult acc)) (string_of_mult m)) *)
       (*   (fun _ -> true) (fun () -> helper' acc m) *)
     and helper' acc m =
-      let ret = 
+      let ret =
         match m with
         | MZero _ -> msum_ms acc
         | _ ->
@@ -261,72 +261,155 @@ struct
     MZero (MPlain (TStrobe (Strobe.TBot)))
 
 
-  (* Fold over every selector in benv. Intersect each, return MSum of 1+ of the 
-     TDoms for each id found, tacking on the given sel to maintain precision. 
+  (* Fold over every selector in benv. Intersect each, return MSum of 1+ of the
+     TDoms for each id found, tacking on the given sel to maintain precision.
 
 
      Proposed algorithm:
 
      1) parse sel into regsel
-     2) Find the leftmost simple that matches a toplevel structure decl
-     3) Intersect next simple with x_of those structures where 'x' is the 
-        combinator.
-     4) Keep going until you get nothing OR you reach the rightmost simple sel
+     2) parse benv into regsels
 
-     ... or something like that.. *)
+     Part 1: Find highest matches:
+     3) Find highest match
+     4) Remember:  attr-match or tag-match
+
+     Part 2: Match down from highest match point
+
+     Part 3: If highest was NOT attr-match, then continue
 
 
-  let jQuery (env : env) (benv : Desugar.backformEnv) (select_str : string) 
+     Part 2:
+  *)
+
+
+  let jQuery_fn (env : env) (senv : structureEnv) (select_str : string)
       : multiplicity =
 
-    (* (\* Convert sel to list of regsels. This should be a singleton list *\) *)
-    (* let select_rs = match Css.sel2regsels select_str with  *)
-    (*   | [rs] -> rs  *)
-    (*   | failwith "JQuery_env: jQuery: should have gotten just one regsel from sel" in *)
+    let open Css_syntax in
 
-    (* (\* Convert backform map to a map of regsel lists *\) *)
-    (* let structure_rss = List.map (fun (id, sel) -> *)
-    (*   (id, Css.sel2regsels) benv) in *)
+    let (benv,_) = senv in
 
 
-    (* (\* Find the part of select_rs that starts matching something in *)
-    (*    the local structure *\)  *)
-    (* let get_start = List.fold_left (fun rest (comb,simple) -> *)
-      
-      
-    List.fold_left (fun m (id,sel2) -> 
-      if (Css.is_overlapped sel sel2) then
-        let nodeType = match fst (lookup_typ_id id env) with 
-          | TDom (_,_,nt,_) -> nt 
-          | _ -> failwith 
-            "JQuery_env: jQuery: should have exposed a TDom" in
-        let m_piece = MOnePlus (MPlain (TDom (None,id,nodeType,sel))) in
-        if m = MZero (MPlain (TStrobe Strobe.TBot)) then m_piece else MSum (m, m_piece)
-      else m) (MZero (MPlain (TStrobe Strobe.TBot))) benv
-      
+    let p_dummy_tdom s = Printf.eprintf "%s\n"
+      (string_of_typ (TDom (None,"DUMMY",(embed_t (Strobe.TId "Element")),s))) in
 
-    (* (\* check whether sel is legal in the context of given local structure *\) *)
-    (* let env_specs = List.flatten (List.map Css.speclist (List.map snd2 benv)) in *)
-    (* let sel_specs = Css.speclist (Css.singleton sel) in *)
-    (* (\* sel_specs and env_specs should overlap, otherwise give a warning *\) *)
-    (* let overlap = List.exists (fun s -> List.mem s env_specs) sel_specs in *)
-    (* let open JQuery in *)
-    (* let s = Css.singleton sel in *)
-    (* let ids = backform benv s in *)
-    (* let sum = List.fold_left (fun acc id -> MSum (MOnePlus (MPlain (expose_tdoms env (TDom (None, (TStrobe (Strobe.TId id)), s)))), acc)) (MZero (MPlain (TStrobe (Strobe.TTop)))) ids in *)
-    (* match ids, overlap with *)
-    (* | [], true -> MZero (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))) *)
-    (* | [], false -> MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))) *)
-    (* | _, true -> sum *)
-    (* | _, false -> *)
-    (*   (\* adding element *\) *)
-    (*   MSum (MZeroPlus (MPlain (TDom (None, (TStrobe (Strobe.TId "Element")), s))), sum) *)
-
-  (**** End Local Structure ***)
+    (* Convert sel to list of regsels. This should be a singleton list *)
+    let select_rs = match Css.sel2regsels (Css.singleton select_str) with
+      | [rs] -> rs
+      | _ -> failwith "JQuery_env: jQuery: should have gotten just one regsel from sel" in
 
 
+    p_dummy_tdom (Css.regsel2sel select_rs);
 
-  let print_structureEnv lbl (senv : structureEnv) = 
+
+    (* Convert backform map to a map of singleton regsel lists *)
+    let structure_rss = List.map (fun (id, sel) ->
+      (id, (Css.sel2regsels sel))) benv in
+
+
+    (* Collect set of all specs that appear in benv *)
+
+    let isolated_specs = List.fold_left (fun spec_set (id, sels) ->
+      List.fold_left (fun spec_set rs ->
+        List.fold_left (fun spec_set (_,(_,sel_specs)) ->
+          List.fold_left (fun spec_set spec -> match spec with
+            (* Treat special classes as normal classes for comparison ease later *)
+            | SpSpecClass (s,_) -> SpecSet.add (SpClass s) spec_set
+            | _ -> SpecSet.add spec spec_set)
+            spec_set sel_specs)
+          spec_set rs)
+        spec_set sels)
+      SpecSet.empty structure_rss in
+
+    (* Helper function to determine if the given spec list contains isolated (local structure) spec *)
+    let is_isolated ss = List.exists (fun s -> SpecSet.mem s isolated_specs) ss in
+
+    (* Create a list of sels to match on.
+       For  each pair in select_rs:
+       1) Check to see if it contains a local structure spec (isolated)
+       2) Convert the rest of the pairs (including this one) to a sel
+       3) If isolated, then stop: cannot keep matching down the selector
+       4) If not isolated, move on and process the next pair in the list
+
+       Select_sels is a list of selectors, where the first is the shortest possible
+       part of select_rs starting at the TOP. The last is either the longest, or
+       the FIRST part of select_rs that starts with a simple with an isolated spec.
+
+       The bool isolated indicates whether or not at there was at least one isolated
+       spec in the list.
+    *)
+    let (select_sels,isolated) =
+      let rec helper rs = match rs with
+        | [] -> ([], false)
+        | (comb,((a,specs) as simple))::tl ->
+          let isolated = is_isolated specs in
+          (* Convert this piece of the regsel as if it's the whole thing *)
+          let sel = Css.regsel2sel ((Desc,simple)::tl) in
+          p_dummy_tdom sel;
+          (* Css.p_css (Css.singleton "div.a") Format.std_formatter; *)
+          if isolated then ([sel],true)
+          else
+            let (ss,i) = (helper tl) in
+            ((sel::ss),i) in
+      helper select_rs in
+
+    (* Strobe.traceMsg "Is isolated: %b"isolated; *)
+
+    List.iter (fun s -> p_dummy_tdom s;) select_sels;
+
+    (* Matches a piece of local structure (id, sel) against each sel
+       in select_sels, in order of greatest to least precision. If a match
+       is found, generate TDom and STOP matching, as the first match is
+       the most precise. *)
+    let get_match (b : (id * Css.t)) : multiplicity option  =
+      let (id,sel_t) = b in
+      let rec helper sel_ss = match sel_ss with
+        | [] -> None (* No match *)
+        | sel_s::tl ->
+          Printf.eprintf "Sel1:\n";
+          p_dummy_tdom sel_t;
+          Printf.eprintf "Sel2:\n";
+          p_dummy_tdom sel_s;
+          let inter = Css.intersect sel_t sel_s in
+          Printf.eprintf "Intersection:\n";
+          p_dummy_tdom inter;
+          let matched = (Css.is_equal inter sel_t) in
+          Printf.eprintf "matched: %b\n"matched;
+          if matched then (* Build TDom *)
+            let cur_tdom = fst (lookup_typ_id id env) in begin
+              match cur_tdom with
+                | TDom (s,id,typ,_) -> Some (MOnePlus (MPlain (TDom (s,id,typ,inter))))
+                | _ ->
+                  failwith "JQuery_env: jQuery_fn: IMPOSSIBLE: Should have gotten a tdom on lookup"
+            end
+          else helper tl in
+      helper select_sels in
+
+    let get_matches =
+      List.fold_left (fun acc b -> match get_match b with
+        | Some t -> t::acc
+        | None -> acc) [] benv in
+
+    (* Now build the resulting multiplicity *)
+
+    match get_matches,isolated with
+      | [],false -> MZeroPlus (MPlain (embed_t (Strobe.TId "Element")))
+      | [],true -> MZero (MPlain (embed_t (Strobe.TId "Element")))
+      | [m],false -> MSum ((MZeroPlus (MPlain (embed_t (Strobe.TId "Element")))),m)
+      | [m],true -> Strobe.traceMsg "Got to singleton m case"; m
+      | ms,true -> msum_ms ms
+      | ms,false -> msum_ms ((MZeroPlus ((MPlain (embed_t (Strobe.TId "Element")))))::ms)
+
+
+
+  (*** END jQuery_fn ***)
+
+
+
+  (*** END Local Structure ***)
+
+  let print_structureEnv lbl (senv : structureEnv) =
     let open FormatExt in
     let open Desugar in
     let (benv, cenv) = senv in
@@ -341,17 +424,17 @@ struct
                (IdMapExt.p_map ""
                   empty print_benv_key print_benv_val benv);
                text "Clause Environment";
-               (IdMapExt.p_map "Children Clause" 
+               (IdMapExt.p_map "Children Clause"
                   empty print_cenv_key print_cenv_val cenv.children);
-               (IdMapExt.p_map "Parent Clause" 
+               (IdMapExt.p_map "Parent Clause"
                   empty print_cenv_key print_cenv_val cenv.parent);
-               (IdMapExt.p_map "Prev Sib Clause" 
+               (IdMapExt.p_map "Prev Sib Clause"
                   empty print_cenv_key print_cenv_val cenv.prev);
-               (IdMapExt.p_map "Next Sib Clause" 
+               (IdMapExt.p_map "Next Sib Clause"
                   empty print_cenv_key print_cenv_val cenv.next)]
 
 
-  let print_env env fmt = 
+  let print_env env fmt =
     Env.print_env env fmt
 
   let parse_env_buf = Env.parse_env_buf
@@ -360,7 +443,7 @@ struct
   let lookup_lbl = Env.lookup_lbl
   let clear_labels = Env.clear_labels
 
-  let bind x b (env : env) : env = 
+  let bind x b (env : env) : env =
     let bs = try IdMap.find x env with Not_found -> [] in
     let bs = List.filter (fun b' -> match unwrap_b b', b with
       | BMultBound _, BMultBound _
@@ -373,9 +456,9 @@ struct
   let bind' x b (env : env) = bind x (JQuery.embed_b b) env
   let bind_id x t (env : env) = bind' x (Strobe.BTermTyp (JQuery.extract_t t)) env
   let bind_lbl x t env = bind' x (Strobe.BLabelTyp (JQuery.extract_t t)) env
-  let raw_bind_typ_id x t k (env : env) = 
-    match JQuery.embed_k k with 
-    | JQuery.KMult _ -> raise (Strobe.Kind_error (Printf.sprintf "Trying to bind %s at type %s with kind %s" 
+  let raw_bind_typ_id x t k (env : env) =
+    match JQuery.embed_k k with
+    | JQuery.KMult _ -> raise (Strobe.Kind_error (Printf.sprintf "Trying to bind %s at type %s with kind %s"
                                                     x (Strobe.string_of_typ t) (Strobe.string_of_kind k)))
     | _ -> bind' x (Strobe.BTypBound (t, k)) env
   let raw_bind_mult_id x t m (env : env) = bind x (BMultBound (t, m)) env
@@ -383,7 +466,7 @@ struct
   let kind_check env recIds (s : sigma) : kind  =
     JQueryKinding.kind_check_sigma env recIds s
 
-  let bind_rec_typ_id (x : id) recIds (s : sigma) (env : env) = 
+  let bind_rec_typ_id (x : id) recIds (s : sigma) (env : env) =
     let k = kind_check env recIds s in
     match s with
     | STyp t -> raw_bind_typ_id x (JQuery.extract_t t) (JQuery.extract_k k) env
@@ -393,7 +476,7 @@ struct
   let bind_mult_id x m env = bind_rec_typ_id x [] (SMult m) env
 
   let bind_recursive_types (xts : (id * typ) list) (env : env) =
-    let env' = List.fold_left (fun ids (x, t) -> 
+    let env' = List.fold_left (fun ids (x, t) ->
       raw_bind_typ_id x (JQuery.extract_t t) Strobe.KStar ids) env xts in
     timefn "Bindrec/Kind checking" (List.fold_left (fun env (x, t) -> bind_typ_id x t env) env') xts
 
@@ -413,9 +496,9 @@ struct
     | _ -> raise Not_found
 
   let rec set_global_object (env : env) cname =
-    let (ci_typ, ci_kind) = 
+    let (ci_typ, ci_kind) =
       try lookup_typ_id cname env
-      with Not_found -> 
+      with Not_found ->
         raise (Not_wf_typ ("global object, " ^ cname ^ ", not found")) in
     match (Strobe.expose env (Strobe.simpl_typ env (extract_t ci_typ)), extract_k ci_kind) with
     | Strobe.TRef (n, Strobe.TObject o), Strobe.KStar ->
@@ -424,7 +507,7 @@ struct
         if pres = Strobe.Present then
           match Strobe.Pat.singleton_string x with
           | Some s -> bind_id s (JQuery.embed_t (Strobe.TRef (n, t))) env
-          | None -> 
+          | None ->
             raise (Not_wf_typ (cname ^ " field was a regex in global"))
         else
           raise (Not_wf_typ "all fields on global must be present") in
@@ -433,32 +516,32 @@ struct
                                    string_of_typ (embed_t t)))
 
 
-  (* Consumes an env and a list of declarations 
+  (* Consumes an env and a list of declarations
      1) Gathers all top level declComps, and desugars them.
      2) Updates senv with compiled structureEnv
      3) Add local structure bindings returned form desugar into the env
      4) Add all non-structure decls into the env *)
-  let extend_global_env env lst = 
+  let extend_global_env env lst =
     let open Typedjs_writtyp.WritTyp in
 
     (* 1) Partition lst into local structure declarations and non-structure
        declarations *)
-    let (structure_decls, non_structure_decls) = 
+    let (structure_decls, non_structure_decls) =
       List.partition (fun d -> match d with
       | Decl _ -> true | _ -> false) lst in
 
     (* First gather structure declarations and compile into structureEnv *)
-    
+
     let top_level_declComps = List.map (fun d -> match d with
       | Decl (_,dc) -> dc | _ -> failwith "impossible") structure_decls in
 
 
     (* Compile bindings and structureEnv from local structure *)
-    let (bindings, compiled_senv) = 
+    let (bindings, compiled_senv) =
       let wfs = (Desugar.well_formed_structure top_level_declComps) in
       Desugar.desugar_structure wfs in
     (* Perform well-formedness test for local structure *)
-    
+
     (* 2) Update senv *)
     senv := compiled_senv;
 
@@ -477,13 +560,13 @@ struct
     (* 4) Finally add all non-structure decls to the env *)
 
     let lst = non_structure_decls in
-           
+
     let desugar_typ p t = JQuery.extract_t (Desugar.desugar_typ p t) in
     let rec add recIds env decl = match decl with
-      | Decl (_, (name,_,_,_,_)) -> 
+      | Decl (_, (name,_,_,_,_)) ->
         failwith (sprintf "JQUERYextend_global_env: impossible: all local structure declarations should have already been compiled, but Decl %s was not." name)
       | EnvBind (p, x, typ) ->
-        (try 
+        (try
            ignore (lookup_id x env);
            raise (Not_wf_typ (x ^ " is already bound in the environment"))
          with Not_found ->
@@ -506,11 +589,11 @@ struct
       | ObjectTrio(pos, (c_id, c_typ), (p_id, p_typ), (i_id, i_typ)) ->
         (* add prototype field to constructor *)
         let c_typ = Strobe.expose_twith env (desugar_typ pos c_typ) in
-        let c_absent_pat = match c_typ with 
-          | Strobe.TRef(_, Strobe.TObject(f)) -> Strobe.absent_pat f 
+        let c_absent_pat = match c_typ with
+          | Strobe.TRef(_, Strobe.TObject(f)) -> Strobe.absent_pat f
           | _ -> Strobe.Pat.all in
-        let constructor_with = 
-          Strobe.TWith(c_typ, (Strobe.mk_obj_typ 
+        let constructor_with =
+          Strobe.TWith(c_typ, (Strobe.mk_obj_typ
                                  [Strobe.Pat.singleton "prototype", Strobe.Present,
                                   Strobe.TApp(Strobe.TPrim("Mutable"), [Strobe.TId(p_id)])]
                                  (Strobe.Pat.subtract c_absent_pat (Strobe.Pat.singleton "prototype")))) in
@@ -518,9 +601,9 @@ struct
         (* add constructor field to prototype *)
         let p_typ = (desugar_typ pos p_typ) in
         let p_typ = match p_typ with Strobe.TId _ -> Strobe.simpl_typ env p_typ | _ -> p_typ in
-        let (prototype_added_fields, prototype_with) = match p_typ with 
+        let (prototype_added_fields, prototype_with) = match p_typ with
           | Strobe.TWith(base, f) ->
-            (Strobe.fields f), Strobe.TWith(base, 
+            (Strobe.fields f), Strobe.TWith(base,
                                             (Strobe.mk_obj_typ
                                                ((Strobe.Pat.singleton "constructor", Strobe.Maybe,
                                                  Strobe.TId(c_id))::(Strobe.fields f))
@@ -528,41 +611,41 @@ struct
                                                   (Strobe.Pat.singleton "constructor"))))
           | Strobe.TRef(_, Strobe.TObject(f))
           | Strobe.TSource(_, Strobe.TObject(f)) ->
-            let temp = 
-              (Strobe.expose_twith env 
+            let temp =
+              (Strobe.expose_twith env
                  (Strobe.TWith(Strobe.TId("AnObject"),
                         (Strobe.mk_obj_typ
                            [Strobe.Pat.singleton "constructor", Strobe.Present, Strobe.TId(c_id)]
                            (Strobe.Pat.subtract (Strobe.absent_pat f) (Strobe.Pat.singleton "constructor")))))) in
-            (Strobe.fields f), Strobe.TWith(temp, 
+            (Strobe.fields f), Strobe.TWith(temp,
                                      (Strobe.mk_obj_typ (Strobe.fields f)
                                         (Strobe.Pat.subtract (Strobe.absent_pat f)
                                            (Strobe.Pat.singleton "constructor"))))
           | _ -> failwith "impossible" in
-        let prototype = embed_t (match Strobe.expose_twith env prototype_with with 
+        let prototype = embed_t (match Strobe.expose_twith env prototype_with with
           | Strobe.TRef (n, t) -> Strobe.TSource(n, t)
           | t -> t) in
         (* add __proto__ field to instance *)
         let i_typ = (desugar_typ pos i_typ) in
         let i_typ = match i_typ with Strobe.TId _ -> Strobe.simpl_typ env i_typ | _ -> i_typ in
-        let instance_with = 
+        let instance_with =
           let proto_fields = List.map (fun (n, _, t) -> (n, Strobe.Inherited, t)) prototype_added_fields in
           let proto_field_pat = Strobe.Pat.unions (Strobe.proto_pat::(List.map fst3 prototype_added_fields)) in
-          match i_typ with 
+          match i_typ with
           | Strobe.TWith(base, f) ->
             let absent_pat = Strobe.absent_pat f in
-            let new_fields = 
+            let new_fields =
               List.filter (fun (p, _, _) -> not (Strobe.Pat.is_empty p))
                 (List.map (fun (pat, p, t) ->
                   (Strobe.Pat.subtract (Strobe.Pat.subtract pat proto_field_pat) absent_pat, p, t))
                    (Strobe.fields f)) in
-            Strobe.TWith(base, 
+            Strobe.TWith(base,
                          Strobe.mk_obj_typ ((Strobe.proto_pat, Strobe.Present, Strobe.TId(p_id))::
                                                proto_fields@new_fields) absent_pat)
           | Strobe.TRef(_, Strobe.TObject(f))
           | Strobe.TSource(_, Strobe.TObject(f)) ->
             let absent_pat = Strobe.Pat.subtract (Strobe.absent_pat f) proto_field_pat in
-            let base_fields = 
+            let base_fields =
               List.filter (fun (p, _, _) -> not (Strobe.Pat.is_empty p)) (List.map (fun (pat, p, t) ->
                 (Strobe.Pat.subtract (Strobe.Pat.subtract pat proto_field_pat) absent_pat, p, t))
                                                                             (Strobe.fields f)) in
@@ -588,9 +671,9 @@ struct
         (* Printf.eprintf "Recursively including ids: "; *)
         (* List.iter (fun x -> Printf.eprintf "%s " x) ids; *)
         List.fold_left (add ids) env binds
-          
-    in 
-    
+
+    in
+
     List.fold_left (add []) env lst
 
 
@@ -599,7 +682,7 @@ struct
   (* let rec resolve_special_functions env senv t =  *)
   (*   Strobe.traceMsg "Attempting to resolve: %s" (string_of_typ t); *)
   (*   resolve_special_functions' env senv t *)
-  let rec resolve_special_functions (env : env) (senv : structureEnv) 
+  let rec resolve_special_functions (env : env) (senv : structureEnv)
       (included : env -> multiplicity -> multiplicity -> bool) (t : typ) =
     resolve_special_functions' env senv included t
     (* Strobe.trace "Resolve_special" (string_of_typ t) (fun _ -> true) *)
@@ -607,7 +690,7 @@ struct
   and resolve_special_functions' env senv included t =
     let rec resolve_sigma s = match s with
       | STyp t -> STyp (rjq t)
-      | SMult m -> SMult (resolve_mult m) 
+      | SMult m -> SMult (resolve_mult m)
     and resolve_mult m =
       let rm = resolve_mult in
       match m with
@@ -625,8 +708,8 @@ struct
       | TApp (TStrobe (Strobe.TPrim "selector"), [STyp (TStrobe (Strobe.TRegex pat))]) ->
         Strobe.traceMsg "resolving selector primitive";
         begin match Strobe.Pat.singleton_string pat with
-        | Some s -> 
-          let m = (jQuery env (fst senv) s) in
+        | Some s ->
+          let m = (jQuery_fn env senv s) in
           Strobe.traceMsg "jQuery(%s) returns %s" s (string_of_mult m);
           TApp (TStrobe (Strobe.TId "jQ"), [(SMult m); STyp (TStrobe (Strobe.TId "AnyJQ"))])
         | None -> failwith "pattern cannot be converted to string??"
@@ -652,10 +735,10 @@ struct
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), [SMult m])))), m1
-          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), [SMult m])))), m1 
-          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), [SMult m])))), m1 
-          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), [SMult m])))), m1 
-            -> 
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), [SMult m])))), m1
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), [SMult m])))), m1
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), [SMult m])))), m1
+            ->
             let op = match oper with
               | "childrenOf" -> children
               | "nextSibOf" -> next
@@ -667,8 +750,8 @@ struct
               | "parentsAllOf" -> parentsAll included
               | _ -> failwith "impossible: we only matched known strings" in
             let (s', m2) = extract_mult m in begin match s' with
-              | STyp t -> SMult 
-                (canonical_multiplicity 
+              | STyp t -> SMult
+                (canonical_multiplicity
                    (m1 (SMult (m2 (SMult (op env senv (rjq t)))))))
               | SMult (MSum _ as sum) -> begin
                 let sum_pieces = extract_sum sum in
@@ -687,10 +770,10 @@ struct
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), _)), _)
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), _)), _)
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), _)), _)
-          | (STyp (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), _)), _) 
-          | (STyp (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), _)), _) 
-          | (STyp (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), _)), _) 
-          | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentsAllOf" as oper))), _)), _) 
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), _)), _)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), _)), _)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), _)), _)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentsAllOf" as oper))), _)), _)
             ->
             failwith (oper ^ " not called with a single mult argument")
           (* | SMult m -> begin match extract_mult m with *)
@@ -727,11 +810,11 @@ struct
         | STyp _ -> s) args)
       | TDom (s,id, t, sel) -> TDom (s,id,rjq t, sel)
       | TStrobe t -> TStrobe (rs t)
-    and rs t = 
-      let rs_obj o = Strobe.mk_obj_typ 
-        (List.map (third3 rs) (Strobe.fields o)) 
+    and rs t =
+      let rs_obj o = Strobe.mk_obj_typ
+        (List.map (third3 rs) (Strobe.fields o))
         (Strobe.absent_pat o) in
-      match t with 
+      match t with
       | Strobe.TPrim s -> t
       | Strobe.TUnion (s,t1,t2) -> Strobe.TUnion(s, rs t1, rs t2)
       | Strobe.TInter (s,t1,t2) -> Strobe.TInter(s, rs t1, rs t2)
@@ -754,11 +837,10 @@ struct
       | Strobe.TLambda _ -> t
       | Strobe.TApp (t, ts) -> Strobe.TApp (rs t, (List.map rs ts))
       | Strobe.TFix _ -> t
-      | Strobe.TUninit tor -> 
+      | Strobe.TUninit tor ->
         tor := opt_map rs !tor;
         Strobe.TUninit tor
       | Strobe.TEmbed t -> Strobe.TEmbed (rjq t) in
     rjq t
-      
+
 end
-  

@@ -72,7 +72,7 @@ and JQueryTC : (JQuery_sigs.JQUERY_TYPECHECKING
   with type exp = Exp.exp) =
   JQuery_typechecking.Make (JQueryMod) (Exp) (JQEnv) (JQuerySub) (JQuery_kind) (StrobeTC)
 
-type arith = 
+type arith =
   | Var of int
   | Zero
   | Plus of arith * arith
@@ -102,9 +102,9 @@ let rec cancel a = match a with
       | Zero -> Zero
       | a2 -> Times(n, a2)
   end
-let rec arith depth = 
+let rec arith depth =
   if depth = 0 then Var (Random.int 10)
-  else 
+  else
     if Random.bool ()
     then Plus (arith (depth-1), arith (depth-1))
     else Times ((Random.int 4) - 1, arith (depth-1))
@@ -151,12 +151,12 @@ let print_env env : unit =
 exception STest_failure of string
 
 (* Helper: consumes a list of functions that return exception option lists,
-   executes them in order, and raises the first exception it finds. 
+   executes them in order, and raises the first exception it finds.
    Otherwise produces unit *)
 let raise_exns (fs : (_ -> exn option list) list) : unit =
-  let all_exn_strings = 
+  let all_exn_strings =
     (List.fold_left (fun acc f ->
-      let exns =  f() in 
+      let exns =  f() in
       let exns_strings =
         ListExt.filter_map
         (fun eo -> match eo with
@@ -164,7 +164,7 @@ let raise_exns (fs : (_ -> exn option list) list) : unit =
         | None -> None) exns in
       List.append acc exns_strings) [] fs) in
 
-  match all_exn_strings with 
+  match all_exn_strings with
   | [] -> ()
   | _ -> raise (STest_failure (String.concat ",\n" all_exn_strings))
 
@@ -176,7 +176,7 @@ let test_harness test fail_msg =
     pp_set_max_indent std_formatter 10000;
     test ();
     [None]
-  with e -> 
+  with e ->
     pp_set_margin std_formatter margin;
     pp_set_max_indent std_formatter max_indent;
     let emsg = Printexc.to_string e in
@@ -186,12 +186,12 @@ let test_harness test fail_msg =
 
 let test_harness_many (tests : (( int -> string) * ( _ -> unit )) list)
     : exn option list =
-  
-  let foldi (f : int -> 'b -> 'a -> 'b) (s : 'b) (l : 'a list) : 'b = 
+
+  let foldi (f : int -> 'b -> 'a -> 'b) (s : 'b) (l : 'a list) : 'b =
     let rec helper n a l =
       match l with
       | [] -> a
-      | hd::tl ->  
+      | hd::tl ->
         helper (n+1) (f (n+1) a hd) tl in
     helper 0 s l in
 
@@ -201,66 +201,66 @@ let test_harness_many (tests : (( int -> string) * ( _ -> unit )) list)
   (*     | [] -> () *)
   (*     | hd::tl -> f n hd; helper (n+1) tl in *)
   (*   helper 0 l in                        *)
-  
-  foldi (fun n exns (f_msg, f_test) -> 
+
+  foldi (fun n exns (f_msg, f_test) ->
     (List.append (test_harness f_test (f_msg n)) exns)) [] tests
 
 
 (************************** Testing helper functions **************************)
 
-module Helper = struct    
+module Helper = struct
 
 
 (* Helper: creates a sel from a list of selectors *)
-  let sel sels = 
+  let sel sels =
     let module Css = JQueryMod.Css in
-    match sels with 
+    match sels with
     | [] -> failwith "shouldn't be providing an empty selector"
     | [s] -> Css.singleton s
-    | hd::tl -> 
+    | hd::tl ->
       List.fold_left (fun sels s -> Css.union (Css.singleton s) sels)
         (Css.singleton hd) tl
 
 
-  let tdom id typ_string sel_strings = 
-    JQ.TDom (None, 
-             id, 
+  let tdom id typ_string sel_strings =
+    JQ.TDom (None,
+             id,
              JQ.TStrobe (Strobe.TId ((String.capitalize typ_string) ^ "Element")),
              sel sel_strings)
 
   (* Helper that turns two JQ.typs into a TStrobe Strobe.TUnion *)
-  let tu t1 t2 = 
-    JQ.embed_t (S.TUnion (None, (JQ.extract_t t1), (JQ.extract_t t2))) 
+  let tu t1 t2 =
+    JQ.embed_t (S.TUnion (None, (JQ.extract_t t1), (JQ.extract_t t2)))
 
   let tid id = JQ.embed_t (Strobe.TId id)
-    
-  let env = 
-    let raw = 
+
+  let env =
+    let raw =
       "type Element = #{ name : Str };
        type DivElement = #{ name : /\"HTMLDivElement\"/ };" in
-    
+
     let decls = JQEnv.parse_env raw "Helper env" in
-    
+
     JQEnv.extend_global_env IdMap.empty decls
 
 
   let msums (ms : JQ.multiplicity list) = match ms with
       | []
       | [_] -> failwith "Simple_tests: Helper: need 2+ multiplicities to create an msum here"
-      | hd::tl -> List.fold_left (fun acc m -> JQ.MSum (m,acc)) hd tl 
-                                          
+      | hd::tl -> List.fold_left (fun acc m -> JQ.MSum (m,acc)) hd tl
 
-  (* Constructs an MPlain from a list of ids. 
-     Produces either: 
+
+  (* Constructs an MPlain from a list of ids.
+     Produces either:
      MPlain (TStrobe (TId x)) OR
      MPlain (TStrobe (TUnion (TId x, TUnion (....))))
-     
+
      Also turns TId "Any" into TTop as a convenience *)
   let mp (ts : string list) : JQ.multiplicity = match ts with
     | [] -> failwith "Can't build type with no ids"
-    | _ -> 
+    | _ ->
       let catch_tany t = if t = "Bot" then S.TBot else S.TId t in
-      let built_typ = List.fold_left (fun acc t -> 
+      let built_typ = List.fold_left (fun acc t ->
         (* Fix so that we can represent Any in string form *)
         S.TUnion (None, catch_tany t, acc))
         (catch_tany (List.hd ts)) (List.tl ts) in
@@ -275,12 +275,12 @@ end
 
 (* DEPENDS on working extend_global_env *)
 let expose_tdoms_test () =
- 
+
   let module H = Helper in
 
-  let raw_decls = 
+  let raw_decls =
    " (Tweet : div classes=[tweet])" in
-  
+
 
   let decls = JQEnv.parse_env raw_decls "Expose TDoms test" in
 
@@ -288,23 +288,23 @@ let expose_tdoms_test () =
 
   let wrapper t pass = (fun _ ->
 
-    try 
+    try
       ignore( JQEnv.expose_tdoms env t);
-      if (not pass) 
-      then raise 
+      if (not pass)
+      then raise
         (STest_failure (sprintf "%s SHOULD have caused an error when being exposed"
                           (JQ.string_of_typ t)))
       else ()
-    with Strobe.Typ_error _ -> 
+    with Strobe.Typ_error _ ->
       if pass then begin
-        raise (STest_failure 
+        raise (STest_failure
            (sprintf "%s should NOT have caused an error when being exposed"
               (JQ.string_of_typ t))) end
       else () )
 
   in (* END of wrapper *)
 
-  
+
   let fmsg d n = (sprintf "Expose TDom test #%n failed.\nDescription: %s"n d) in
 
   test_harness_many [
@@ -322,7 +322,7 @@ let expose_tdoms_test () =
      wrapper (JQ.embed_t (S.TId "Element")) true);
 
     ((fmsg "TUnion of TDoms with ids that resolve to a TDom"),
-     wrapper (H.tu 
+     wrapper (H.tu
                 (H.tdom "Tweet" "div" ["*"])
                 (H.tu
                    (H.tu
@@ -349,11 +349,11 @@ let expose_tdoms_test () =
 (* END of extract_tdom_test *)
 
 (* DEPENDS on working extend_global_env *)
-let subtyping_test () = 
+let subtyping_test () =
 
   let module H = Helper in
 
-  let raw_env = 
+  let raw_env =
     "(Tweet1 : div classes=[tweet]
        (Author : div classes=[author])
        (Content1 : div classes=[content1])
@@ -366,27 +366,27 @@ let subtyping_test () =
 
   let env = JQEnv.extend_global_env H.env decls in
 
-  let wrapper_t t1 t2 pass = 
-    (fun _ -> 
+  let wrapper_t t1 t2 pass =
+    (fun _ ->
       match (JQuerySub.subtype_typ true env t1 t2), pass with
       | true, true
       | false, false -> ()
-      | true, false -> raise 
+      | true, false -> raise
         (STest_failure (sprintf "%s should NOT subtype %s, but it does"
                           (JQ.string_of_typ t1) (JQ.string_of_typ t2)))
-      | false, true -> raise 
+      | false, true -> raise
         (STest_failure (sprintf "%s SHOULD subtype %s, but it does not"
                           (JQ.string_of_typ t1) (JQ.string_of_typ t2)))) in
 
-  let wrapper_m m1 m2 pass = 
-    (fun _ -> 
+  let wrapper_m m1 m2 pass =
+    (fun _ ->
       match (JQuerySub.subtype_mult true env m1 m2), pass with
       | true, true
       | false, false -> ()
-      | true, false -> raise 
+      | true, false -> raise
         (STest_failure (sprintf "%s should NOT subtype %s, but it does"
                           (JQ.string_of_mult m1) (JQ.string_of_mult m2)))
-      | false, true -> raise 
+      | false, true -> raise
         (STest_failure (sprintf "%s SHOULD subtype %s, but it does not"
                           (JQ.string_of_mult m1) (JQ.string_of_mult m2)))) in
 
@@ -400,133 +400,133 @@ let subtyping_test () =
   test_harness_many [
 
     (*** TDom subtyping tests ***)
-    
-    (* ((fmsg "DivElement <: DivElement"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Tweet1" "div" ["*"]) *)
-    (*    (H.tdom "Tweet1" "div" ["*"]) *)
-    (*    true)); *)
 
-    (* ((fmsg "DivElement <: Element"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Tweet1" "div" ["*"]) *)
-    (*    (H.tdom "Tweet1" "" ["*"]) *)
-    (*    true)); *)
+    ((fmsg "DivElement <: DivElement"),
+     (wrapper_t
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet1" "div" ["*"])
+       true));
 
-    (* ((fmsg "Element </: DivElement"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Tweet1" "" ["*"]) *)
-    (*    (H.tdom "Tweet1" "div" ["*"]) *)
-    (*    false)); *)
+    ((fmsg "DivElement <: Element"),
+     (wrapper_t
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet1" "" ["*"])
+       true));
 
-    (* ((fmsg "Tweet1 <: Tweet2"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Tweet1" "div" ["*"]) *)
-    (*    (H.tdom "Tweet2" "div" ["*"]) *)
-    (*    true)); *)
+    ((fmsg "Element </: DivElement"),
+     (wrapper_t
+       (H.tdom "Tweet1" "" ["*"])
+       (H.tdom "Tweet1" "div" ["*"])
+       false));
 
-    (* ((fmsg "Tweet2 <: Tweet1"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Tweet2" "div" ["*"]) *)
-    (*    (H.tdom "Tweet1" "div" ["*"]) *)
-    (*    true)); *)
+    ((fmsg "Tweet1 <: Tweet2"),
+     (wrapper_t
+       (H.tdom "Tweet1" "div" ["*"])
+       (H.tdom "Tweet2" "div" ["*"])
+       true));
 
-    (* ((fmsg "TDom <: TUnion"), *)
-    (*  (wrapper_t *)
-    (*     (H.tdom "Tweet1" "div" ["*"]) *)
-    (*     (H.tu *)
-    (*        (H.tdom "Tweet2" "div" ["*"]) *)
-    (*        (H.tdom "Tweet3" "div" ["*"])) *)
-    (*    true)); *)
+    ((fmsg "Tweet2 <: Tweet1"),
+     (wrapper_t
+       (H.tdom "Tweet2" "div" ["*"])
+       (H.tdom "Tweet1" "div" ["*"])
+       true));
 
-    (* ((fmsg "TDom </: TUnion"), *)
-    (*  (wrapper_t *)
-    (*     (H.tdom "Tweet1" "div" ["*"]) *)
-    (*     (H.tu *)
-    (*        (H.tdom "Author" "div" ["*"]) *)
-    (*        (H.tdom "Content1" "div" ["*"])) *)
-    (*    false)); *)
+    ((fmsg "TDom <: TUnion"),
+     (wrapper_t
+        (H.tdom "Tweet1" "div" ["*"])
+        (H.tu
+           (H.tdom "Tweet2" "div" ["*"])
+           (H.tdom "Tweet3" "div" ["*"]))
+       true));
 
-    (* ((fmsg "TDom </: TUnion t2"), *)
-    (*  (wrapper_t *)
-    (*     (H.tdom "Tweet1" "" ["*"]) *)
-    (*     (H.tu *)
-    (*        (H.tdom "Tweet2" "div" ["*"]) *)
-    (*        (H.tdom "Tweet3" "div" ["*"])) *)
-    (*    false)); *)
+    ((fmsg "TDom </: TUnion"),
+     (wrapper_t
+        (H.tdom "Tweet1" "div" ["*"])
+        (H.tu
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Content1" "div" ["*"]))
+       false));
 
-    (* ((fmsg "TUnion <: TDom"), *)
-    (*  (wrapper_t  *)
-    (*     (H.tu  *)
-    (*        (H.tdom "Tweet2" "div" ["*"]) *)
-    (*        (H.tdom "Tweet3" "div" ["*"])) *)
-    (*     (H.tdom "Tweet1" "div" ["*"]) *)
-    (*     true)); *)
+    ((fmsg "TDom </: TUnion t2"),
+     (wrapper_t
+        (H.tdom "Tweet1" "" ["*"])
+        (H.tu
+           (H.tdom "Tweet2" "div" ["*"])
+           (H.tdom "Tweet3" "div" ["*"]))
+       false));
+
+    ((fmsg "TUnion <: TDom"),
+     (wrapper_t
+        (H.tu
+           (H.tdom "Tweet2" "div" ["*"])
+           (H.tdom "Tweet3" "div" ["*"]))
+        (H.tdom "Tweet1" "div" ["*"])
+        true));
 
 
-    (* ((fmsg "TUnion </: TDom t1"), *)
-    (*  (wrapper_t  *)
-    (*     (H.tu  *)
-    (*        (H.tdom "Tweet1" "div" ["*"]) *)
-    (*        (H.tdom "Content1" "div" ["*"])) *)
-    (*     (H.tdom "Tweet1" "div" ["*"]) *)
-    (*     false)); *)
+    ((fmsg "TUnion </: TDom t1"),
+     (wrapper_t
+        (H.tu
+           (H.tdom "Tweet1" "div" ["*"])
+           (H.tdom "Content1" "div" ["*"]))
+        (H.tdom "Tweet1" "div" ["*"])
+        false));
 
-    (* ((fmsg "TUnion </: TDom t2"), *)
-    (*  (wrapper_t  *)
-    (*     (H.tu  *)
-    (*        (H.tdom "Author" "div" ["*"]) *)
-    (*        (H.tdom "Tweet1" "div" ["*"])) *)
-    (*     (H.tdom "Tweet1" "div" ["*"]) *)
-    (*     false)); *)
+    ((fmsg "TUnion </: TDom t2"),
+     (wrapper_t
+        (H.tu
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Tweet1" "div" ["*"]))
+        (H.tdom "Tweet1" "div" ["*"])
+        false));
 
-    (* ((fmsg "TUnion </: TDom t3"), *)
-    (*  (wrapper_t  *)
-    (*     (H.tu  *)
-    (*        (H.tdom "Author" "div" ["*"]) *)
-    (*        (H.tdom "Content1" "div" ["*"])) *)
-    (*     (H.tdom "Tweet1" "div" ["*"]) *)
-    (*     false)); *)
+    ((fmsg "TUnion </: TDom t3"),
+     (wrapper_t
+        (H.tu
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Content1" "div" ["*"]))
+        (H.tdom "Tweet1" "div" ["*"])
+        false));
 
-    (* ((fmsg "TUnion <: TUnion t1"), *)
-    (*  (wrapper_t  *)
-    (*     (H.tu  *)
-    (*        (H.tdom "Author" "div" ["*"]) *)
-    (*        (H.tdom "Content1" "div" ["*"])) *)
-    (*     (H.tu  *)
-    (*        (H.tdom "Author" "div" ["*"]) *)
-    (*        (H.tdom "Content1" "div" ["*"])) *)
-    (*     true)); *)
+    ((fmsg "TUnion <: TUnion t1"),
+     (wrapper_t
+        (H.tu
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Content1" "div" ["*"]))
+        (H.tu
+           (H.tdom "Author" "div" ["*"])
+           (H.tdom "Content1" "div" ["*"]))
+        true));
 
-    (* ((fmsg "inter1 <: inter2 t1"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Tweet1" "div" ["p"]) *)
-    (*    (H.tdom "Tweet1" "div" ["div"]) *)
-    (*    true)); *)
+    ((fmsg "inter1 <: inter2 t1"),
+     (wrapper_t
+       (H.tdom "Tweet1" "div" ["p"])
+       (H.tdom "Tweet1" "div" ["div"])
+       true));
 
-    (* ((fmsg "inter1 <: inter2 t2"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Tweet1" "div" [".tweet"]) *)
-    (*    (H.tdom "Tweet2" "div" ["*"]) *)
-    (*    true)); *)
+    ((fmsg "inter1 <: inter2 t2"),
+     (wrapper_t
+       (H.tdom "Tweet1" "div" [".tweet"])
+       (H.tdom "Tweet2" "div" ["*"])
+       true));
 
-    (* ((fmsg "inter1 <: inter2 t3"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Author" "div" [".tweet"]) *)
-    (*    (H.tdom "Content2" "div" [".tweet"]) *)
-    (*    true)); *)
+    ((fmsg "inter1 <: inter2 t3"),
+     (wrapper_t
+       (H.tdom "Author" "div" [".tweet"])
+       (H.tdom "Content2" "div" [".tweet"])
+       true));
 
-    (* ((fmsg "inter1 </: inter2 t1"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Content1" "div" ["* > div.author + *"]) *)
-    (*    (H.tdom "Content2" "div" ["* > div.author + *"]) *)
-    (*    false)); *)
+    ((fmsg "inter1 </: inter2 t1"),
+     (wrapper_t
+       (H.tdom "Content1" "div" ["* > div.author + *"])
+       (H.tdom "Content2" "div" ["* > div.author + *"])
+       false));
 
-    (* ((fmsg "inter1 </: inter2 t2"), *)
-    (*  (wrapper_t  *)
-    (*    (H.tdom "Author" "div" [".author"]) *)
-    (*    (H.tdom "Author" "div" [".random"]) *)
-    (*    false)); *)
+    ((fmsg "inter1 </: inter2 t2"),
+     (wrapper_t
+       (H.tdom "Author" "div" [".author"])
+       (H.tdom "Author" "div" [".random"])
+       false));
 
     (*** MSum subtyping tests ***)
 
@@ -572,7 +572,7 @@ let subtyping_test () =
                   MOnePlus (mp ["Element"]);
                   MZeroOne (mp ["Element"]);])
         true));
-    
+
     ((fmsg "MSum MSum subtyping invariant 5"),
      (wrapper_m
         (H.msums [MOnePlus (mp ["Element"]);
@@ -660,9 +660,9 @@ let subtyping_test () =
   ]
 
 (* END subtyping_test *)
-  
+
 let test1 n =
-  let test1_help n a = 
+  let test1_help n a =
     let e = eval a in
     let t = arith_to_mult a in
     text "Test "; int n; text ":"; newline ();
@@ -678,7 +678,7 @@ let test1 n =
   test_harness (fun _ -> test1 n) "test1 failed"
 
 let test2 n =
-  let test2_help n a1 a2 = 
+  let test2_help n a1 a2 =
     let t1 = arith_to_mult a1 in
     let t2 = arith_to_mult a2 in
     let t1' = JQuery.canonical_multiplicity t1 in
@@ -711,7 +711,7 @@ let test2 n =
 let test3 n =
   let test3_help n m1 m2 =
     let free = JQuery.free_mult_ids m2 in
-    try 
+    try
       let x = IdSet.choose free in
       let m3 = JQuery.mult_mult_subst x m1 m2 in
       text "Test "; int n; text ":"; newline ();
@@ -719,7 +719,7 @@ let test3 n =
       text "M2:                    "; print_multiplicity m2; newline ();
       text "Canonical M1:          "; print_multiplicity (JQuery.canonical_multiplicity m1); newline ();
       text "Canonical M2:          "; print_multiplicity (JQuery.canonical_multiplicity m2); newline ();
-      text "M2[M1/`"; text x; text "]:           "; print_multiplicity m3; newline (); 
+      text "M2[M1/`"; text x; text "]:           "; print_multiplicity m3; newline ();
       text "Canonical M2[M1/`"; text x; text "]: "; print_multiplicity (JQuery.canonical_multiplicity m3);
       newline (); newline ()
     with Not_found -> () in
@@ -807,10 +807,10 @@ let test3 n =
 (*   end in *)
 (*   test_harness test4 "test4 failed"*)
 
-let test5 () = 
+let test5 () =
   let open Typedjs_writtyp.WritTyp in
   let module H = Helper in
-  let helper () = 
+  let helper () =
     let text =
               "(Tweet : \"\"\"A structure for tweets\"\"\"
                    DivElement
@@ -842,10 +842,10 @@ let test6 n =
 
 let test7 () =
   let helper () =
-    let types = ":: type MyDOM = #{ name : Str }; 
-type aDom = #{ name : /a/ }; 
-type bDom = #{ name : /b/ }; 
-type abDom = #{ name : /a|b/ }; 
+    let types = ":: type MyDOM = #{ name : Str };
+type aDom = #{ name : /a/ };
+type bDom = #{ name : /b/ };
+type abDom = #{ name : /a|b/ };
 
 type jQ =
   typrec jq :: M<*> => * .
@@ -859,7 +859,7 @@ type y = jQ<1+<abDom>>;
     let open Typedjs_writtyp.WritTyp in
     let env = IdMap.empty in
     let rec helper recIds env d = match d with
-      | EnvType(p, x, t) -> 
+      | EnvType(p, x, t) ->
         let t' = Desugar.desugar_typ p t in
         (* let t'' = squash env t' in *)
         (JQEnv.bind_rec_typ_id x recIds (JQuery.STyp (JQueryMod.replace_name (Some x) t')) env)
@@ -876,7 +876,7 @@ type y = jQ<1+<abDom>>;
       | _ -> env in
     let env = List.fold_left (helper []) env decls in
     Printf.eprintf "%s\n" (FormatExt.to_string JQEnv.print_env env);
-    Printf.eprintf "Subtyping success: %b\n" 
+    Printf.eprintf "Subtyping success: %b\n"
       (JQuerySub.subtype env (JQ.TStrobe (S.TId "x")) (JQ.TStrobe (S.TId "y")))
   in test_harness helper "test7 failed"
 
@@ -884,10 +884,10 @@ let well_formed_test () =
   let check_well_formed t b = match (JQ.well_formed t, b) with
     | (true, true)
     | (false, false) -> Printf.eprintf "well-form checking passed\n"
-    | (true, false) -> 
+    | (true, false) ->
       Printf.eprintf "well-form checking FAILED: ";
       (JQ.Pretty.typ t Format.std_formatter);
-      Printf.eprintf "expected to be NON-well-formed\n" 
+      Printf.eprintf "expected to be NON-well-formed\n"
     | (false, true) -> Printf.eprintf "well-form checking FAILED: ";
       (JQ.Pretty.typ t Format.std_formatter);
       Printf.eprintf " expected to be well-formed\n" in
@@ -902,13 +902,13 @@ let well_formed_test () =
   let t5 = JQ.TApp (prim, [JQ.SMult (JQ.MSum (JQ.MOne (JQ.MPlain (s2j Strobe.TBot)), JQ.MZeroPlus (JQ.MPlain (s2j Strobe.TTop))))]) in
   let t6 = JQ.TApp (prim, [JQ.SMult (JQ.MSum (JQ.MOne (JQ.MPlain (s2j Strobe.TBot)), JQ.MZeroPlus (JQ.MPlain (s2j Strobe.TTop)))); JQ.STyp (s2j (j2s (s2j (Strobe.TId "abc"))))]) in
   let t7 = JQ.TForall (None, "test",
-		       (JQ.SMult (JQ.MPlain (top))), 
-		       (JQ.TLambda (None, [], 
-				    s2j (Strobe.TApp 
-					   (Strobe.TPrim "blah",
-					    [Strobe.TId "a";
-					     Strobe.TSink (None, Strobe.TBot);
-					     Strobe.TThis (j2s top)]))))) in
+           (JQ.SMult (JQ.MPlain (top))),
+           (JQ.TLambda (None, [],
+            s2j (Strobe.TApp
+             (Strobe.TPrim "blah",
+              [Strobe.TId "a";
+               Strobe.TSink (None, Strobe.TBot);
+               Strobe.TThis (j2s top)]))))) in
   let t8 = s2j (Strobe.TApp (Strobe.TPrim "jq", [j2s t5])) in
   begin
     Printf.eprintf "\n";
@@ -926,15 +926,15 @@ let well_formed_test () =
 
 
 
-(* TEST: structure_well_formed_test 
+(* TEST: structure_well_formed_test
    - Tests that the local structure well-formedness function is working
      properly *)
-let structure_well_formed_test () = 
+let structure_well_formed_test () =
   let module D = Desugar in
   let module W = Typedjs_writtyp.WritTyp in
 
-  let well_formed_wrapper d pass = 
-    let decls = JQEnv.parse_env d 
+  let well_formed_wrapper d pass =
+    let decls = JQEnv.parse_env d
       "Simple_tests: Structure well-formedness test" in
 
     let structure_decls = ListExt.filter_map (fun d -> match d with
@@ -943,8 +943,8 @@ let structure_well_formed_test () =
     try
       ignore(D.well_formed_structure structure_decls);
       if (not pass) then raise (STest_failure "Well-formed test should have raised an exception")
-    with e -> 
-      match e with 
+    with e ->
+      match e with
       | D.Local_structure_error m -> if (not pass) then () else raise e
       | _ -> raise e in
 
@@ -954,16 +954,16 @@ let structure_well_formed_test () =
 
   (* well-formedness tests *)
 
-  test_harness_many [ 
+  test_harness_many [
 
     (**** Rule 1: Cannot have more than one comp with the same id in
           the entire env. *)
-    
+
     ((fail_msg "Dupes in two top-level comps"),
     (fun _ -> well_formed_wrapper
       "(A : div classes=[a1])
        (A : div classes=[a2])" false ));
-    
+
     ((fail_msg "Nested dupes in same top-level comp"),
     (fun _ -> well_formed_wrapper
       "(A : div classes=[a1]
@@ -997,7 +997,7 @@ let structure_well_formed_test () =
          (D : div classes=[d1])
          <B>)" true ));
 
-    
+
     (**** Rule 2 DIds can only appear on the same level as a previous sibling
         DNested declComp with the same id *)
 
@@ -1055,9 +1055,9 @@ let structure_well_formed_test () =
          <B>)
        (B : div classes=[b1])" false ));
 
-    
+
     (**** Rule 4: Cannot have two consectutive placeholders *)
-    
+
     ((fail_msg "Can't have only two placeholders as children"),
     (fun _ -> well_formed_wrapper
       "(A : div classes=[a1]
@@ -1111,7 +1111,7 @@ let structure_well_formed_test () =
 (* End structure_well_formed_test *)
 
 
-let structure_compilation_test () = 
+let structure_compilation_test () =
   let module D = Desugar in
   let module W = Typedjs_writtyp.WritTyp in
   let module Css = JQueryMod.Css in
@@ -1124,7 +1124,7 @@ let structure_compilation_test () =
      exp_backform_env (D.backformEnv): expected backformEnv
      exp_clause_env (D.clauseEnv): expected clauseEnv *)
   let wrapper d (exp_backform_env : D.backformEnv) (exp_clause_env : D.clauseEnv)
-      : unit  = 
+      : unit  =
 
     let decls = JQEnv.parse_env d "Simple_tests: Structure Compilation Test" in
 
@@ -1133,7 +1133,7 @@ let structure_compilation_test () =
     (* IMPORTANT: This is an uncomfortable dependency; in order to compute the
        env, we must use desugar_structure, which is what we're testing
        here. We need the env, however, to test equivalent multiplicities.
-       equivalent_multiplicity is not enough - we need to check for invariant 
+       equivalent_multiplicity is not enough - we need to check for invariant
        subtyping. But to do that we need the env.
 
        I believe what we're doing is ok, however. The reason for this is that
@@ -1154,35 +1154,35 @@ let structure_compilation_test () =
 
     (* Note this does not check to make sure that the SelSets have
        the SAME selectors, just that they are equivalent. This has
-       the unfortunate side-effect of making it too easy for some 
+       the unfortunate side-effect of making it too easy for some
        tests to pass *)
     let beq = D.benv_eq exp_backform_env backform_env in
 
-    let ceq = 
+    let ceq =
       let cm_eq m1 m2 = IdMap.equal (fun m1 m2 ->
       JQuerySub.subtype_mult true env m1 m2 &&
         JQuerySub.subtype_mult true env m2 m1) m1 m2 in
-      cm_eq clause_env.D.children exp_clause_env.D.children &&      
-        cm_eq clause_env.D.parent exp_clause_env.D.parent &&      
-        cm_eq clause_env.D.prev exp_clause_env.D.prev &&      
-        cm_eq clause_env.D.next exp_clause_env.D.next in  
+      cm_eq clause_env.D.children exp_clause_env.D.children &&
+        cm_eq clause_env.D.parent exp_clause_env.D.parent &&
+        cm_eq clause_env.D.prev exp_clause_env.D.prev &&
+        cm_eq clause_env.D.next exp_clause_env.D.next in
 
-    begin 
+    begin
 
       if beq then ()
-      else raise 
-        (STest_failure 
-           (sprintf "Expected backformEnv in structureEnv: %s  is not equivalent to compiled backformEnv in structureEnv: %s" 
+      else raise
+        (STest_failure
+           (sprintf "Expected backformEnv in structureEnv: %s  is not equivalent to compiled backformEnv in structureEnv: %s"
               (FormatExt.to_string (JQEnv.print_structureEnv "Expected") expected_senv)
               (FormatExt.to_string (JQEnv.print_structureEnv "Compiled") senv)));
-        
+
       if ceq then ()
       else raise
-        (STest_failure 
-           (sprintf "Expected clauseEnv in structureEnv: %s  is not equivalent to compiled clauseEnv in structureEnv: %s" 
+        (STest_failure
+           (sprintf "Expected clauseEnv in structureEnv: %s  is not equivalent to compiled clauseEnv in structureEnv: %s"
               (FormatExt.to_string (JQEnv.print_structureEnv "Expected") expected_senv)
               (FormatExt.to_string (JQEnv.print_structureEnv "Compiled") senv)));
-      
+
 
 
     end in
@@ -1193,9 +1193,9 @@ let structure_compilation_test () =
   (* Helper: builds a clauseMap from a (id * multiplicity) list.
      Adds to the original clauseMap, cm *)
   let b_cm cm (cs : (id * multiplicity) list ) : D.clauseMap =
-    List.fold_left (fun acc (id, mult) -> 
+    List.fold_left (fun acc (id, mult) ->
       IdMap.add id mult acc) cm cs in
-  
+
   (* base clauseMap with Element clauses *)
   let base_clauseMap =
     { D.children = b_cm IdMap.empty [("Element", MZeroPlus (b_mp ["Element"]))];
@@ -1359,15 +1359,15 @@ let structure_compilation_test () =
           ...
           <Author>)"
        [("Tweet", H.sel ["div.!t1"]);
-        ("Author", 
+        ("Author",
          H.sel ["div.!t1 > div.!a1";
               "div.!t1 > div.!a1 ~ div.!a1";
               "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1";
               "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1 ~ div.!a1"]);
-        ("Content", 
+        ("Content",
          H.sel ["div.!t1 > div.!a1 ~ div.!a1 + div.!c1";
               "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1"])]
-       { D.children = ch [("Tweet", 
+       { D.children = ch [("Tweet",
                            b_msum [
                              MOnePlus (b_mp ["Author"]);
                              MZeroPlus (b_mp ["Element"]);
@@ -1432,7 +1432,7 @@ let structure_compilation_test () =
                         ("Author", MZero (b_mp ["Bot"]))]; }));
 
 
-    
+
     ((fmsg "Terribad comprehensive test case"),
      (fun _ -> wrapper
        "(Tweet : div classes=[tweet] optional classes=[first,last]
@@ -1465,21 +1465,21 @@ let structure_compilation_test () =
             ("Content", MZero (b_mp ["Bot"]));
             ("Image", MZero (b_mp ["Bot"]));
             ("Time", MZero (b_mp ["Bot"]));];
-         D.parent = par 
+         D.parent = par
            [("Tweet", MZeroOne (b_mp ["Element"]));
             ("Author", MOne (b_mp ["Tweet"]));
             ("Bio", MOne (b_mp ["Author"]));
             ("Content", MOne (b_mp ["Tweet"]));
             ("Image", MOne (b_mp ["Tweet"]));
             ("Time", MOne (b_mp ["Tweet"]));];
-         D.prev = prev 
+         D.prev = prev
            [("Tweet", MZeroOne (b_mp ["Element"]));
             ("Author", MZeroOne (b_mp ["Element"]));
             ("Bio", MZero (b_mp ["Bot"]));
             ("Content", MOne (b_mp ["Author"]));
             ("Image", MOne (b_mp ["Element";"Content";"Image";]));
             ("Time", MOne (b_mp ["Image"]));];
-         D.next = next 
+         D.next = next
            [("Tweet", MZeroOne (b_mp ["Element"]));
             ("Author", MOne (b_mp ["Content"]));
             ("Bio", MZeroOne (b_mp ["Element"]));
@@ -1492,7 +1492,7 @@ let structure_compilation_test () =
 
 
 let selector_tests () =
-  match List.map Css.singleton 
+  match List.map Css.singleton
   ["div.author.tag";
    "div.!tweet.?first.?last > div.!author.!tag + div.!time";
    "div.!tweet.?first.?last > div.!author.!tag + div.!time + div.!content.!tag";
@@ -1519,14 +1519,80 @@ let selector_tests () =
 
       ((fail_msg s1 author),
        (fun _ -> subset_wrapper s1 author false));
-     
+
       ((fail_msg a1 a2),
        (fun _ -> subset_wrapper a1 a2 false));
-      
+
     ]
   end
   | _ -> []
 
+(* This isn't as simple as it seems... Commenting out for now... *)
+
+(* let jquery_fn_test () = *)
+
+(*   let module H = Helper in *)
+
+(*   (\* Save senv *\) *)
+(*   let old_env = !JQEnv.senv in *)
+
+(*   (\* Empty senv *\) *)
+(*   JQEnv.senv := Desugar.empty_structureEnv; *)
+
+
+(*   let raw = *)
+(*     "(A : div classes=[a] *)
+(*        (B : div classes=[b] optional classes=[c]) *)
+(*        (D : div classes=[d] *)
+(*          (E : div classes=[e] optional classes=[c])) *)
+(*        <B>)" in *)
+(*   let decls = JQEnv.parse_env raw "jQuery_fn_test" in *)
+(*   let env = JQEnv.extend_global_env H.env decls in *)
+
+(*   (\* JQEnv.print_structureEnv "Structure env:" !JQEnv.senv Format.std_formatter; *\) *)
+
+(*   let wrapper sel m = (fun _ -> *)
+
+(*     let m' = JQEnv.jQuery_fn env !JQEnv.senv sel in *)
+
+(*     if JQ.equivalent_multiplicity env m' m then () *)
+(*     else raise *)
+(*       (STest_failure (sprintf "jQuery function produced wrong types.\nExpected mult: %s\nProduced mult:%s" (JQ.string_of_mult m) (JQ.string_of_mult m')))) in *)
+
+(*   let fmsg d n = (sprintf "jquery_fn_test %n failed.\nDescription: %s\n" n d) in *)
+
+(*   (\* Helper: creates a Css.singleton with one string *\) *)
+(*   let sel s = H.sel [s] in *)
+
+(*   (\* Helper: mult wrapper *\) *)
+(*   let mw ids = (H.msums [JQ.MOnePlus (H.mp ids)]) in *)
+
+(*   let mzero_el = JQ.MZeroPlus (H.mp ["Element"]) in *)
+
+(*   Css.p_css (Css.singleton "div") Format.std_formatter; *)
+
+(*   (\* Mega-wrapper helper *\) *)
+
+(*   let w d sel_str m = (fmsg d, wrapper sel_str m) in *)
+
+(*   let open JQ in *)
+
+(*   let res = test_harness_many [ *)
+
+(*     (\* (w ""	".a" (MOnePlus (H.mp ["A"]))); *\) *)
+(*     (w ""	".a" (MOnePlus (MPlain (embed_t (Strobe.TId "A"))))); *)
+
+(*     (\* (w "Ls attrs above highest match" "p > .a > p > .a > p > .a" mzero_el); *\) *)
+
+(*   ] in *)
+
+(*   (\* Revert senv *\) *)
+(*   JQEnv.senv := old_env; *)
+
+(*   (\* Return test results *\) *)
+(*   res *)
+
+(* End jquery_fn_test *)
 
 let run_tests () =
   try
@@ -1541,7 +1607,8 @@ let run_tests () =
     (* well_formed_test (); *)
     (raise_exns [
       (* expose_tdoms_test; *)
-      subtyping_test;
+      (* subtyping_test; *)
+      (* jquery_fn_test; *)
       (* structure_well_formed_test; *)
       (* structure_compilation_test; *)
       (* selector_tests; *)
@@ -1549,8 +1616,7 @@ let run_tests () =
     (* test5 (); *)
     Printf.eprintf "All tests passed!";
     0
-  with e -> 
+  with e ->
     Printf.eprintf "Failed with %s" (Printexc.to_string e);
     2
 ;;
-
