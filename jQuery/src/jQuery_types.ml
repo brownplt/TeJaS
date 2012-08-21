@@ -700,6 +700,62 @@ struct
       | MSum (m1, m2), m3 -> MSum(m1, c (MSum (m2, m3)))
       | t1, t2 -> MSum (t1, t2)
     end
+      
+
+  and simplify_msum m =
+    simplify_msum' m
+    (* Strobe.trace "JQUERYsubtyping: simplify_msum" (string_of_mult m) *)
+    (* (fun _ -> true) (fun _ -> simplify_msum' m) *)
+  and simplify_msum' m = 
+    let c_u t1 t2 = canonical_type (embed_t (Strobe.TUnion(None, extract_t t1, extract_t t2))) in
+    let s m = simplify_msum m in match canonical_multiplicity m with
+    | MSum (m1, m2) -> begin match s m1, s m2 with
+      | MZero _, m2 -> m2
+      | m1, MZero _ -> m1
+      | MOne (MPlain t1), MOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne (MPlain t1), MZeroOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne (MPlain t1), MOnePlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne (MPlain t1), MZeroPlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MZeroOne (MPlain t2)
+        -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MOnePlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroOne (MPlain t1), MZeroPlus (MPlain t2)
+        -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MZeroOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MOnePlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOnePlus (MPlain t1), MZeroPlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MOne (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MZeroOne (MPlain t2)
+        -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MOnePlus (MPlain t2)
+        -> MOnePlus (MPlain (canonical_type (c_u t1 t2)))
+      | MZeroPlus (MPlain t1), MZeroPlus (MPlain t2)
+        -> MZeroPlus (MPlain (canonical_type (c_u t1 t2)))
+      | MOne _, _
+      | MZeroOne _, _
+      | MOnePlus _, _
+      | MZeroPlus _, _
+      | MPlain _, _
+      | MId _, _
+        -> failwith "canonicalization should have simplified these"
+      | MSum _, _ 
+        -> failwith "canonicalization should not leave MSum on left"
+    end
+    | _ -> m
+
 
   let rec simpl_typ env typ =
     match typ with

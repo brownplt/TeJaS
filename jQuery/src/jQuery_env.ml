@@ -105,23 +105,6 @@ struct
 
     to_list (expose_tdoms env t)
 
-  (* (\* Turns a list of TDoms into a multiplicity by summing the results *)
-  (*    the lookup of each TDom in the given cm *\) *)
-  (* let rec helper ts = match ts with  *)
-  (*   | [TDom (_,id,_,_)] -> IdMap.find id cm *)
-  (*   | (TDom (_,id,_,_))::rest -> *)
-  (*     MSum ((IdMap.find id cm), helper rest) *)
-  (*   | [] -> failwith "impossible: empty list" *)
-  (*   | _ -> failwith "JQuery_env: mult_of: found something other than a TDom in ts"; in *)
-
-  (* let (s, mf) = extract_mult *)
-  (*   (canonical_multiplicity (helper (to_list (expose_tdoms env t)))) in *)
-
-  (* match s with  *)
-  (* | STyp t -> (t, (fun t -> mf (STyp t))) *)
-  (* | _ -> failwith "JQuery_env: lookup_cm: failed to properly canonicalize return mult" *)
-
-  (* end of lookup_cm *)
 
   (* MSum every mult in ms and canonicalize *)
   let msum_ms (ms : multiplicity list) : multiplicity =
@@ -261,47 +244,24 @@ struct
     MZero (MPlain (TStrobe (Strobe.TBot)))
 
 
-  (* Fold over every selector in benv. Intersect each, return MSum of 1+ of the
-     TDoms for each id found, tacking on the given sel to maintain precision.
-
-
-     Proposed algorithm:
-
-     1) parse sel into regsel
-     2) parse benv into regsels
-
-     Part 1: Find highest matches:
-     3) Find highest match
-     4) Remember:  attr-match or tag-match
-
-     Part 2: Match down from highest match point
-
-     Part 3: If highest was NOT attr-match, then continue
-
-
-     Part 2:
-  *)
-
-
-  let jQuery_fn (env : env) (senv : structureEnv) (select_str : string)
-      : multiplicity =
+  let jQuery_fn (env : env)
+      (included: env -> multiplicity -> multiplicity -> bool)
+      (select_str : string) : multiplicity =
 
     let open Css_syntax in
 
+    let senv = !senv in 
     let (benv,_) = senv in
-
 
     let p_dummy_tdom s = Printf.eprintf "%s\n"
       (string_of_typ (TDom (None,"DUMMY",(embed_t (Strobe.TId "Element")),s))) in
 
+    let select_sel = Css.singleton select_str in
+
     (* Convert sel to list of regsels. This should be a singleton list *)
-    let select_rs = match Css.sel2regsels (Css.singleton select_str) with
+    let select_rs = match Css.sel2regsels select_sel with
       | [rs] -> rs
       | _ -> failwith "JQuery_env: jQuery: should have gotten just one regsel from sel" in
-
-
-    p_dummy_tdom (Css.regsel2sel select_rs);
-
 
     (* Convert backform map to a map of singleton regsel lists *)
     let structure_rss = List.map (fun (id, sel) ->
@@ -309,7 +269,7 @@ struct
 
 
     (* Collect set of all specs that appear in benv *)
-
+    
     let isolated_specs = List.fold_left (fun spec_set (id, sels) ->
       List.fold_left (fun spec_set rs ->
         List.fold_left (fun spec_set (_,(_,sel_specs)) ->
@@ -322,85 +282,112 @@ struct
         spec_set sels)
       SpecSet.empty structure_rss in
 
-    (* Helper function to determine if the given spec list contains isolated (local structure) spec *)
+
+
+    (* Helper: Does given spec list contains isolated (local structure) spec? *)
     let is_isolated ss = List.exists (fun s -> SpecSet.mem s isolated_specs) ss in
 
-    (* Create a list of sels to match on.
-       For  each pair in select_rs:
-       1) Check to see if it contains a local structure spec (isolated)
-       2) Convert the rest of the pairs (including this one) to a sel
-       3) If isolated, then stop: cannot keep matching down the selector
-       4) If not isolated, move on and process the next pair in the list
+    (* Partition select_rs into two regsels. Prefix includes everything down
+       to the first simple that includes an isolated spec. Suffix is the rest
+       of the regsel after (and not including) that simple. Isolated bool
+       indicates whether or not an isolated spec was found*)
+    let (prefix,suffix,isolated) = 
+      let rec split pre suf = match suf with 
+        | [] -> (List.rev pre),[],false
+        (* | [] -> failwith "JQuery_env: jQuery_fn: should have already terminated" *)
+        (* | [(_, (_,specs))] ->  *)
+        (*   let suf = if (is_isolated specs) then suf else [] in (pre, suf) *)
+        | ((_, (_,specs)) as hd)::tl -> 
+          let pre = hd::pre in
+          if (is_isolated specs) then (List.rev pre), tl, true
+          else split pre tl in
+      split [] select_rs in
 
-       Select_sels is a list of selectors, where the first is the shortest possible
-       part of select_rs starting at the TOP. The last is either the longest, or
-       the FIRST part of select_rs that starts with a simple with an isolated spec.
+    if (not isolated) then
+      MZeroPlus (MPlain (embed_t (Strobe.TId "Element")))
+    else (* if isolated spec was found  *) begin
+      
+      let prefix_sel = Css.regsel2sel prefix in
 
-       The bool isolated indicates whether or not at there was at least one isolated
-       spec in the list.
-    *)
-    let (select_sels,isolated) =
-      let rec helper rs = match rs with
-        | [] -> ([], false)
-        | (comb,((a,specs) as simple))::tl ->
-          let isolated = is_isolated specs in
-          (* Convert this piece of the regsel as if it's the whole thing *)
-          let sel = Css.regsel2sel ((Desc,simple)::tl) in
-          p_dummy_tdom sel;
-          (* Css.p_css (Css.singleton "div.a") Format.std_formatter; *)
-          if isolated then ([sel],true)
-          else
-            let (ss,i) = (helper tl) in
-            ((sel::ss),i) in
-      helper select_rs in
+      (* All ids in benv matching the prefix *)
+      let prefix_matches = 
+        List.fold_left (fun matches (id,sel) -> 
+          Strobe.traceMsg "Got here????";
+          if (Css.is_overlapped prefix_sel sel) then  begin
+            Strobe.traceMsg "Prefix matched id: %s"id;
+            id::matches end
+          else matches)
+          [] benv in
 
-    (* Strobe.traceMsg "Is isolated: %b"isolated; *)
 
-    List.iter (fun s -> p_dummy_tdom s;) select_sels;
+      (* Helper: Given a combinator and an list of ids representing pieces
+         of local structure, get the 'next' ids based on the relationship
+         defined by the combinator *)
+      let get_next (c : combinator) (ids : id list) : id list = 
 
-    (* Matches a piece of local structure (id, sel) against each sel
-       in select_sels, in order of greatest to least precision. If a match
-       is found, generate TDom and STOP matching, as the first match is
-       the most precise. *)
-    let get_match (b : (id * Css.t)) : multiplicity option  =
-      let (id,sel_t) = b in
-      let rec helper sel_ss = match sel_ss with
-        | [] -> None (* No match *)
-        | sel_s::tl ->
-          Printf.eprintf "Sel1:\n";
-          p_dummy_tdom sel_t;
-          Printf.eprintf "Sel2:\n";
-          p_dummy_tdom sel_s;
-          let inter = Css.intersect sel_t sel_s in
-          Printf.eprintf "Intersection:\n";
-          p_dummy_tdom inter;
-          let matched = (Css.is_equal inter sel_t) in
-          Printf.eprintf "matched: %b\n"matched;
-          if matched then (* Build TDom *)
-            let cur_tdom = fst (lookup_typ_id id env) in begin
-              match cur_tdom with
-                | TDom (s,id,typ,_) -> Some (MOnePlus (MPlain (TDom (s,id,typ,inter))))
-                | _ ->
-                  failwith "JQuery_env: jQuery_fn: IMPOSSIBLE: Should have gotten a tdom on lookup"
-            end
-          else helper tl in
-      helper select_sels in
+        (* Helper *)
+        let rec unwrap_msum m =
 
-    let get_matches =
-      List.fold_left (fun acc b -> match get_match b with
-        | Some t -> t::acc
-        | None -> acc) [] benv in
+          Strobe.traceMsg "Attempting to unwrap %s"(string_of_mult m);
 
-    (* Now build the resulting multiplicity *)
+          let rec unwrap_t t =  match t with 
+            | Strobe.TId id -> [id]
+            | Strobe.TUnion (_,t1,t2) -> List.append (unwrap_t t1) (unwrap_t t2)
+            | _ -> failwith (sprintf "JQuery_env: jQuery_fn: got something other than a tid or a tunion in clausemaps: %s"(Strobe.string_of_typ t)) in
 
-    match get_matches,isolated with
-      | [],false -> MZeroPlus (MPlain (embed_t (Strobe.TId "Element")))
-      | [],true -> MZero (MPlain (embed_t (Strobe.TId "Element")))
-      | [m],false -> MSum ((MZeroPlus (MPlain (embed_t (Strobe.TId "Element")))),m)
-      | [m],true -> Strobe.traceMsg "Got to singleton m case"; m
-      | ms,true -> msum_ms ms
-      | ms,false -> msum_ms ((MZeroPlus ((MPlain (embed_t (Strobe.TId "Element")))))::ms)
+          match m with
 
+          | MSum (m1,m2) -> List.append (unwrap_msum m1) (unwrap_msum m2)
+          | MZero _ -> [] 
+          (* Stop if it's nothing and don't try to extract the type *)
+          | _ -> begin match (fst (extract_mult m)) with 
+            | STyp t -> unwrap_t (extract_t t)
+            | _ -> failwith 
+              "JQuery_env: jQuery_fn: got mult after extract_mult" end 
+        in
+
+
+        List.flatten (List.map (fun id -> 
+          let make_tid id = embed_t ( Strobe.TId id) in 
+          let sm = simplify_msum in match c with 
+        | Desc -> unwrap_msum (sm (find included env senv (make_tid id)))
+        | Kid -> unwrap_msum (sm (children env senv (make_tid id)))
+        | Sib -> unwrap_msum (sm (nextAll included env senv (make_tid id)))
+        | Adj -> unwrap_msum (sm (next env senv (make_tid id)))) ids) in
+      (* END get_next *)
+
+
+      (* continue matching with the suffix *)
+      let rec get_matches ids match_rs suf = match suf with 
+        | [] -> ids
+        | ((comb,_) as suf_hd)::suf_tl -> 
+          let new_match_rs = List.append match_rs [suf_hd] in
+          let next_ids = 
+            List.filter (fun id -> 
+              Css.is_overlapped 
+                (Css.regsel2sel new_match_rs)
+                (List.assoc id benv)) 
+              (get_next comb ids) in
+          get_matches next_ids new_match_rs suf_tl in
+      (* END get_matches *)
+
+      (* Helper: Given an id, lookups up the current TDom associated with id
+         and returns a one plus of that tdom with an updated sel *)
+      let optd id sel =  
+        let cur_tdom = fst (lookup_typ_id id env) in
+        match cur_tdom with 
+        | TDom(s,_,nt,_) -> MOnePlus (MPlain (TDom (s,id,nt,sel)))
+        | _ -> failwith 
+          (sprintf "JQuery_env: jQuery_fn: impossible, %s is not a TDom"id) in
+
+      (* Finally, build multiplicity from matches and return *)
+      match get_matches prefix_matches prefix suffix with
+      | [] -> MZero (MPlain (embed_t (Strobe.TId "Element")))
+      | [id] -> optd id select_sel
+      | ids -> msum_ms (List.map (fun id -> optd id select_sel) ids)
+        
+            
+    end
 
 
   (*** END jQuery_fn ***)
@@ -709,7 +696,7 @@ struct
         Strobe.traceMsg "resolving selector primitive";
         begin match Strobe.Pat.singleton_string pat with
         | Some s ->
-          let m = (jQuery_fn env senv s) in
+          let m = (jQuery_fn env included s) in
           Strobe.traceMsg "jQuery(%s) returns %s" s (string_of_mult m);
           TApp (TStrobe (Strobe.TId "jQ"), [(SMult m); STyp (TStrobe (Strobe.TId "AnyJQ"))])
         | None -> failwith "pattern cannot be converted to string??"

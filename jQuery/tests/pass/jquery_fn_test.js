@@ -10,73 +10,83 @@
 
 */
 
-
+// PASS
 // /*: Num */$(".a");
+
+// PASS
 // /*: Num */$("div.a > div.b");
 
+// PASS
 // /*: Num */$("p > div.a");
 
+// PASS
 // /*: Num */$("p  div.a");
 
+// PASS
 // /*: Num */$("p + div.a");
 
+// PASS
 // /*: Num */$("p ~ div.a");
 
 // This is 0<Element>, because there can't be any local structure
 // specs above local structure
+// PASS
 // /*: Num */$(".c > p > .a");
 
-
 // I believe optional class intersection behavior needs to be changed
+// PASS
 // /*: Num */$(".c");
 
+// PASS
 // /*: Num */$(".f");
 
+// PASS
 // /*: Num */$("div .f");
 
+// PASS
 // /*: Num */$("div  div .f");
 
+// PASS
 // /*: Num */$("div > div > div > .f");
 
-
-// Error parsing the selector annotation... this needs to be fixed
+// Error parsing the selector annotation... this needs to be fixed?
 // /*: Num */$(" * + .f");
 
-
-
-// Look at what the intersection is here... I think the inter algo might be buggy.
-// Result should be 0+<Element>, but is 1+<F>. I don't think the fn algo is wrong though.
-// The intersection between the F selector and this selector is non-empty. It's
-// the same as the F selector (obviously). Is this correct? Doesn't seem like it.
-
+// PASS
 // /*: Num */$("div + .f");
 
-// ***
-// UPDATE: It actually seems like a parsing error. "p + .f" is being parsed into
-// TWO selectors:  "*.f, p + *.f""/
-//  ***
-// That doesn't seem right.
+// FAIL ( 1+<F> )
 // /*: Num */$("p + .f");
 
-
-// // Same problem as above
+// PASS
 // /*: Num */$("p .f");
 
-// // Same problem as above
+// PASS
 // /*: Num */$("p > .f");
 
-// Interestingly, ".e + .f" is parsed correctly.
-// But this breaks for the same reason as the .bad cases below
-/*: Num */$(".bad + .f");
+// FAIL ( 1+<F> )
+// /*: Num */$(".bad + .f");
 
-// This passes
+// PASS
 // /*: Num */$(".e > .f");
 
-
-// Weird edge-case that break down the algorithm
+// PASS
 // /*: Num */$(".bad > div > div > div");
 
+// PASS
 // /*: Num */$(".bad > div > div");
 
-// The problem with the .bad cases above is that intersection works in a
-// 'bottom-up' fashion and we need something that restricts in a 'top-down' fashion.
+// PASS
+// /*: Num */$(".x > .y + .z ~ div.blah div div.d");
+
+// PASS
+// /*: Num */$(".x > .y + .z ~ div.blah div.a > div");
+
+// PASS
+// /*: Num */$(".x > .y + .z ~ div.blah div.a > *");
+
+// PASS
+// /*: Num */$(".x > .y + .z ~ div.blah div.a  *");
+
+
+
