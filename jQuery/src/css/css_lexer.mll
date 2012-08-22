@@ -56,6 +56,7 @@ rule token = parse
 | "["                       { LBRACK }
 | "]"                       { RBRACK }
 | "="                       { EQUALS }
+| "VOID"                    { VOID }
 | eof                       { EOF }
 
 and block_comment = parse

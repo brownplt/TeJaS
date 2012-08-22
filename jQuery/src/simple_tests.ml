@@ -1609,8 +1609,8 @@ let run_tests () =
       (* expose_tdoms_test; *)
       (* subtyping_test; *)
       (* jquery_fn_test; *)
-      (* structure_well_formed_test; *)
-      (* structure_compilation_test; *)
+      structure_well_formed_test;
+      structure_compilation_test;
       (* selector_tests; *)
     ]);
     (* test5 (); *)

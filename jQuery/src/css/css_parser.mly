@@ -19,7 +19,7 @@
 %token <string> HASH
 (* %token <string> ATKEYWORD *)
 %token INCLUDES DASHMATCH PREFIXMATCH SUFFIXMATCH SUBSTRINGMATCH EQUALS LBRACK RBRACK
-       PLUS GREATER COMMA TILDE STAR COLON EOF S DOT DOTOPT DOTBANG
+       PLUS GREATER COMMA TILDE STAR COLON EOF S DOT DOTOPT DOTBANG VOID
 
 
 %start selectors_group
@@ -51,6 +51,7 @@ simple_selector_sequence :
 simple_sel :
 | t=type_selector { (t, []) }
 | u=universal { (u, []) }
+| v=void { (v, []) }
 | a=simple_sel_attribs { (USel, [a]) }
 
 simple_sel_attribs :
@@ -74,6 +75,9 @@ element_name :
 
 universal :
 | STAR { USel }  (* namespace_prefix?  *)
+
+void : 
+| VOID { VSel }
 
 attrib :
 | LBRACK attr=IDENT value=attrib_value? RBRACK { SpAttrib(attr, value) } (* namespace_prefix?  *)

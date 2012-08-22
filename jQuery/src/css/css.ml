@@ -204,7 +204,8 @@ module RealCSS = struct
 		let simple2regex (a, ss) =
 			let ra = match a with
 				| TSel s -> R.singleton s
-				| USel -> option ident in
+				| USel -> option ident 
+        | VSel -> failwith "Css: AsRegex: not yet implemented" in
 			let rss = List.map (fun s -> match s with
 				| SpId s -> concat (R.singleton "#") (R.singleton s)
 				| SpClass s -> concat (R.singleton ".") (R.singleton s)
@@ -369,6 +370,7 @@ module RealCSS = struct
 			match a with
 			| USel -> text "*"
 			| TSel t -> text t
+      | VSel -> text "VOID"
 		and pretty_spec s = List.map (fun s -> match s with
 			| SpId s -> squish [text "#"; text s]
 			| SpClass s -> squish [text "."; text s]
@@ -480,7 +482,7 @@ module RealCSS = struct
 			| AOSubstring, AOSubstring -> contains v1 v2
 
 		let is_morespecific_simple (a1a, a1s) (a2a, a2s) =
-			(a1a = a2a || a2a = USel) &&
+			(a1a = a2a || (a2a = USel && a1a <> VSel)) &&
 				List.for_all (fun s2 ->
 					List.exists (fun s1 ->
 						match s1, s2 with
@@ -689,6 +691,9 @@ module RealCSS = struct
 			| USel, a
 			| a, USel -> Some a
 			| TSel a, TSel b when a = b -> Some (TSel a)
+      (* VSels cannot canonicalize with anything *)
+      | VSel,_
+      | _,VSel
 			| _ -> None in
 		match sa with
 		| None -> SimpleSet.empty
@@ -849,9 +854,12 @@ module RealCSS = struct
 		SelSet.is_empty s ||
 			SelSet.exists (fun sel ->
 				let d = desc2regsel sel in
+        let simples = List.map snd d in
 				(d = []) ||
+          (* If sel contains a voidsel anywhere, it's empty *)
+          (List.exists (fun a -> a = VSel) (List.map fst simples)) ||
 					(List.exists (fun sim -> (SimpleSet.is_empty (canonical sim sim)))
-						 (List.map snd d))) s
+						 simples)) s
 	let is_overlapped s1 s2 =
 		let inter = intersect s1 s2 in
 		if not (SelSet.is_empty inter)

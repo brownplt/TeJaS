@@ -1,6 +1,6 @@
 open Prelude
 
-type atomic = TSel of string | USel
+type atomic = TSel of string | USel | VSel
 and spec = | SpId of string | SpClass of string
            | SpSpecClass of string * bool
            | SpAttrib of string * (oper * string) option | SpPseudo of string
@@ -22,9 +22,14 @@ let compare_comb c1 c2 = match c1, c2 with
   | Desc, _ -> 1
 let compare_atomic a1 a2 = match a1, a2 with
   | USel, USel -> 0
-  | TSel _, USel -> 1
-  | USel, TSel _ -> -1
+  | VSel, VSel -> 0
   | TSel a1, TSel a2 -> String.compare a1 a2
+  | TSel _, USel -> 1
+  | TSel _, VSel -> -1
+  | USel, TSel _ -> -1
+  | USel, VSel -> -2
+  | VSel, TSel _ -> 1
+  | VSel, USel -> 2
 let compare_oper o1 o2 = match o1, o2 with
   | AOEquals, AOEquals
   | AOEquals, _ -> -1

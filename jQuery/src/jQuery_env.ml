@@ -253,9 +253,6 @@ struct
     let senv = !senv in 
     let (benv,_) = senv in
 
-    let p_dummy_tdom s = Printf.eprintf "%s\n"
-      (string_of_typ (TDom (None,"DUMMY",(embed_t (Strobe.TId "Element")),s))) in
-
     let select_sel = Css.singleton select_str in
 
     (* Convert sel to list of regsels. This should be a singleton list *)
@@ -312,10 +309,7 @@ struct
       (* All ids in benv matching the prefix *)
       let prefix_matches = 
         List.fold_left (fun matches (id,sel) -> 
-          Strobe.traceMsg "Got here????";
-          if (Css.is_overlapped prefix_sel sel) then  begin
-            Strobe.traceMsg "Prefix matched id: %s"id;
-            id::matches end
+          if (Css.is_overlapped prefix_sel sel) then id::matches
           else matches)
           [] benv in
 
@@ -327,8 +321,6 @@ struct
 
         (* Helper *)
         let rec unwrap_msum m =
-
-          Strobe.traceMsg "Attempting to unwrap %s"(string_of_mult m);
 
           let rec unwrap_t t =  match t with 
             | Strobe.TId id -> [id]
