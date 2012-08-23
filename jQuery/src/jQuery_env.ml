@@ -29,7 +29,8 @@ module MakeExt
    with type typ = JQuery.typ
   with type kind = JQuery.kind
   with type multiplicity = JQuery.multiplicity
-  with type backformSel = JQuery.sel)
+  with type backformSel = JQuery.sel
+  with type voidBackformSel = JQuery.sel)
   : (JQUERY_TYP_ENV
      with type typ = JQuery.typ
   with type kind = JQuery.kind
@@ -48,6 +49,7 @@ struct
   type env = Env.env
   type env_decl = Env.env_decl
   type backformSel = JQuery.sel
+  type voidbackformSel = JQuery.sel
   open Env
   open JQueryKinding
   module Css = JQuery.Css
@@ -260,14 +262,14 @@ struct
       | [rs] -> rs
       | _ -> failwith "JQuery_env: jQuery: should have gotten just one regsel from sel" in
 
-    (* Convert backform map to a map of singleton regsel lists *)
-    let structure_rss = List.map (fun (id, sel) ->
-      (id, (Css.sel2regsels sel))) benv in
+    (* Convert sels to regsels in benv *)
+    let structure_rss = List.map (fun (id, sel, vsel) ->
+      (id, (Css.sel2regsels sel), (Css.sel2regsels vsel))) benv in
 
 
     (* Collect set of all specs that appear in benv *)
     
-    let isolated_specs = List.fold_left (fun spec_set (id, sels) ->
+    let isolated_specs = List.fold_left (fun spec_set (id, sels,_) ->
       List.fold_left (fun spec_set rs ->
         List.fold_left (fun spec_set (_,(_,sel_specs)) ->
           List.fold_left (fun spec_set spec -> match spec with
@@ -308,11 +310,10 @@ struct
 
       (* All ids in benv matching the prefix *)
       let prefix_matches = 
-        List.fold_left (fun matches (id,sel) -> 
+        List.fold_left (fun matches (id,sel,_) -> 
           if (Css.is_overlapped prefix_sel sel) then id::matches
           else matches)
           [] benv in
-
 
       (* Helper: Given a combinator and an list of ids representing pieces
          of local structure, get the 'next' ids based on the relationship
@@ -358,7 +359,8 @@ struct
             List.filter (fun id -> 
               Css.is_overlapped 
                 (Css.regsel2sel new_match_rs)
-                (List.assoc id benv)) 
+                (* check against voided sel *)
+                (thd3 (List.find (fun (id2,_,_) -> id2 = id) benv)))
               (get_next comb ids) in
           get_matches next_ids new_match_rs suf_tl in
       (* END get_matches *)
@@ -385,23 +387,20 @@ struct
   (*** END jQuery_fn ***)
 
 
-
   (*** END Local Structure ***)
 
   let print_structureEnv lbl (senv : structureEnv) =
     let open FormatExt in
     let open Desugar in
     let (benv, cenv) = senv in
-    let benv = List.fold_left (fun (acc : Css.t IdMap.t) elem -> IdMap.add (fst elem) (snd elem) acc) IdMap.empty benv in
+    let print_benv = horzOrVert (List.map (fun (id,sel,vsel) ->
+      horz [text id; Css.p_css sel; Css.p_css vsel]) benv) in
     let print_id id= text id in
-    let print_benv_key = text in
-    let print_benv_val = Css.p_css in
     let print_cenv_key = print_id in
     let print_cenv_val = JQuery.Pretty.multiplicity in
     label lbl [text "";
                text "Backform Environment";
-               (IdMapExt.p_map ""
-                  empty print_benv_key print_benv_val benv);
+               print_benv;
                text "Clause Environment";
                (IdMapExt.p_map "Children Clause"
                   empty print_cenv_key print_cenv_val cenv.children);

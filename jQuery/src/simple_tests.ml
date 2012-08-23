@@ -1,4 +1,4 @@
-open Random
+ open Random
 open Format
 open FormatExt
 open Prelude
@@ -1129,7 +1129,6 @@ let structure_compilation_test () =
     let decls = JQEnv.parse_env d "Simple_tests: Structure Compilation Test" in
 
 
-
     (* IMPORTANT: This is an uncomfortable dependency; in order to compute the
        env, we must use desugar_structure, which is what we're testing
        here. We need the env, however, to test equivalent multiplicities.
@@ -1228,7 +1227,7 @@ let structure_compilation_test () =
     ((fmsg "Single top-level declComp"),
      (fun _ -> wrapper
        "(Tweet : div classes=[t1])"
-       ["Tweet", H.sel ["div.!t1"]]
+       ["Tweet", H.sel ["div.!t1"], H.sel ["div.!t1"]]
        { D.children = ch [("Tweet", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]))];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]))];
@@ -1239,8 +1238,10 @@ let structure_compilation_test () =
      (fun _ -> wrapper
        "(Tweet : div classes=[t1]
           (Author : div classes=[a1]))"
-       [("Tweet", H.sel ["div.!t1"]);
-        ("Author", H.sel ["div.!t1 > div.!a1"]);]
+       [("Tweet", H.sel ["div.!t1"], H.sel ["div.!t1"]);
+        ("Author", 
+         H.sel ["div.!t1 > div.!a1"], 
+         H.sel ["div.!t1 > VOID + div.!a1"]);]
        { D.children = ch [("Tweet", MOne (b_mp ["Author"]));
                           ("Author", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
@@ -1254,8 +1255,12 @@ let structure_compilation_test () =
      (fun _ -> wrapper
        "(A : div classes=[a1])
         (B : div classes=[b1])"
-       [("A", H.sel ["div.!a1"]);
-        ("B", H.sel ["div.!b1"])]
+       [("A", 
+         H.sel ["div.!a1"],
+         H.sel ["div.!a1"]);
+        ("B", 
+         H.sel ["div.!b1"],
+         H.sel ["div.!b1"])]
        { D.children = ch [("A", MZero (b_mp ["Bot"]));
                           ("B", MZero (b_mp ["Bot"]))];
          D.parent = par [("A", MZeroOne (b_mp ["Element"]));
@@ -1274,12 +1279,24 @@ let structure_compilation_test () =
         (D : div classes=[d1]
            (E : div classes=[e1]
               (F : div classes=[f1])))"
-       [("A", H.sel ["div.!a1"]);
-        ("B", H.sel ["div.!a1 > div.!b1"]);
-        ("C", H.sel ["div.!a1 > div.!b1 > div.!c1"]);
-        ("D", H.sel ["div.!d1"]);
-        ("E", H.sel ["div.!d1 > div.!e1"]);
-        ("F", H.sel ["div.!d1 > div.!e1 > div.!f1"])]
+       [("A", 
+         H.sel ["div.!a1"],
+         H.sel ["div.!a1"]);
+        ("B", 
+         H.sel ["div.!a1 > div.!b1"],
+         H.sel ["div.!a1 > VOID + div.!b1"]);
+        ("C", 
+         H.sel ["div.!a1 > div.!b1 > div.!c1"],
+         H.sel ["div.!a1 > VOID + div.!b1 > VOID + div.!c1"]);
+        ("D", 
+         H.sel ["div.!d1"],
+         H.sel ["div.!d1"]);
+        ("E", 
+         H.sel ["div.!d1 > div.!e1"],
+         H.sel ["div.!d1 > VOID + div.!e1"]);
+        ("F", 
+         H.sel ["div.!d1 > div.!e1 > div.!f1"],
+         H.sel ["div.!d1 > VOID + div.!e1 > VOID + div.!f1"])]
        { D.children = ch [("A", MOne (b_mp ["B"]));
                           ("B", MOne (b_mp ["C"]));
                           ("C", MZero (b_mp ["Bot"]));
@@ -1312,8 +1329,17 @@ let structure_compilation_test () =
           (Author : div classes=[a1])
           <Author>
           <Author>)"
-       [("Tweet", H.sel ["div.!t1"]);
-        ("Author", H.sel ["div.!t1 > div.!a1"])]
+       [("Tweet", 
+         H.sel ["div.!t1"],
+         H.sel ["div.!t1"] );
+        ("Author", 
+         H.sel ["div.!t1 > div.!a1";
+                "div.!t1 > div.!a1 + div.!a1";
+                "div.!t1 > div.!a1 + div.!a1 + div.!a1"],
+         H.sel ["div.!t1 > VOID + div.!a1";
+                "div.!t1 > VOID + div.!a1 + div.!a1";
+                "div.!t1 > VOID + div.!a1 + div.!a1 + div.!a1"]
+        )]
        { D.children = ch [("Tweet", MOnePlus (b_mp ["Author"]));
                           ("Author", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
@@ -1333,8 +1359,18 @@ let structure_compilation_test () =
           <Author>
           ...
           <Author>)"
-       [("Tweet", H.sel ["div.!t1"]);
-        ("Author", H.sel ["div.!t1 > div.!a1"])]
+       [("Tweet", 
+         H.sel ["div.!t1"],
+         H.sel ["div.!t1"]);
+        ("Author", 
+         H.sel ["div.!t1 > div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!a1 ~ div.!a1"],
+         H.sel ["div.!t1 > div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!a1 ~ div.!a1"])]
        { D.children = ch [("Tweet", b_msum [MOnePlus (b_mp ["Author"]);
                                             MZeroPlus (b_mp ["Element"])]);
                           ("Author", MZero (b_mp ["Bot"]))];
@@ -1358,22 +1394,30 @@ let structure_compilation_test () =
           <Content>
           ...
           <Author>)"
-       [("Tweet", H.sel ["div.!t1"]);
+       [("Tweet", 
+         H.sel ["div.!t1"],
+         H.sel ["div.!t1"]);
         ("Author",
          H.sel ["div.!t1 > div.!a1";
-              "div.!t1 > div.!a1 ~ div.!a1";
-              "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1";
-              "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1 ~ div.!a1"]);
+                "div.!t1 > div.!a1 ~ div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1 ~ div.!a1"],
+         H.sel ["div.!t1 > div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1";
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1 ~ div.!a1"]);
         ("Content",
          H.sel ["div.!t1 > div.!a1 ~ div.!a1 + div.!c1";
-              "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1"])]
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1"],
+         H.sel ["div.!t1 > div.!a1 ~ div.!a1 + div.!c1";
+                "div.!t1 > div.!a1 ~ div.!a1 + div.!c1 + div.!a1 + div.!c1"])]
        { D.children = ch [("Tweet",
                            b_msum [
                              MOnePlus (b_mp ["Author"]);
                              MZeroPlus (b_mp ["Element"]);
                              MOnePlus (b_mp ["Content"];)]);
-                           ("Author", MZero (b_mp ["Bot"]));
-                           ("Content", MZero (b_mp ["Bot"]))];
+                          ("Author", MZero (b_mp ["Bot"]));
+                          ("Content", MZero (b_mp ["Bot"]))];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));
                          ("Author", MOne (b_mp ["Tweet"]));
                          ("Content", MOne (b_mp ["Tweet"]))];
@@ -1390,7 +1434,9 @@ let structure_compilation_test () =
      (fun _ -> wrapper
        "(Tweet : div classes=[t1]
           ...)"
-       [("Tweet", H.sel ["div.!t1"]);]
+       [("Tweet", 
+         H.sel ["div.!t1"],
+         H.sel ["div.!t1"]);]
        { D.children = ch [("Tweet", MZeroPlus (b_mp ["Element"]));];
          D.parent = par [("Tweet", MZeroOne (b_mp ["Element"]));];
          D.prev = prev [("Tweet", MZeroOne (b_mp ["Element"]));];
@@ -1402,8 +1448,12 @@ let structure_compilation_test () =
        "(Tweet : div classes=[t1]
           (Author : div classes=[a1])
           ...)"
-       [("Tweet", H.sel ["div.!t1"]);
-       ("Author", H.sel ["div.!t1 > div.!a1"])]
+       [("Tweet", 
+         H.sel ["div.!t1"],
+         H.sel ["div.!t1"]);
+       ("Author", 
+        H.sel ["div.!t1 > div.!a1"],
+        H.sel ["div.!t1 > VOID + div.!a1"])]
        { D.children = ch [("Tweet", b_msum [MOne (b_mp ["Author"]);
                                             MZeroPlus (b_mp ["Element"])]);
                           ("Author", MZero (b_mp ["Bot"]))];
@@ -1419,8 +1469,12 @@ let structure_compilation_test () =
        "(Tweet : div classes=[t1]
           ...
           (Author : div classes=[a1]))"
-       [("Tweet", H.sel ["div.!t1"]);
-       ("Author", H.sel ["div.!t1 > div.!a1"])]
+       [("Tweet", 
+         H.sel ["div.!t1"],
+         H.sel ["div.!t1"]);
+       ("Author", 
+        H.sel ["div.!t1 > div.!a1"],
+        H.sel ["div.!t1 > div.!a1"])]
        { D.children = ch [("Tweet", b_msum [MOne (b_mp ["Author"]);
                                             MZeroPlus (b_mp ["Element"])]);
                           ("Author", MZero (b_mp ["Bot"]))];
@@ -1446,13 +1500,24 @@ let structure_compilation_test () =
           (Image : div classes=[image])
           <Image>
           (Time : div classes=[time]))"
-       [("Tweet", H.sel ["div.!tweet.?first.?last"]);
-        ("Author", H.sel ["div.!tweet.?first.?last > div.!author.?featured"]);
-        ("Bio", H.sel ["div.!tweet.?first.?last > div.!author.?featured > div.!bio.?hidden"]);
-        ("Content", H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content"]);
-        ("Image", H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image";
-                       "div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image"]);
-        ("Time", H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image + div.!time"]);]
+       [("Tweet", 
+         H.sel ["div.!tweet.?first.?last"],
+         H.sel ["div.!tweet.?first.?last"]);
+        ("Author", 
+         H.sel ["div.!tweet.?first.?last > div.!author.?featured"],
+         H.sel ["div.!tweet.?first.?last > div.!author.?featured"]);
+        ("Bio",
+         H.sel ["div.!tweet.?first.?last > div.!author.?featured > div.!bio.?hidden"],
+         H.sel ["div.!tweet.?first.?last > div.!author.?featured > VOID + div.!bio.?hidden"]);
+        ("Content", H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content"],
+         H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content"]);
+        ("Image", 
+         H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image";
+                "div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image"],
+         H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image";
+                "div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image"]);
+        ("Time", H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image + div.!time"],
+         H.sel ["div.!tweet.?first.?last > div.!author.?featured + div.!content ~ div.!image + div.!image + div.!time"]);]
        { D.children = ch
            [("Tweet", b_msum [MOne (b_mp ["Author"]);
                               MOne (b_mp ["Content"]);
@@ -1609,7 +1674,7 @@ let run_tests () =
       (* expose_tdoms_test; *)
       (* subtyping_test; *)
       (* jquery_fn_test; *)
-      structure_well_formed_test;
+      (* structure_well_formed_test; *)
       structure_compilation_test;
       (* selector_tests; *)
     ]);
@@ -1617,6 +1682,6 @@ let run_tests () =
     Printf.eprintf "All tests passed!";
     0
   with e ->
-    Printf.eprintf "Failed with %s" (Printexc.to_string e);
+    (* Printf.eprintf "Failed with %s" (Printexc.to_string e); *)
     2
 ;;

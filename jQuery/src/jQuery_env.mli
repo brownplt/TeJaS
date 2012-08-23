@@ -26,7 +26,8 @@ module MakeExt :
                  with type typ = JQuery.typ
   with type kind = JQuery.kind
   with type multiplicity = JQuery.multiplicity
-  with type backformSel = JQuery.sel) ->
+  with type backformSel = JQuery.sel
+  with type voidBackformSel = JQuery.sel) ->
         (JQUERY_TYP_ENV
          with type typ = Env.typ
   with type kind = Env.kind

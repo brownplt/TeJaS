@@ -11,10 +11,11 @@ module type DESUGAR = sig
   type kind
   type multiplicity
   type backformSel
+  type voidBackformSel
   type clauseMap = multiplicity IdMap.t
 
   (* TODO(liam) turn this into a set *)
-  type backformEnv = (id * backformSel) list
+  type backformEnv = (id * backformSel * voidBackformSel) list
 
   type clauseEnv = { children : clauseMap; 
                      parent : clauseMap; 
@@ -41,13 +42,15 @@ module Make
      with type typ = JQ.typ
   with type kind = JQ.kind
   with type multiplicity = JQ.multiplicity
-  with type backformSel = JQ.sel) =
+  with type backformSel = JQ.sel
+  with type voidBackformSel = JQ.sel) =
 struct
   type typ = JQ.typ
   type kind = JQ.kind
   type multiplicity = JQ.multiplicity
   module Css = JQ.Css
   type backformSel = JQ.sel
+  type voidBackformSel = JQ.sel
 
   exception Typ_stx_error of string
 
@@ -55,7 +58,7 @@ struct
   type preClauseMap = id option list IdMap.t
   type clauseMap = multiplicity IdMap.t
 
-  type backformEnv = (id * Css.t) list
+  type backformEnv = (id * Css.t * Css.t) list
 
   type clauseEnv = { children : clauseMap; 
                      parent : clauseMap; 
@@ -66,7 +69,6 @@ struct
                         pce_prev: preClauseMap;
                         pce_next: preClauseMap }
 
-  type preStructureEnv = backformEnv * preClauseEnv
 
   type structureEnv = backformEnv * clauseEnv  (* Exposed *)
 
@@ -75,9 +77,11 @@ struct
   (* END Local Structure types *)
 
   let benv_eq (env1 : backformEnv)  (env2 : backformEnv) = 
-    let s1 = List.sort (fun e1 e2 -> compare (fst e1) (fst e2)) env1 in
-    let s2 = List.sort (fun e1 e2 -> compare (fst e1) (fst e2)) env2 in
-    List.for_all2 (fun e1 e2 -> Css.is_equal (snd e1) (snd e2)) s1 s2
+    let s1 = List.sort (fun e1 e2 -> compare (fst3 e1) (fst3 e2)) env1 in
+    let s2 = List.sort (fun e1 e2 -> compare (fst3 e1) (fst3 e2)) env2 in
+    List.for_all2 (fun e1 e2 -> 
+      Css.is_equal (snd3 e1) (snd3 e2) &&
+      Css.is_equal (thd3 e1) (thd3 e2)) s1 s2
   
   let error msg = 
     raise (Typ_stx_error msg)
@@ -363,93 +367,158 @@ struct
       List.fold_left gdc IdMap.empty dcs in
 
     
-    (** Function : gen_bindings
+    (** Function : gen_bindings_benv
         ============================================================
         This function takes a list of declComps and generates bindings from ids to 
         TDoms based on information given in the declComp. The TDoms generated
         by this function include required classes, optional classes, and ids.
+        
+        It also generates the backformEnv
     **)
-    let gen_bindings (dcs : W.declComp list) : typ IdMap.t =
-      let generateSels ((classes, optClasses, ids) : W.attribs) (comb : Css.combinator) (sel : Css.t) (node : string) : Css.t =
+    let gen_bindings_benv (dcs : W.declComp list) : (typ IdMap.t * backformEnv) =
+
+      let open Css_syntax in
+
+      (* Helper: generate a TDom *)
+      let gen_tdom name node sel = 
+        JQ.TDom (None, name, (JQ.embed_t (S.TId node)), sel) in
+
+      (* Helper: Update entry in benv by unioning new sels.
+         TODO(liam): Consider eventually turning backformEnv into an IdMap *)
+      let rec update_benv benv id s vs = 
+        let rec helper benv' benv id s vs = match benv with 
+          | [] -> begin match s,vs with 
+            | Some s, Some vs -> (id,s,vs)::benv'
+            | _ -> failwith (sprintf "Desugar_Structure:update_benv: Need Some for both selectors if benv does not yet contain %s"id)
+          end
+          | ((id2, s2, vs2) as cur)::tl ->
+            if id = id2 then 
+              List.append 
+                ((id,
+                  (match s with | Some s -> Css.union s s2 | None -> s2),
+                  (match vs with | Some vs -> Css.union vs vs2 | None -> vs2))
+                 ::benv') tl
+            else (helper (cur::benv') tl id s vs) in
+        helper [] benv id s vs in
+
+
+      let generateSel ((classes, optClasses, ids) : W.attribs) 
+          (comb : Css.combinator) (sel : Css.t) (node : string) 
+          (void_prev : bool) : Css.t = 
+
         let nodesel = node in
         let clsel = if classes = [] then "" else 
             ".!" ^ (String.concat ".!" classes) in
         let optclsel = if optClasses = [] then "" else
             ".?" ^ (String.concat ".?" optClasses) in
         let idsel = if List.length ids = 1 then "#" ^ (List.hd ids) else "" in
-        let simple = Css.singleton (nodesel ^ clsel ^ optclsel ^ idsel) in
+        let simple_str = nodesel ^ clsel ^ optclsel ^ idsel in
+        let simple = 
+          Css.singleton (if void_prev then "VOID + " ^ simple_str else simple_str) in
         match comb with
         (* The Desc combinator should only be used as a dummy value *)
-        | Css_syntax.Desc -> simple
+        | Desc -> simple
         | _ -> Css.concat_selectors sel comb simple in
-      let rec compileComp (ids : typ IdMap.t) (dc : W.declComp) (comb : Css.combinator) (prev : Css.t) = 
+      (* END generateSels *)
+
+      let rec gen_comp (tdoms : typ IdMap.t) (benv : backformEnv) 
+          (dc : W.declComp) (comb : Css.combinator) (prev : Css.t) 
+          (vprev : Css.t) (first : bool)
+          : (typ IdMap.t * backformEnv) = 
+
         let (name,_,nodeType,attribs, content) = dc in
-        let sels = generateSels attribs comb prev nodeType in
-        let new_ids = 
-          IdMap.add 
-            name 
-            (JQ.TDom (None,name, JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")), sels))
-            ids in
-        compileContent new_ids content Css_syntax.Kid sels
 
-      and compileContent (ids : typ IdMap.t) (dccs : W.dcContent list) (comb : Css.combinator) (prev : Css.t)  : typ IdMap.t = match dccs with
-        | [] -> ids
-        | (W.DId name) :: tail ->
-          (* Get decl from defined map *)
-          let decl = begin try IdMap.find name defined
-            with Not_found -> failwith 
-              ("id " ^ name ^ " used before declared in structure declaration." ^
-                  " This declaration SHOULD have been rejected in well-formed" ^
-                  " testing") end in
-          let (_, _, nodeType, attribs, contents) = decl in
-          let sels = generateSels attribs comb prev nodeType in
-          let tdom = try IdMap.find name ids with Not_found -> 
-            failwith "gen_bindings:compile_content: IMPOSSIBLE?: should not encounter a name for which there is no typ in ids"
-            (* JQ.TDom (None,  *)
-            (*          name *)
-            (*          JQ.TStrobe (S.TId ((String.capitalize nodeType) ^ "Element")),  *)
-            (*          Css.empty) in begin *) in begin
-          match tdom with
-          | JQ.TDom (_, _, _, sels2) -> compileContent 
-            (IdMap.add name 
-               (JQ.TDom (None, 
-                         name, 
-                         JQ.TStrobe (S.TId ((String.capitalize nodeType) 
-                                            ^ "Element")), 
-                         Css.union sels sels2)) ids) tail Css_syntax.Adj sels
-          | _ -> failwith "impossible"
-          end
-        | [W.DNested d] ->
-          compileComp ids d comb prev
+        let general_sel = generateSel attribs comb prev nodeType false in
+        let voided_sel = generateSel attribs comb vprev nodeType first in
 
-        | (W.DNested ((name, _, nodeType, attribs, content) as d))::W.DPlaceholder::tail -> 
-          let sels = generateSels attribs comb prev nodeType in
-          let newMap = compileComp ids d comb prev in
-          compileContent newMap tail Css_syntax.Sib sels
+        let updated_tdoms =
+          (IdMap.add name
+             (gen_tdom name ((String.capitalize nodeType) ^ "Element") general_sel)
+             tdoms) in
 
-        | (W.DNested ((name, _, nodeType, attribs, content) as d))::tail ->
-          let sels = generateSels attribs comb prev nodeType in
-          let newMap = compileComp ids d comb prev in
-          compileContent newMap tail Css_syntax.Adj sels
+        gen_content 
+          updated_tdoms  
+          (update_benv benv name (Some general_sel) (Some voided_sel))
+          content Kid general_sel voided_sel
+        (* END gen_comp *)
+          
+      and gen_content (tdoms : typ IdMap.t) (benv : backformEnv)
+          (dccs : W.dcContent list) (comb : Css.combinator) 
+          (prev : Css.t) (vprev : Css.t) : (typ IdMap.t * backformEnv) = 
 
-        | _::tail -> compileContent ids tail comb prev in
+        (* Helper so that we can VOID the first child *)
+        let rec helper tdoms benv dccs comb prev vprev first = match dccs with 
+          | [] -> tdoms,benv
+          | (W.DId name) :: tail -> 
+
+            (* Get decl from defined map *)
+            let decl = begin try IdMap.find name defined
+              with Not_found -> failwith 
+                ("id " ^ name ^ " used before declared in structure declaration." ^
+                    " This structure SHOULD have been rejected in well-formed" ^
+                    " testing") end in
+            let (_, _, node_str, attribs, contents) = decl in
+
+            let general_sel = generateSel attribs comb prev node_str false in
+            let voided_sel = generateSel attribs comb vprev node_str first in
+
+            let tdom = try IdMap.find name tdoms with Not_found -> 
+              failwith "gen_bindings:compile_content: IMPOSSIBLE: should not encounter a name for which there is no tdom"
+            in 
+            let updated_tdoms = begin match tdom with
+              | JQ.TDom (_, _, node_typ, cur_sel) -> IdMap.add name
+                (JQ.TDom (None,name,node_typ,(Css.union cur_sel general_sel))) tdoms
+              | _ -> failwith "Desugar_structure: non-tdom found in tdoms"
+            end in
+
+            let updated_benv = 
+              (update_benv benv name (Some general_sel) (Some voided_sel)) in
+
+            (* Continue with helper *)
+            helper updated_tdoms updated_benv tail Adj general_sel voided_sel false
+
+          | (W.DNested ((name, _, node_str, attribs, content) as dc))::tail ->
+            let last = (tail = []) in
+
+            (* TODO(liam) we need to generate these sels so that we can pass them
+               through, even though this is also done in gen_comp. This
+               repeat logic is ugly *)
+            let general_sel = generateSel attribs comb prev node_str false in
+            let voided_sel = generateSel attribs comb vprev node_str first in
+
+            (* gen_comp on the nested dc *)
+            let (updated_tdoms,updated_benv) = 
+              gen_comp tdoms benv dc comb prev vprev first in
+
+            (* Continue with helper *)
+            helper updated_tdoms updated_benv tail Adj general_sel voided_sel false
+              
+          | W.DPlaceholder::tail -> 
+            (* If first, then don't change comb to Sib, because we still haven't
+               encountered the first non-placeholder. Otherwise change *)
+            let next_comb = if first then comb else Sib  in
+            helper tdoms benv tail next_comb prev vprev false in
+        (* END helper *)
+        helper tdoms benv dccs comb prev vprev true in
+      (* END gen_content *)
 
       (* Fold over all dcs and merge bindings *)
-      List.fold_left (fun all_bindings dc ->
-        compileComp all_bindings dc Css_syntax.Desc Css.all) 
-        IdMap.empty dcs in
-        
+      List.fold_left (fun (all_bindings, benv) dc ->
+        gen_comp all_bindings benv dc Desc Css.all Css.all false) 
+        (IdMap.empty, []) dcs in
+    (* END gen_comp *)
+
+    
     (** Function: compile
         ============================================================
         Compile takes a structure environment (the accumulator) and a declaration component, compiles structure information from the declComp and adds it to the existing structureEnv. TODO(liam) Currently it does not touch the backformEnv, 
         suggesting that perhaps it should only deal with the clauseEnv
     **)
-    let compile (senv : structureEnv) (dcs : W.declComp list)  : structureEnv = 
+    let compile (dcs : W.declComp list)  : clauseEnv = 
 
       let element = "Element" in
       let any = "Any" in
-      let (benv,_) = senv in
-      
+
       (** Function: enforcePresence
           ==================================================
           Takes an id, a preClauseEnv, and looks up each of the preClauseMaps in the preClauseEnv to determine if id is present. If it is present, the preClauseMap is preserved, otherwise the function adds a binding from id to an empty list in the preClauseMap.
@@ -468,10 +537,8 @@ struct
           ==================================================
           Similar to compile, compileComp takes a preStructureEnv and declComp and adds the structure information in declComp to the preStructureEnv.
       **)
-      let rec compileComp (psenv : (preStructureEnv)) (dc : W.declComp)
-          : preStructureEnv =
-
-        let (benv, pcenv) = psenv in
+      let rec compileComp (pcenv : preClauseEnv) (dc : W.declComp)
+          : preClauseEnv =
 
         (* parts of dc, which is the 'parent' *)
         let (pname, _, nodeType, (classes, optClasses, ids), pcontents) = dc in
@@ -507,38 +574,38 @@ struct
 
           let rec helper pcenv dccs = 
 
-          (* decompose the pcenv into four preClauseMaps *)
+            (* decompose the pcenv into four preClauseMaps *)
             let { pce_parent = parent; pce_children = children; pce_prev = prev; pce_next = next} = pcenv in
-          (* While traversing the list of dcContents, we only update the preClauseMaps relevant to the head of the content list in each of the cases. The rest will be dealt with by recursive calls to the tail of the list. *)
+            (* While traversing the list of dcContents, we only update the preClauseMaps relevant to the head of the content list in each of the cases. The rest will be dealt with by recursive calls to the tail of the list. *)
             match dccs with
-          (* list is empty ==> return the original pcenv *)
+            (* list is empty ==> return the original pcenv *)
             | [] -> pcenv
-          (* list consists of a single placeholder ==> add the binding from parentId to None in kidMap *)
+            (* list consists of a single placeholder ==> add the binding from parentId to None in kidMap *)
             | W.DPlaceholder :: [] -> 
               {pce_children = (update pname None children);
                pce_parent = parent;
                pce_prev = prev; 
                pce_next = next }
-          (* list consists of a single declaration (or Did) ==> add the binding from parentId to id in kidMap, and from id to parentId in parentMap. Also
-             indicate that next for name has an Any*)
+            (* list consists of a single declaration (or Did) ==> add the binding from parentId to id in kidMap, and from id to parentId in parentMap. Also
+               indicate that next for name has an Any*)
             | W.DNested  (name,_,_,_,_) :: []
             | W.DId name::[] -> 
               {pce_children = (update pname (Some name) children);
                pce_parent = (update name (Some pname) parent);
                pce_prev = prev; 
                pce_next = (update name (Some any) next) }
-          (* list contains more than one element ==> match on the first two elements of the list *)
+            (* list contains more than one element ==> match on the first two elements of the list *)
             | c1 :: ((c2 :: rest) as tail) -> (match c1, c2 with
-            (* two placeholders ==> recur on tail *)
+              (* two placeholders ==> recur on tail *)
               | W.DPlaceholder, W.DPlaceholder -> helper pcenv tail
-            (* placeholder and nested/id ==> add binding from parentId to None in kidMap, and bindng from id to None in prevSibMap *)
+              (* placeholder and nested/id ==> add binding from parentId to None in kidMap, and bindng from id to None in prevSibMap *)
               | W.DPlaceholder, W.DNested (name, _, _, _, _)
               | W.DPlaceholder, W.DId name -> helper 
                 {pce_children = (update pname None children);
                  pce_parent = parent;
                  pce_prev = (update name None prev);
                  pce_next = next; } tail
-            (* nested/id and placeholder ==> add binding from parentId to id in kidMap, from id to parentId in parentMap, and from id to None in nextSibMap *)
+              (* nested/id and placeholder ==> add binding from parentId to id in kidMap, from id to parentId in parentMap, and from id to None in nextSibMap *)
               | W.DNested (name, _, _, _, _), W.DPlaceholder
               | W.DId name, W.DPlaceholder -> 
                 begin match rest with
@@ -555,7 +622,7 @@ struct
                    pce_prev = (update name2 (Some name) prev);
                    pce_next = (update name None (update name (Some name2) next)); } tail
                 end
-            (* nested/id and nested/id ==> add binding from parentId to id1 and id2 in kidMap, from id1 and id2 to parentId in parentMap, from id1 to id2 in nextSibMap, from id2 to id1 in prevSibMap *)
+              (* nested/id and nested/id ==> add binding from parentId to id1 and id2 in kidMap, from id1 and id2 to parentId in parentMap, from id1 to id2 in nextSibMap, from id2 to id1 in prevSibMap *)
               | W.DNested (name1, _, _, _, _), W.DNested (name2, _, _, _, _)
               | W.DNested (name1, _, _, _, _), W.DId name2
               | W.DId name1, W.DNested (name2, _, _, _, _)
@@ -582,28 +649,24 @@ struct
         let newPreClauseEnv =  compPreClauses enforcedPreClauseEnv pcontents in
 
         (* Now compile the contents  *)
-        List.fold_left (fun psenv dcc -> 
+        List.fold_left (fun pcenv dcc -> 
           match dcc with
-          | W.DNested dc -> compileComp psenv dc
-          | _ -> psenv)
-          (benv, newPreClauseEnv)
+          | W.DNested dc -> compileComp pcenv dc
+          | _ -> pcenv)
+          newPreClauseEnv
           pcontents in
 
       (* Body of compile *)
 
-      (* start with empty preStructureEnv *)
-      let empty_psenv =
-        ([],
-         {pce_children = IdMap.empty;
-          pce_parent = IdMap.empty;
-          pce_prev = IdMap.empty;
-          pce_next = IdMap.empty}) in
+      (* start with empty preClauseEnv *)
+      let empty_pcenv =
+        {pce_children = IdMap.empty;
+         pce_parent = IdMap.empty;
+         pce_prev = IdMap.empty;
+         pce_next = IdMap.empty} in
 
-
-      (* Compile each top-level declComp *)
-      let (_, pcenv) = List.fold_left 
-        compileComp
-        empty_psenv dcs in
+      (* Compile each top-level declComp and create pcenv*)
+      let pcenv = List.fold_left compileComp empty_pcenv dcs in
 
       (** Function: transformPCM
           ==================================================
@@ -633,11 +696,11 @@ struct
           (hd::hds)::(partition tls) in
       let to_mult group = 
         let open JQ in match group with
-        | [] -> MZero (MPlain (TStrobe (S.TBot)))
-        | [Some id] -> MOne (wrap_id id)
-        | (Some id)::_ -> MOnePlus (wrap_id id)
-        | [None]
-        | None::_ -> MZeroPlus (wrap_id element) in
+          | [] -> MZero (MPlain (TStrobe (S.TBot)))
+          | [Some id] -> MOne (wrap_id id)
+          | (Some id)::_ -> MOnePlus (wrap_id id)
+          | [None]
+          | None::_ -> MZeroPlus (wrap_id element) in
       (** Function: transform_children
           ==================================================
           Transform function for kidMap that takes an id option list and turns it into a multiplicity.
@@ -646,7 +709,7 @@ struct
           list with a single id ==> 1<id>
           list with a single None ==> 0+<Element>
           list with more than one entries ==> 
-             1+<union of remove_dups of all entries in the list>
+          1+<union of remove_dups of all entries in the list>
       **)
       let transform_children idos = 
         let open JQ in 
@@ -722,7 +785,6 @@ will always have list with length >= 1"
          pce_next = IdMap.add name [None] pcenv.pce_next;})
         pcenv dcs in
 
-
       (* Transform clauseEnv, and add Element clauses *)
 
       let cenv = 
@@ -736,24 +798,14 @@ will always have list with length >= 1"
          next = IdMap.add element (JQ.MZeroOne (wrap_id element)) 
             (transformPCM pcenv.pce_next transform_sibs)} in
 
-      
-      (* return final structureEnv *)
-      (benv, cenv) in
-
-    (* body of desugar_structure *)
-
-    (* generate bindings to add to environment *)
-    let bindings = gen_bindings dcs in
+      cenv (* return final clauseEnv *)
+    (* END compile *) in
+    
+    (* generate bindings and backformEnv *)
+    let bindings,benv = gen_bindings_benv dcs in
     
     (* compile structure into senv. *)
-
-    let (_, cenv) = compile empty_structureEnv dcs in
-    
-    (* use bindings to create benv *)
-    let benv = IdMap.bindings
-      (IdMap.map (fun t -> match t with
-      | JQ.TDom (_, _,  _, sel) -> sel
-      | _ -> failwith "impossible: gen_bindings should only produce bindings from ids to TDoms") bindings) in
+    let cenv = compile dcs in
     
     (* return list if bindings to add to the environment, and the compiled
        structureEnv *)
