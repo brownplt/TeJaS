@@ -209,11 +209,64 @@ struct
   let parentsAll included env senv t = transitive parent included env senv t
 
 
-  (** Function: filterSel
-      ==============================
-      filterSel takes a type environment env, a backform environment benv, a type t, and a selector sel. It extracts the selector corresponding to its type argument, and intersects that selector with sel, resulting in inter. inter is then backformed into ids and both are wrapped in an MSum of TDoms. filterSel only deals with TDoms, TIds and TUnions. It should not encounter any other type.
-  **)
-  let rec filterSel (env : env) (benv : Desugar.backformEnv) (t : typ) (sel : string) : multiplicity = MOne (MPlain (TStrobe (Strobe.TTop)))
+  let rec filterSel (env : env) (benv : Desugar.backformEnv) 
+      (fm : multiplicity) (sel_str : string) : multiplicity =
+
+    let filter_sel = Css.singleton sel_str in
+
+    let rec filter_m m = 
+      begin match m with 
+      | MZero (MPlain t) -> m
+      | MOne (MPlain t) -> MOne (filter_t t)
+      | MZeroOne (MPlain t) -> MZeroOne (filter_t t)
+      | MOnePlus (MPlain t) -> MOnePlus (filter_t t)
+      | MZeroPlus (MPlain t) -> MZeroPlus (filter_t t)
+      | MSum (m1,m2) -> MSum ((filter_m m1), (filter_m m2))
+      | MId _ -> failwith "JQuery_env: filterSel: can't handle MIds here"
+      | MPlain _ -> failwith 
+        "JQUery_env: filterSel: should never encounter MPlain here"
+      | _ -> failwith "JQuery_env: filterSel: mult not in canonical form"
+      end
+
+    and filter_t (t : typ) : multiplicity  = 
+
+      let rec helper t = 
+
+        let filter_tdom t = match t with
+          | TDom (s,name,node_typ,sel) -> 
+            let inter = Css.intersect sel filter_sel in
+            if Css.is_empty inter then None
+            else Some (TDom (s,name,node_typ,inter))
+          | _ -> failwith "JQuery_env:filterSel: can only filter tdoms" in
+        
+        match t with
+        | TDom _ -> filter_tdom t
+        | _ -> begin match (extract_t t) with 
+          | Strobe.TUnion (s,t1,t2)->
+            (* Elim things that did not match *)
+            begin match (helper (embed_t t1)),(helper (embed_t t2)) with
+            | Some t1, Some t2 -> 
+              Some (embed_t (Strobe.TUnion (s,(extract_t t1),(extract_t t2))))
+            | Some t,_
+            | _,Some t -> Some t
+            | None, None -> None
+            end
+          | Strobe.TId id -> filter_tdom (fst (lookup_typ_id id env))
+          | _ -> failwith
+            "JQuery_env: filterSel: Can only handle TUnions and TIds, and TDoms"
+        end in
+        
+
+      match helper t with 
+      | Some t -> MOne (MPlain t)
+      | None -> MZero (MPlain (embed_t (Strobe.TId "Element"))) in
+    (* END filter_t *)
+
+      canonical_multiplicity (filter_m fm)
+  (* END filterSel *)
+
+    
+
     (* Strobe.traceMsg "In filterSel "; *)
     (* let open JQuery in *)
     (* let s = Css.singleton sel in *)
@@ -710,6 +763,18 @@ struct
       | TApp(t, args) ->
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult (canonical_multiplicity m) with
+
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TRegex pat))])), m1) ->
+
+            let select_str = begin match Strobe.Pat.singleton_string pat with 
+              | Some s -> s 
+              | None -> failwith 
+                "regex argument to @filterSel cannot be converted to string" end in
+            (* Filter operates on a mult *)
+            SMult (filterSel env (fst senv) m select_str)
+          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TId _))])), _) -> failwith "not  implemented" *)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), l)), _) ->
+            failwith "filterSel not called with a mult argument and a string"
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), [SMult m])))), m1
@@ -755,17 +820,6 @@ struct
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentsAllOf" as oper))), _)), _)
             ->
             failwith (oper ^ " not called with a single mult argument")
-          (* | SMult m -> begin match extract_mult m with *)
-          (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TRegex pat))])), m1) -> *)
-          (*     let (s, m2) = extract_mult m in *)
-          (*       begin match s with *)
-          (*         | STyp t ->  *)
-          (*           SMult (canonical_multiplicity (m2 (SMult (m1 (SMult (filterSel env (fst senv) t (match Strobe.Pat.singleton_string pat with Some s -> s | None -> failwith "regex argument to @filterSel cannot be converted to string"))))))) *)
-          (*         | SMult m -> s *)
-          (*       end *)
-          (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TId _))])), _) -> s *)
-          (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), l)), _) -> *)
-          (*     failwith "filterSel not called with a mult argument and a string" *)
           (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), [SMult m])), m1) -> *)
           (*     let (s, _) = extract_mult m in SMult ( *)
           (*       begin  *)

@@ -1,4 +1,3 @@
-
 /*:: 
 (Other : div classes = [other])
 (Tweet : """A structure for tweets"""
@@ -91,7 +90,6 @@ var at1p = /*: cheat jQ<1+<Author+Time>, AnyJQ> */0;
 
 // /*: jQ<1<Time>, AnyJQ> */tid_a1.next();
 // /*: jQ<1<Time>, a1> */tid_a1.next();
-
 
 
 
@@ -278,7 +276,7 @@ var a1_nnpp = t1.children().next().next().prev().prev();
 // /*: jQ<01<Content>, AnyJQ> */a1_nnn;
 
 
-/*** Find tests ****/
+/**** Find tests ****/
 
 // var t1_find = t1.find();
 
@@ -302,4 +300,39 @@ var a1_nnpp = t1.children().next().next().prev().prev();
 // /*: jQ<1+<Author+Content+Time>, AnyJQ> */t1_find.prevAll();
 
 
-/*: Num */$(".tweet > *");
+/**** Filter tests ****/
+
+// /*: Num */t1.filter(".tweet");
+
+// /*: Num */t1p.filter(".tweet");
+
+// /*: Num */t1p.filter(".author");
+
+// /*: Num */t1.children().filter(".author");
+
+// /*: Num */t1p.children().filter(".author");
+
+// /*: Num */t1.children().filter(".content");
+
+
+
+/**** Css tests ****/
+
+/*: Str */ t1.css("foo");
+
+/*: t1p */ t1p.css("foo", "bar");
+
+
+/**** Comprehensive cases ****/
+
+// var p_t1p = $("p > div.tweet");
+
+// /*: Num  */ p_t1p.children().filter("p .author");
+
+// /*: Num */ p_t1p.children().filter("tr > .author");
+
+// /*: Num */ p_t1p.children().filter("tr .author");
+
+
+
+
