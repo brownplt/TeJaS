@@ -282,7 +282,6 @@ struct
       SpecSet.empty structure_rss in
 
 
-
     (* Helper: Does given spec list contains isolated (local structure) spec? *)
     let is_isolated ss = List.exists (fun s -> SpecSet.mem s isolated_specs) ss in
 
@@ -310,8 +309,8 @@ struct
 
       (* All ids in benv matching the prefix *)
       let prefix_matches = 
-        List.fold_left (fun matches (id,sel,_) -> 
-          if (Css.is_overlapped prefix_sel sel) then id::matches
+        List.fold_left (fun matches (id,_,vsel) -> 
+          if (Css.is_overlapped prefix_sel vsel) then id::matches
           else matches)
           [] benv in
 
@@ -357,11 +356,15 @@ struct
           let new_match_rs = List.append match_rs [suf_hd] in
           let next_ids = 
             List.filter (fun id -> 
-              Css.is_overlapped 
-                (Css.regsel2sel new_match_rs)
-                (* check against voided sel *)
-                (thd3 (List.find (fun (id2,_,_) -> id2 = id) benv)))
-              (get_next comb ids) in
+              let ssel = (Css.regsel2sel new_match_rs) in
+              let vsel = (thd3 (List.find (fun (id2,_,_) -> id2 = id) benv)) in
+              let res = Css.is_overlapped ssel vsel in
+              (* let resStr = if res then "does" else "does NOT" in *)
+              (* Printf.eprintf "%s %s %s" *)
+              (*   (FormatExt.to_string Css.p_css ssel) *)
+              (*   resStr *)
+              (*   (FormatExt.to_string Css.p_css vsel); *)
+              res) (get_next comb ids) in
           get_matches next_ids new_match_rs suf_tl in
       (* END get_matches *)
 

@@ -370,7 +370,7 @@ module RealCSS = struct
 			match a with
 			| USel -> text "*"
 			| TSel t -> text t
-      | VSel -> text "VOID"
+      | VSel -> text "REAL-VOID"
 		and pretty_spec s = List.map (fun s -> match s with
 			| SpId s -> squish [text "#"; text s]
 			| SpClass s -> squish [text "."; text s]
@@ -688,12 +688,12 @@ module RealCSS = struct
 
 	let canonical (s1a, s1s) (s2a, s2s) =
 		let sa = match s1a, s2a with
+      (* VSels cannot canonicalize with anything *)
+      | VSel,_
+      | _,VSel -> Printf.eprintf "GOT TO VSEL CASE"; None
 			| USel, a
 			| a, USel -> Some a
 			| TSel a, TSel b when a = b -> Some (TSel a)
-      (* VSels cannot canonicalize with anything *)
-      | VSel,_
-      | _,VSel
 			| _ -> None in
 		match sa with
 		| None -> SimpleSet.empty

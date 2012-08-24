@@ -43,6 +43,7 @@ rule token = parse
 | "^="                      { PREFIXMATCH }
 | "$="                      { SUFFIXMATCH }
 | "*="                      { SUBSTRINGMATCH }
+| "VOID"                    { VOID }
 | ident as x                { IDENT x }
 | '"' (string1 as x) '"'    { STRING x }
 | '\'' (string2 as x) '\''  { STRING x}
@@ -56,7 +57,6 @@ rule token = parse
 | "["                       { LBRACK }
 | "]"                       { RBRACK }
 | "="                       { EQUALS }
-| "VOID"                    { VOID }
 | eof                       { EOF }
 
 and block_comment = parse
