@@ -370,7 +370,7 @@ module RealCSS = struct
 			match a with
 			| USel -> text "*"
 			| TSel t -> text t
-      | VSel -> text "REAL-VOID"
+      | VSel -> text "V0!D"
 		and pretty_spec s = List.map (fun s -> match s with
 			| SpId s -> squish [text "#"; text s]
 			| SpClass s -> squish [text "."; text s]
@@ -690,10 +690,11 @@ module RealCSS = struct
 		let sa = match s1a, s2a with
       (* VSels cannot canonicalize with anything *)
       | VSel,_
-      | _,VSel -> Printf.eprintf "GOT TO VSEL CASE"; None
+      | _,VSel -> None
 			| USel, a
 			| a, USel -> Some a
-			| TSel a, TSel b when a = b -> Some (TSel a)
+			| TSel a, TSel b 
+        when (String.uppercase a) = (String.uppercase b) -> Some (TSel a)
 			| _ -> None in
 		match sa with
 		| None -> SimpleSet.empty
@@ -864,7 +865,8 @@ module RealCSS = struct
 		let inter = intersect s1 s2 in
 		if not (SelSet.is_empty inter)
 		then begin
-			Printf.eprintf "*** selector %s and selector %s overlap\n. Their intersection is %s\n" (pretty s1) (pretty s2) (pretty inter); true
+			(* Printf.eprintf "*** selector %s and selector %s overlap\n. Their intersection is %s\n" (pretty s1) (pretty s2) (pretty inter); true *)
+      true
 			end
 		else false
 

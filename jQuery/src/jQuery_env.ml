@@ -142,11 +142,7 @@ struct
 
   let children (env : env ) (senv : structureEnv) (t : typ) : multiplicity =
     let cenv = (snd senv) in
-    let gotten = get_all_x_of env cenv.Desugar.children t in
-    let ret = msum_ms gotten in
-    Strobe.traceMsg "In children, getChildren(%s) = %s ==> %s"
-      (string_of_typ t) (String.concat ", " (List.map string_of_mult gotten)) (string_of_mult ret);
-    ret
+    msum_ms (get_all_x_of env cenv.Desugar.children t)
 
   let parent (env : env) (senv : structureEnv) (t : typ) : multiplicity =
     let cenv = (snd senv) in
@@ -170,42 +166,41 @@ struct
       (env : env) (senv : structureEnv) (t : typ) : multiplicity =
     let rec helper (acc : multiplicity list) (m : multiplicity) : multiplicity =
       helper' acc m
-      (* Strobe.trace "transitive_helper"  *)
-      (*   (Printf.sprintf "acc = [%s], m = %s" (String.concat ", " (List.map string_of_mult acc)) (string_of_mult m)) *)
-      (*   (fun _ -> true) (fun () -> helper' acc m) *)
+    (* Strobe.trace "transitive_helper"  *)
+    (*   (Printf.sprintf "acc = [%s], m = %s" (String.concat ", " (List.map string_of_mult acc)) (string_of_mult m)) *)
+    (*   (fun _ -> true) (fun () -> helper' acc m) *)
     and helper' acc m =
-      let ret =
-        match m with
-        | MZero _ -> msum_ms acc
-        | _ ->
-          let res = match extract_mult (canonical_multiplicity m) with
-            | STyp t, m' ->
-              let res_op = op env senv t in
-              let res = canonical_multiplicity (m' (SMult res_op)) in
-              res
-            | SMult (MSum _ as sum), _ -> begin
-              let sum_pieces = extract_sum sum in
-              let oper_pieces = List.map (fun p ->
-                let (s, m) = extract_mult p in
-                match s with
-                | STyp t -> m (SMult (op env senv t))
-                | SMult m -> m) sum_pieces in
-              let combined = msum_ms oper_pieces in
-              canonical_multiplicity combined
-            end
-            | SMult _, _ -> failwith "Got unexpected multiplicity in transitive"
-          in
-          if List.mem res acc
-          then msum_ms acc
-          else helper (res::acc) res
-      in
-      Strobe.traceMsg "Return mult = %s" (string_of_mult ret);
-      ret
+      match m with
+      | MZero _ -> msum_ms acc
+      | _ ->
+        let res = match extract_mult (canonical_multiplicity m) with
+          | STyp t, m' ->
+            let res_op = op env senv t in
+            let res = canonical_multiplicity (m' (SMult res_op)) in
+            res
+          | SMult (MSum _ as sum), _ -> begin
+            let sum_pieces = extract_sum sum in
+            let oper_pieces = List.map (fun p ->
+              let (s, m) = extract_mult p in
+              match s with
+              | STyp t -> m (SMult (op env senv t))
+              | SMult m -> m) sum_pieces in
+            let combined = msum_ms oper_pieces in
+            canonical_multiplicity combined
+          end
+          | SMult _, _ -> failwith "Got unexpected multiplicity in transitive"
+        in
+        if List.mem res acc
+        then msum_ms acc
+        else helper (res::acc) res
     in
-    Strobe.trace "transitive" (Printf.sprintf "t = %s" (string_of_typ t)) (fun _ -> true)
-      (fun () ->
-        let first = op env senv t in
-        helper [first] first)
+    let first = op env senv t in
+    helper [first] first
+    (* Strobe.trace "transitive" (Printf.sprintf "t = %s" (string_of_typ t)) (fun _ -> true) *)
+    (*   (fun () -> *)
+    (*     let first = op env senv t in *)
+    (*     helper [first] first) *)
+
 
 
   let find included env senv t = transitive children included env senv t
@@ -687,11 +682,9 @@ struct
       | TForall (s,id,sigma,t) -> TForall(s,id,resolve_sigma sigma, t)
       | TLambda _ -> t
       | TApp (TStrobe (Strobe.TPrim "selector"), [STyp (TStrobe (Strobe.TRegex pat))]) ->
-        Strobe.traceMsg "resolving selector primitive";
         begin match Strobe.Pat.singleton_string pat with
         | Some s ->
           let m = (jQuery_fn env included s) in
-          Strobe.traceMsg "jQuery(%s) returns %s" s (string_of_mult m);
           TApp (TStrobe (Strobe.TId "jQ"), [(SMult m); STyp (TStrobe (Strobe.TId "AnyJQ"))])
         | None -> failwith "pattern cannot be converted to string??"
         end
@@ -709,7 +702,6 @@ struct
       | TApp(TStrobe (Strobe.TPrim ("filterSel" as oper)), [STyp t]) ->
         failwith (oper ^ " at outermost level")
       | TApp(t, args) ->
-        (* Strobe.traceMsg "rjq called with TApp : %s" (string_of_typ t); *)
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult (canonical_multiplicity m) with
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), [SMult m])))), m1

@@ -43,8 +43,8 @@ rule token = parse
 | "^="                      { PREFIXMATCH }
 | "$="                      { SUFFIXMATCH }
 | "*="                      { SUBSTRINGMATCH }
-| "VOID"                    { VOID }
 | ident as x                { IDENT x }
+| "V0!D"                    { VOID }
 | '"' (string1 as x) '"'    { STRING x }
 | '\'' (string2 as x) '\''  { STRING x}
 | "#" (name as x)           { HASH x }

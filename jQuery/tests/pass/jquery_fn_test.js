@@ -10,83 +10,84 @@
 
 */
 
-// PASS
-// /*: Num */$(".a");
+// /*: jQ<1+<A>, AnyJQ> */$(".a");
 
-// PASS
-// /*: Num */$("div.a > div.b");
+// /*: jQ<1+<B>, AnyJQ> */$("div.a > div.b");
 
-// PASS
-// /*: Num */$("p > div.a");
+// /*: jQ<1+<A>, AnyJQ> */$("p > div.a");
 
-// PASS
-// /*: Num */$("p  div.a");
+// /*: jQ<1+<A>, AnyJQ> */$("p  div.a");
 
-// PASS
-// /*: Num */$("p + div.a");
+// /*: jQ<1+<A>, AnyJQ> */$("p + div.a");
 
-// PASS
-// /*: Num */$("p ~ div.a");
+// /*: jQ<1+<A>, AnyJQ> */$("p ~ div.a");
 
-// This is 0<Element>, because there can't be any local structure
-// specs above local structure
-// PASS
-// /*: Num */$(".c > p > .a");
+// /*: jQ<0<Element>, AnyJQ> */$(".c > p > .a");
 
-// I believe optional class intersection behavior needs to be changed
-// PASS
-// /*: Num */$(".c");
+// /*: jQ<Sum<1+<B>, 1+<E>>, AnyJQ> */$(".c");
 
-// PASS
-// /*: Num */$(".f");
+// /*: jQ<1+<F>, AnyJQ> */$(".f");
 
-// PASS
-// /*: Num */$("div .f");
+// /*: jQ<1+<F>, AnyJQ> */$("div .f");
 
-// PASS
-// /*: Num */$("div  div .f");
+// /*: jQ<1+<F>, AnyJQ> */$("div  div .f");
 
-// PASS
-// /*: Num */$("div > div > div > .f");
+// /*: jQ<1+<F>, AnyJQ> */$("div > div > div > .f");
 
-// Error parsing the selector annotation... this needs to be fixed?
-// /*: Num */$(" * + .f");
+// /*: jQ<0<Element>, AnyJQ> */$("* + .f");
 
-// PASS
-// /*: Num */$("div + .f");
+// /*: jQ<0<Element>, AnyJQ> */$("div + .f");
 
-// FAIL ( 1+<F> )
-// /*: Num */$("p + .f");
+// /*: jQ<0<Element>, AnyJQ> */$("p + .f");
 
-// PASS
-// /*: Num */$("p .f");
+// /*: jQ<1+<F>, AnyJQ> */$("p .f");
 
-// PASS
-// /*: Num */$("p > .f");
+// /*: jQ<0<Element>, AnyJQ> */$("p > .f");
 
-// FAIL ( 1+<F> )
-/*: Num */$(".bad + .f");
+// /*: jQ<0<Element>, AnyJQ> */$(".bad + .f");
 
-// PASS
-// /*: Num */$(".e > .f");
+// /*: jQ<1+<F>, AnyJQ> */$(".e > .f");
 
-// PASS
-// /*: Num */$(".bad > div > div > div");
+// /*: jQ<0+<Element>, AnyJQ> */$(".bad > div > div > div");
 
-// PASS
-// /*: Num */$(".bad > div > div");
+// /*: jQ<0+<Element>, AnyJQ> */$(".bad > div > div");
 
-// PASS
-// /*: Num */$(".x > .y + .z ~ div.blah div div.d");
+// /*: jQ<1+<D>, AnyJQ> */$(".x > .y + .z ~ div.blah div div.d");
 
-// PASS
-// /*: Num */$(".x > .y + .z ~ div.blah div.a > div");
+// /*: jQ<Sum<1+<B>, 1+<D>>, AnyJQ> */$(".x > .y + .z ~ div.blah div.a > div");
 
-// PASS
-// /*: Num */$(".x > .y + .z ~ div.blah div.a > *");
+// /*: jQ<Sum<1+<B>, 1+<D>>, AnyJQ> */$(".x > .y + .z ~ div.blah div.a > *");
 
-// PASS
-// /*: Num */$(".x > .y + .z ~ div.blah div.a  *");
+// /*: jQ<Sum<1+<B>, 1+<D>>, AnyJQ> */$(".x > .y + .z ~ div.blah div.a *");
+
+// /*: jQ<0<Element>, AnyJQ> */$("p + .foo .bar .a > .b + .d .e > .bad");
+
+// /*: jQ<0<Element>, AnyJQ> */$(".f *");
+
+// /*: jQ<0<Element>, AnyJQ> */$("p .f div");
+
+// /*: jQ<0<Element>, AnyJQ> */$(".a > p + .b");
+
+// /*: jQ<1+<B>, AnyJQ> */$("div + .c");
+
+// /*: jQ<1+<B>, AnyJQ> */$(".b ~ .c");
+
+// /*: jQ<1+<B>, AnyJQ> */$("* ~ .c");
+
+// /*: jQ<1+<E>, AnyJQ> */$(".c.e");
+
+// /*: jQ<0+<Element>, AnyJQ> */$(".div");
+
+// /*: jQ<1+<D>, AnyJQ> */$(".c + div");
+
+// /*: jQ<1+<B>, AnyJQ> */$("div.a > * + * + .b");
+
+// /*: jQ<0<Element>, AnyJQ> */$("div.a > * + * + * + .b");
+
+
+
+
+
 
 
 

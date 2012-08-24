@@ -414,7 +414,7 @@ struct
         let idsel = if List.length ids = 1 then "#" ^ (List.hd ids) else "" in
         let simple_str = nodesel ^ clsel ^ optclsel ^ idsel in
         let simple = 
-          Css.singleton (if void_prev then "VOID + " ^ simple_str else simple_str) in
+          Css.singleton (if void_prev then "V0!D + " ^ simple_str else simple_str) in
         match comb with
         (* The Desc combinator should only be used as a dummy value *)
         | Desc -> simple
