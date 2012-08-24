@@ -297,7 +297,7 @@ struct
       split [] select_rs in
 
     if (not isolated) then
-      MZeroPlus (MPlain (embed_t (Strobe.TId "Element")))
+      MZero (MPlain (embed_t (Strobe.TId "Element")))
     else (* if isolated spec was found  *) begin
       
       let prefix_sel = Css.regsel2sel prefix in
@@ -363,6 +363,12 @@ struct
           get_matches next_ids new_match_rs suf_tl in
       (* END get_matches *)
 
+      (* Helper: intersect select_sel with the sel of a given id *)
+      let get_inter id = 
+        let sel = (snd3 (List.find (fun (id2,_,_) -> id = id2) benv)) in
+        Css.intersect sel select_sel in
+                  
+
       (* Helper: Given an id, lookups up the current TDom associated with id
          and returns a one plus of that tdom with an updated sel *)
       let optd id sel =  
@@ -375,8 +381,8 @@ struct
       (* Finally, build multiplicity from matches and return *)
       match get_matches prefix_matches prefix suffix with
       | [] -> MZero (MPlain (embed_t (Strobe.TId "Element")))
-      | [id] -> optd id select_sel
-      | ids -> msum_ms (List.map (fun id -> optd id select_sel) ids)
+      | [id] -> optd id (get_inter id)
+      | ids -> msum_ms (List.map (fun id -> optd id (get_inter id)) ids)
         
             
     end
