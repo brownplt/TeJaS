@@ -87,7 +87,7 @@ $('#jqdt2')
     .css('backgroundColor', '#0ff')
     .end()
     .find('p > strong')
-    .css('bakcgroundColor', '#ff0');
+    .css('backgroundColor', '#ff0');
 
 
 $('li.goofy')
@@ -96,3 +96,13 @@ $('li.goofy')
     .next()
     .find('a')
     .parent();
+
+
+
+// Only example of add() in the book, not very friendly to the type checker
+var colNum = $td[0].cellIndex + 1;
+var $columnCells = $td
+.closest('table')
+.find('td, th')
+.filter(':nth-child(' + colNum + ')');
+$cells = $cells.add($columnCells);
