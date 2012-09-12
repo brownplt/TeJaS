@@ -70,3 +70,29 @@ $(document).ready(function() {
   }
   stripe();
 });
+
+
+
+// Examples from blog of Learning JQuery and official JQuery website
+$('li').eq(0);
+$('li').not('.goofy');
+$('ol .goofy > strong');
+$('li + li > a[href$=pdf]');
+$('span:hidden');
+
+
+$('#jqdt2').find('li').siblings();
+$('#jqdt2')
+    .find('li.funny')
+    .css('backgroundColor', '#0ff')
+    .end()
+    .find('p > strong')
+    .css('bakcgroundColor', '#ff0');
+
+
+$('li.goofy')
+    .parents('#jqdt2')
+    .children('p')
+    .next()
+    .find('a')
+    .parent();
