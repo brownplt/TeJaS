@@ -149,6 +149,7 @@ module type JQUERY_TYP_ENV = sig
   val print_structureEnv : string -> structureEnv -> FormatExt.printer
   val resolve_special_functions : env -> structureEnv -> 
     (env -> multiplicity -> multiplicity -> bool) -> typ -> typ
+  val do_use_strict_selections : unit -> unit
 end
 
 module type JQUERY_TYPECHECKING = sig

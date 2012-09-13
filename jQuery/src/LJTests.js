@@ -8,9 +8,9 @@
               classes = [plays]
               (PlaysRow : tr
                           classes = [playsrow]
-                          (PlayTitle : td classes = [title, test])
-                          (PlayGenre : td classes = [genre, test])
-                          (PlayYear : td classes = [year, test]))
+                          (PlayTitle : td classes = [title])
+                          (PlayGenre : td classes = [genre])
+                          (PlayYear : td classes = [year]))
               <PlaysRow>);
 
 (Sonnets : h2
@@ -34,14 +34,14 @@
 // 1. We don't support pseudo-selectors yet (leave out :contains(Henry) for now)
 // 3. If we leave out ':contains(Henry)', $('td').next() selects most of the cells in the structure, whereas in fact there should only be two cells  being selected.
 
-$('td.test').next().addClass('highlight');
+$('td').next().addClass('highlight');
 
-$('td.test').nextAll().andSelf().addClass('highlight');
+$('td').nextAll().andSelf().addClass('highlight');
 
-$('td.test').parent().children().addClass('highlight');
+$('td').parent().children().addClass('highlight');
 
 
-$('td.test')     // Find every cell containing "Henry"
+$('td')     // Find every cell containing "Henry"
     .parent()               // Select its parent
     .find()
     .filter('td')

@@ -375,6 +375,9 @@ let main () : unit =
        "Print the current environment");
       ("-simple-tests", Arg.Unit (set_action SimpleTests.run_tests),
        "Run a suite of simple tests");
+
+      ("-strict-selections", Arg.Unit (JQEnv.do_use_strict_selections),
+       "When making a selection that is not isolated, return 0<Element>");
       set_simpl_cps;
     ]
     (fun s -> set_cin (open_in s) s)

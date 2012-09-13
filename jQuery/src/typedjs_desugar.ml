@@ -478,7 +478,6 @@ struct
             helper updated_tdoms updated_benv tail Adj general_sel voided_sel false
 
           | (W.DNested ((name, _, node_str, attribs, content) as dc))::tail ->
-            let last = (tail = []) in
 
             (* TODO(liam) we need to generate these sels so that we can pass them
                through, even though this is also done in gen_comp. This

@@ -61,6 +61,10 @@ struct
 
   let (senv : structureEnv ref) = ref Desugar.empty_structureEnv
 
+  let use_strict_selections = ref false
+
+  let do_use_strict_selections () = use_strict_selections := true
+
   (* Consumes:
      env
      t (typ)
@@ -349,7 +353,8 @@ struct
           else split pre tl in
       split [] select_rs in
 
-    if (not isolated) then
+
+    if (!use_strict_selections && (not isolated)) then
       MZero (MPlain (embed_t (Strobe.TId "Element")))
     else (* if isolated spec was found  *) begin
       
