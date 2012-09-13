@@ -73,7 +73,8 @@ struct
     end
     | _ -> None
 
-  let rec assoc_sub env t1 t2 = assoc_sub' env t1 t2
+  let rec assoc_sub env t1 t2 = 
+    assoc_sub' env t1 t2
     (* Strobe.trace "JQuery:Assoc_sub" (Printf.sprintf "assoc %s with %s" (string_of_typ t1) (string_of_typ t2)) (fun _ -> true) (fun () -> assoc_sub' env t1 t2) *)
   and assoc_sub' env t1 t2 =
     (* Strobe.traceMsg "associating %s with %s" (string_of_typ t1) (string_of_typ t2); *)

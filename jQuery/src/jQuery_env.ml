@@ -720,8 +720,8 @@ struct
   let rec resolve_special_functions (env : env) (senv : structureEnv)
       (included : env -> multiplicity -> multiplicity -> bool) (t : typ) =
     resolve_special_functions' env senv included t
-    (* Strobe.trace "Resolve_special" (string_of_typ t) (fun _ -> true) *)
-    (*   (fun () -> resolve_special_functions' env senv included t) *)
+  (*   Strobe.trace "Resolve_special" (string_of_typ t) (fun _ -> true) *)
+  (*     (fun () -> resolve_special_functions' env senv included t) *)
   and resolve_special_functions' env senv included t =
     let rec resolve_sigma s = match s with
       | STyp t -> STyp (rjq t)
@@ -763,18 +763,19 @@ struct
       | TApp(t, args) ->
         TApp(rjq t, List.map (fun s -> match s with
         | SMult m -> begin match extract_mult (canonical_multiplicity m) with
-
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TRegex pat))])), m1) ->
-
-            let select_str = begin match Strobe.Pat.singleton_string pat with 
-              | Some s -> s 
-              | None -> failwith 
-                "regex argument to @filterSel cannot be converted to string" end in
-            (* Filter operates on a mult *)
-            SMult (filterSel env (fst senv) m select_str)
-          (* | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; STyp (TStrobe (Strobe.TId _))])), _) -> failwith "not  implemented" *)
-          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), l)), _) ->
-            failwith "filterSel not called with a mult argument and a string"
+          | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; s])), m1) ->
+            begin match s with
+            | STyp (TStrobe (Strobe.TRegex pat)) ->
+              let select_str = begin match Strobe.Pat.singleton_string pat with 
+                | Some s -> s 
+                | None -> failwith 
+                  "regex argument to @filterSel cannot be converted to string" end in
+              (* Filter operates on a mult *)
+              SMult (filterSel env (fst senv) m select_str)
+            | STyp (TStrobe (Strobe.TId id)) -> s
+            | _ ->
+              failwith "filterSel called with a mult but not a string";
+            end
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), [SMult m])))), m1

@@ -958,6 +958,7 @@ struct
     | MZeroPlus m1, MZeroPlus m2 -> mult_assoc env m1 m2
     | MSum(m11, m12), MSum(m21, m22) ->
       assoc_merge (mult_assoc env m11 m21) (mult_assoc env m12 m22)
+    | m1, MSum(m21, m22) -> mult_assoc env m1 (simplify_msum m2)
     | _ -> IdMap.empty
     
 end
