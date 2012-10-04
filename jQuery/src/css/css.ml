@@ -716,7 +716,7 @@ module RealCSS = struct
 
 			let (ids1, classes1, specclasses1, others1) = collect_specs s1s in
 			let (ids2, classes2, specclasses2, others2) = collect_specs s2s in
-			if (S.cardinal (S.union ids1 ids2) > 1) then SimpleSet.empty
+			if (S.cardinal (S.union ids1 ids2) > 1) || ((S. cardinal (S.union ids1 ids2) == 1) && (not (S.equal ids1 ids2))) then SimpleSet.empty
 			else
 				begin
 					let mergeSpecAndClasses classes specs =
