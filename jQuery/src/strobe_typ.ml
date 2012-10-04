@@ -918,9 +918,9 @@ struct
 
 
   let rec typ_assoc add merge env t1 t2 = typ_assoc' add merge env t1 t2
-    (* trace "STROBEtyp_assoc"  *)
-    (*   (Pretty.simpl_typ t1 ^ " with " ^ Pretty.simpl_typ t2) *)
-    (*   (fun _ -> true) (fun () -> typ_assoc' add merge env t1 t2) *)
+    (* trace "STROBEtyp_assoc" *)
+    (* (Pretty.simpl_typ t1 ^ " with " ^ Pretty.simpl_typ t2) *)
+    (* (fun _ -> true) (fun () -> (typ_assoc' add merge env t1 t2)) *)
   and typ_assoc' add merge (env : env) (typ1 : typ) (typ2 : typ) =
     let typ_assoc = typ_assoc add merge in
     match (typ1, typ2) with
