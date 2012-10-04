@@ -242,7 +242,12 @@ struct
       | MZeroOne m -> label_angles "01" empty [p m]
       | MOnePlus m -> label_angles "1+" empty [p m]
       | MZeroPlus m -> label_angles "0+" empty [p m]
-      | MSum(m1, m2) -> label_angles "Sum" empty [horz[p m1; text "++"]; p m2]
+      | MSum(m1, m2) -> 
+        let rec collect_parts m = match m with
+          | MSum (m1, m2) -> collect_parts m1 @ collect_parts m2
+          | _ -> [m] in
+        let ms = collect_parts m in
+        label_angles "Sum" empty (add_sep_between (text "++") (map p ms))
     and sigma s = match s with
       | STyp t -> typ t
       | SMult m -> multiplicity m
