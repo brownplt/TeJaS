@@ -724,25 +724,66 @@ struct
           | None -> 
             raise (Sub.Typ_error (p, Sub.Typ((fun t -> sprintf "synth: expected function, got %s"
               (string_of_typ t)), quant_typ)))
-          | Some (typ_vars, (TArrow (expected_typs, _, r) as arrow_typ)) -> 
-            (* guess-work breaks bidirectionality *)
-            let arg_typs = map (synth env default_typ) args in
+          | Some (typ_vars, (TArrow (expected_typs, _, r))) -> 
+            (* NEW ALGORITHM:
+             * incrementally try checking arguments against a partial association, and if it works,
+             * move on; otherwise, synth a type and build a new association, and try again
+            *)
+            let substitution_for (wanted : Typ.typ list) (offered : Typ.typ list) p typs t =
+              Ext.extract_t 
+                (ExtTC.assoc_sub env
+                   (Ext.embed_t (TArrow (List.rev wanted, None, TTop)))
+                   (Ext.embed_t (TArrow (List.rev offered, None, TTop)))
+                   p typs (Ext.embed_t t)) in
+            let check_tc exp (typ : Typ.typ) =
+              (* let from_typ_vars = IdSetExt.from_list (map fst typ_vars) in *)
+              (* let free_ids = free_typ_ids typ in *)
+              (* let any_free = IdSet.inter from_typ_vars free_ids in *)
+              (* if not (IdSet.is_empty any_free) then *)
+              (*   false *)
+              (* else  *)
+                try
+                     Sub.with_typ_exns (fun () -> 
+                       check env default_typ exp typ); true
+                with _ -> false in                
+            let try_argument (rev_expecteds, rev_syntheds, sub) (expected_typ : Typ.typ) arg =
+              traceMsg "In EApp, expected = %s, arg = %s" (string_of_typ expected_typ) (string_of_exp arg);
+              let subst_typ = (sub p typ_vars expected_typ) in
+              traceMsg "Substituted type = %s%!" (string_of_typ subst_typ);
+              let check_succeeded = (check_tc arg subst_typ) in
+              traceMsg "Check succeeded = %b" check_succeeded;
+              if check_succeeded
+              then begin
+                (expected_typ :: rev_expecteds, expected_typ :: rev_syntheds, sub)
+              end else 
+                let synthed = synth env default_typ arg in
+                traceMsg "Synthed argument type = %s" (string_of_typ synthed);
+                let rev_expected' = expected_typ :: rev_expecteds in
+                let rev_synthed' = (expose_simpl_typ env synthed) :: rev_syntheds in
+                let sub' = substitution_for rev_expected' rev_synthed' in
+                traceMsg "Computed new substitution";
+                (rev_expected', rev_synthed', sub') in
+            let (_, _, sub) = List.fold_left2 try_argument ([], [], (fun _ _ t -> traceMsg "No-op substitution"; t)) expected_typs args in
+              
+
+            (* (\* guess-work breaks bidirectionality *\) *)
+            (* let arg_typs = map (synth env default_typ) args in *)
             (* traceMsg "In EApp, arg_typs are:"; *)
             (* List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs; *)
             (* traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ); *)
             (* traceMsg "2In Eapp, tarrow is    %s" *)
-              (* (string_of_typ (TArrow (arg_typs, None, r))); *)
-            let sub = (ExtTC.assoc_sub env 
-	            (* NOTE: Can leave the return type out, because we're just
-		             copying it, so it will never yield any information *)
-	            (Ext.embed_t (TArrow (expected_typs, None, TTop)))
-              (* Need to expose arg_typs before association to eliminate TIds *)
-              (Ext.embed_t (TArrow ((List.map (fun t -> 
-                expose_simpl_typ env t) arg_typs), 
-                                    None, TTop)))) in
-	          (* traceMsg "3In Eapp, original return type is %s" (string_of_typ r); *)
-            let ret = Ext.extract_t (sub p typ_vars (Ext.embed_t r)) in
-	          (* traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret); *)
+            (*   (string_of_typ (TArrow (arg_typs, None, r))); *)
+            (* let sub = (ExtTC.assoc_sub env  *)
+	    (*         (\* NOTE: Can leave the return type out, because we're just *)
+	    (*                  copying it, so it will never yield any information *\) *)
+	    (*         (Ext.embed_t (TArrow (expected_typs, None, TTop))) *)
+            (*   (\* Need to expose arg_typs before association to eliminate TIds *\) *)
+            (*   (Ext.embed_t (TArrow ((List.map (fun t ->  *)
+            (*     expose_simpl_typ env t) arg_typs),  *)
+            (*                         None, TTop)))) in *)
+	    (*       traceMsg "3In Eapp, original return type is %s" (string_of_typ r); *)
+            let ret = (sub p typ_vars r) in
+	          traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret);
 	          ret
 
             (* IdMap.iter (fun k t -> *)
