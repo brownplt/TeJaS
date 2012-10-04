@@ -870,8 +870,8 @@ struct
 
 
   let rec typ_assoc env t1 t2  = typ_assoc' env t1 t2
-    (* Strobe.trace "JQtyp_assoc"  *)
-    (*   (string_of_typ t1 ^ " with " ^ string_of_typ t2)  *)
+    (* Strobe.trace "JQtyp_assoc" *)
+    (*   (string_of_typ t1 ^ " with " ^ string_of_typ t2) *)
     (*   (fun _ -> true) (fun () -> typ_assoc' env t1 t2) *)
   and typ_assoc' env t1 t2 : binding IdMap.t =
 
@@ -888,8 +888,11 @@ struct
       (thisTyp) in
 
     match t1, t2 with
-    | TStrobe s, TStrobe t -> Strobe.typ_assoc add_strobe assoc_merge env s t
+    | TStrobe s, TStrobe t -> 
+      Strobe.typ_assoc add_strobe assoc_merge env s t
       (* Cases for two-arg jq *)
+    (* if the left type is an id and the right type is a jQ_typ, add the binding to the map here *)
+    | TStrobe (Strobe.TId id), _ -> IdMap.add id (embed_b (Strobe.BTermTyp (extract_t t2))) IdMap.empty
     | TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult; STyp prev]), 
       TStrobe (Strobe.TSource (_, Strobe.TObject o)) -> 
       (* Strobe.traceMsg "JQUERY_typ_assoc: associating jq with an obj"; *)
@@ -903,7 +906,7 @@ struct
             (typ_assoc env prev this_prev)
         | _ -> IdMap.empty
       end
-    |  (TStrobe (Strobe.TSource (_, Strobe.TObject o))),
+    | (TStrobe (Strobe.TSource (_, Strobe.TObject o))),
         (TApp (TStrobe (Strobe.TFix(Some "jQ", _, _,_)), [SMult mult; STyp prev])) -> 
       (* Strobe.traceMsg "JQuery_typ_assoc: associating an obj with a jq"; *)
       begin
@@ -954,8 +957,10 @@ struct
     | MZeroOne m1, MZeroOne m2
     | MZeroPlus m1, MZeroOne m2
     | MOnePlus m1, MOnePlus m2
-    | MZeroPlus m1, MOnePlus m2
-    | MZeroPlus m1, MZeroPlus m2 -> mult_assoc env m1 m2
+    | MZeroPlus m1, MZeroPlus m2 -> 
+      mult_assoc env m1 m2
+    | MZeroPlus m1, MOnePlus m2 ->
+      mult_assoc env m1 m2
     | MSum(m11, m12), MSum(m21, m22) ->
       assoc_merge (mult_assoc env m11 m21) (mult_assoc env m12 m22)
     | m1, MSum(m21, m22) -> mult_assoc env m1 (simplify_msum m2)

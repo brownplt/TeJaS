@@ -233,6 +233,8 @@ struct
       end
 
     and filter_t (t : typ) : multiplicity  = 
+      
+      (* Strobe.traceMsg "filterSel: filtering type %s" (string_of_typ t); *)
 
       let rec helper t = 
 
@@ -241,7 +243,13 @@ struct
             let inter = Css.intersect sel filter_sel in
             if Css.is_empty inter then None
             else Some (TDom (s,name,node_typ,inter))
-          | _ -> failwith "JQuery_env:filterSel: can only filter tdoms" in
+
+          | TStrobe (Strobe.TSource (s, Strobe.TObject _))      (* The element case *)
+          | TStrobe (Strobe.TSource (s, Strobe.TId "Element")) ->
+            Some (TDom (s, "", t, filter_sel))
+          | _ -> 
+            (* Strobe.traceMsg "filtering type %s" (string_of_typ t); *)
+            failwith "JQuery_env:filterSel: can only filter tdoms" in
         
         match t with
         | TDom _ -> filter_tdom t
@@ -383,7 +391,7 @@ struct
           match m with
 
           | MSum (m1,m2) -> List.append (unwrap_msum m1) (unwrap_msum m2)
-          | MZero _ -> [] 
+          | MZero _ -> []
           (* Stop if it's nothing and don't try to extract the type *)
           | _ -> begin match (fst (extract_mult m)) with 
             | STyp t -> unwrap_t (extract_t t)
@@ -719,22 +727,89 @@ struct
 
   (* End of extend_global_env *)
 
-  (* let rec resolve_special_functions env senv t =  *)
-  (*   Strobe.traceMsg "Attempting to resolve: %s" (string_of_typ t); *)
-  (*   resolve_special_functions' env senv t *)
-  let rec resolve_special_functions (env : env) (senv : structureEnv)
-      (included : env -> multiplicity -> multiplicity -> bool) (t : typ) =
-    resolve_special_functions' env senv included t
-  (*   Strobe.trace "Resolve_special" (string_of_typ t) (fun _ -> true) *)
-  (*     (fun () -> resolve_special_functions' env senv included t) *)
+  let rec resolve_special_functions env senv included t =
+    (* Strobe.traceMsg "Attempting to resolve: %s" (string_of_typ t); *)
+      (* let rec resolve_special_functions (env : env) (senv : structureEnv) *)
+      (*     (included : env -> multiplicity -> multiplicity -> bool) (t : typ) = *)
+      resolve_special_functions' env senv included t
+      (* (fun () -> resolve_special_functions' env senv included t) *)
   and resolve_special_functions' env senv included t =
     let rec resolve_sigma s = match s with
       | STyp t -> STyp (rjq t)
       | SMult m -> SMult (resolve_mult m)
+    (* resolve_mult resolves special functions at top level. This is a hack and should be streamlined. *)
     and resolve_mult m =
       let rm = resolve_mult in
       match m with
-      | MPlain t -> MPlain (rjq t)
+      | MPlain t -> begin match t with
+        | (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), [SMult m]))
+        | (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), [SMult m]))
+        | (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), [SMult m]))
+        | (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), [SMult m]))
+        | (TApp ((TStrobe (Strobe.TPrim ("parentsOf" as oper))), [SMult m]))
+        | (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), [SMult m]))
+        | (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), [SMult m]))
+        | (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), [SMult m]))
+          ->
+          (* Strobe.traceMsg "resolving something other than filterSel"; *)
+            let op = match oper with
+              | "childrenOf" -> children
+              | "nextSibOf" -> next
+              | "prevSibOf" -> prev
+              | "parentOf" -> parent
+              | "findOf" -> find included
+              | "nextAllOf" -> nextAll included
+              | "prevAllOf" -> prevAll included
+              | "parentsOf" -> parentsAll included
+              | _ -> failwith "impossible: we only matched known strings" in
+            let (s', m2) = extract_mult m in  
+            begin match s' with
+            | STyp t -> (canonical_multiplicity (m2 (SMult (op env senv (rjq t)))))
+            | SMult (MSum _ as sum) -> begin
+              let sum_pieces = extract_sum sum in
+              let oper_pieces = List.map (fun p ->
+                let (s, m) = extract_mult p in
+                match s with
+                | STyp t -> m (SMult (op env senv (rjq t)))
+                | SMult m -> m) sum_pieces in
+              let combined = msum_ms oper_pieces in
+              (canonical_multiplicity combined)
+            end
+            | SMult _ -> m
+            (* Could not extract down to a type. Return ORIGINAL sigma *)
+            end
+        | (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), _))
+        | (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), _))
+        | (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), _))
+        | (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), _))
+        | (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), _))
+        | (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), _))
+        | (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), _))
+        | (TApp ((TStrobe (Strobe.TPrim ("parentsOf" as oper))), _))
+          ->
+          failwith (oper ^ " not called with a single mult argument")
+        (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), [SMult m])), m1) -> *)
+        (*     let (s, _) = extract_mult m in SMult ( *)
+        (*       begin  *)
+        (*         match s with *)
+        (*         | STyp t -> MOne (MPlain t) *)
+        (*         | SMult m -> (canonical_multiplicity (MOne m)) *)
+        (*       end) *)
+        (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), _)), _) -> *)
+        (*     failwith "oneOf not called with a single mult argument" *)
+        (* | (STyp (TApp ((TStrobe (Strobe.TPrim "parentOf")), [SMult m])), m1) -> *)
+        (*   let (s, m2) = extract_mult m in *)
+        (*   begin match s with *)
+        (*   | STyp t ->  *)
+        (*     SMult (canonical_multiplicity  *)
+        (*              (m1 (SMult (m2 (SMult (parent env senv (rjq t))))))) *)
+        (*   | SMult _ -> s *)
+        (*   end *)
+        | _ -> m (* Any other pattern, return original sigma *)
+      end
+      (* Strobe.traceMsg "calling rjq from resolve_mult on type %s" (string_of_typ t); *)
+      (* Strobe.traceMsg "resolved type is: %s" (string_of_typ resolved); *)
+      (* MPlain resolved *)
       | MId _ -> m
       | MZero m-> MZero (rm m)
       | MOne m -> MOne (rm m)
@@ -742,7 +817,20 @@ struct
       | MOnePlus m -> MOnePlus (rm m)
       | MZeroPlus m -> MZeroPlus (rm m)
       | MSum (m1, m2) -> MSum (rm m1, rm m2)
-    and  rjq t = match t with
+    (* and rt t = match t with *)
+    (*   | TForall (s, id, sigma, t) -> TForall(s, id, resolve_sigma sigma, t) *)
+    (*   | TLambda _ -> t *)
+    (*   | TDom (s,id, t, sel) -> TDom (s,id,rt t, sel) *)
+    (*   | TStrobe t -> TStrobe (rs t) *)
+    and  rjq t = 
+      (* begin match t with *)
+      (* | TForall _ -> Strobe.traceMsg "rjq: encountered TForall %s" (string_of_typ t) *)
+      (* | TLambda _ -> Strobe.traceMsg "rjq: encountered TLambda %s" (string_of_typ t) *)
+      (* | TApp _ -> Strobe.traceMsg "rjq: encountered TApp %s" (string_of_typ t) *)
+      (* | TDom _ -> Strobe.traceMsg "rjq: encountered TDom %s" (string_of_typ t) *)
+      (* | TStrobe _ -> Strobe.traceMsg "rjq: encountered TStrobe %s" (string_of_typ t) *)
+      (* end; *)
+      match t with
       | TForall (s,id,sigma,t) -> TForall(s,id,resolve_sigma sigma, t)
       | TLambda _ -> t
       | TApp (TStrobe (Strobe.TPrim "selector"), [STyp (TStrobe (Strobe.TRegex pat))]) ->
@@ -767,16 +855,21 @@ struct
         failwith (oper ^ " at outermost level")
       | TApp(t, args) ->
         TApp(rjq t, List.map (fun s -> match s with
-        | SMult m -> begin match extract_mult (canonical_multiplicity m) with
+        | SMult m -> 
+          (* Strobe.traceMsg "resolving multiplicity %s" (string_of_mult m); *)
+          begin match extract_mult (canonical_multiplicity m) with
           | (STyp (TApp ((TStrobe (Strobe.TPrim "filterSel")), [SMult m; s])), m1) ->
+            (* Strobe.traceMsg "resolving filterSel"; *)
             begin match s with
             | STyp (TStrobe (Strobe.TRegex pat)) ->
               let select_str = begin match Strobe.Pat.singleton_string pat with 
                 | Some s -> s 
                 | None -> failwith 
                   "regex argument to @filterSel cannot be converted to string" end in
+              let resolved_m = (canonical_multiplicity (resolve_mult m)) in
+              (* Strobe.traceMsg "resolving filterSel, inner type is %s" (string_of_mult resolved_m); *)
               (* Filter operates on a mult *)
-              SMult (filterSel env (fst senv) m select_str)
+              SMult (filterSel env (fst senv) resolved_m select_str)
             | STyp (TStrobe (Strobe.TId id)) -> s
             | _ ->
               failwith "filterSel called with a mult but not a string";
@@ -785,37 +878,39 @@ struct
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("parentOf" as oper))), [SMult m])))), m1
+          | ((STyp (TApp ((TStrobe (Strobe.TPrim ("parentsOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), [SMult m])))), m1
           | ((STyp (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), [SMult m])))), m1
             ->
-            let op = match oper with
-              | "childrenOf" -> children
-              | "nextSibOf" -> next
-              | "prevSibOf" -> prev
-              | "parentOf" -> parent
-              | "findOf" -> find included
-              | "nextAllOf" -> nextAll included
-              | "prevAllOf" -> prevAll included
-              | "parentsAllOf" -> parentsAll included
-              | _ -> failwith "impossible: we only matched known strings" in
-            let (s', m2) = extract_mult m in begin match s' with
-              | STyp t -> SMult
-                (canonical_multiplicity
-                   (m1 (SMult (m2 (SMult (op env senv (rjq t)))))))
-              | SMult (MSum _ as sum) -> begin
-                let sum_pieces = extract_sum sum in
-                let oper_pieces = List.map (fun p ->
-                  let (s, m) = extract_mult p in
-                  match s with
-                  | STyp t -> m (SMult (op env senv (rjq t)))
-                  | SMult m -> m) sum_pieces in
-                let combined = msum_ms oper_pieces in
-                SMult (canonical_multiplicity (m1 (SMult combined)))
+            (* Strobe.traceMsg "resolving something other than filterSel"; *)
+              let op = match oper with
+                | "childrenOf" -> children
+                | "nextSibOf" -> next
+                | "prevSibOf" -> prev
+                | "parentOf" -> parent
+                | "findOf" -> find included
+                | "nextAllOf" -> nextAll included
+                | "prevAllOf" -> prevAll included
+                | "parentsOf" -> parentsAll included
+                | _ -> failwith "impossible: we only matched known strings" in
+              let (s', m2) = extract_mult m in begin match s' with
+                | STyp t -> SMult
+                  (canonical_multiplicity
+                     (m1 (SMult (m2 (SMult (op env senv (rjq t)))))))
+                | SMult (MSum _ as sum) -> begin
+                  let sum_pieces = extract_sum sum in
+                  let oper_pieces = List.map (fun p ->
+                    let (s, m) = extract_mult p in
+                    match s with
+                    | STyp t -> m (SMult (op env senv (rjq t)))
+                    | SMult m -> m) sum_pieces in
+                  let combined = msum_ms oper_pieces in
+                  SMult (canonical_multiplicity (m1 (SMult combined)))
+                end
+                | SMult _ -> s
+              (* Could not extract down to a type. Return ORIGINAL sigma *)
               end
-              | SMult _ -> s
-          (* Could not extract down to a type. Return ORIGINAL sigma *)
-            end
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("childrenOf" as oper))), _)), _)
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("nextSibOf" as oper))), _)), _)
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("prevSibOf" as oper))), _)), _)
@@ -823,7 +918,7 @@ struct
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("findOf" as oper))), _)), _)
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("nextAllOf" as oper))), _)), _)
           | (STyp (TApp ((TStrobe (Strobe.TPrim ("prevAllOf" as oper))), _)), _)
-          | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentsAllOf" as oper))), _)), _)
+          | (STyp (TApp ((TStrobe (Strobe.TPrim ("parentsOf" as oper))), _)), _)
             ->
             failwith (oper ^ " not called with a single mult argument")
           (*   | (STyp (TApp ((TStrobe (Strobe.TPrim "oneOf")), [SMult m])), m1) -> *)

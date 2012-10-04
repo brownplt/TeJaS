@@ -7,6 +7,7 @@
 
 (PlaysTable : """Shakespeare's plays"""
               table
+              ids = [playstable]
               classes = [plays]
               (PlaysRow : tr
                           classes = [playsrow]
@@ -31,6 +32,7 @@
 // news (example 3)
 (NewsTable : table
              classes = [news]
+             ids = [news]
              (NewsHeader : thead
                            classes = [newsheader]
                            (HeaderRow : tr
@@ -63,7 +65,9 @@
              ids = [jqdt2]
              classes = [samplediv]
              (Paragraph : p
-                          classes = [goofy])
+                          classes = [goofy]
+                          (PChildStrong : strong
+                                          classes = [pchildstrong]))
              (OrderedList : ol
                             classes = [list]
                             (LinkItem : li
@@ -71,7 +75,9 @@
                                         (Link : a
                                                 classes = [link]))
                             (GoofyItem : li
-                                        classes = [goofy])
+                                        classes = [goofy]
+                                        (StrongText: strong
+                                                     classes = [strongtext]))
                             (FunnyItem : li
                                         classes = [funny])
                             <LinkItem>
@@ -98,25 +104,26 @@ $('td').nextAll().andSelf()
     .addClass('highlight');
 
 
-p246-246, Listing 9.15
-Example 3
-assume each does not modify local structure
+// p246-246, Listing 9.15
+// Example 3
+// assume each does not modify local structure
 $('#news')
-    .find('tr.alt')// .removeClass('alt')
+    .find('tr.alt')
+    .removeClass('alt')
     .end()
-    .find('tbody').each(function() {
-        // $(this).children(':visible').has('td')
-        //     .filter(':group(3)').addClass('alt');
+    .find('tbody')
+    .each(/*: cheat (Element -> Undef) */function() {
+        $(this).children(':visible').has('td')
+            .addClass('alt');
     });
-
 
 // Examples from blog of Learning JQuery
 
 // Source:
-// Karl Swedberg (2006), How To Get Anything You Want - part 2
+// Karl Swedberg (2006)x, How To Get Anything You Want - part 2
 // http://www.learningjquery.com/2006/12/how-to-get-anything-you-want-part-2
 
-// Example 2
+// // Example 2
 $('#jqdt2')
     .find('li.funny')
     .css('backgroundColor', '#0ff')
@@ -125,18 +132,14 @@ $('#jqdt2')
     .css('backgroundColor', '#ff0');
 
 // Example 4
-$('li.goofy')
-    // .parents('#jqdt2')
-    .parents()
-    .filter('#jqdt2')
-    // .children('p')
-    .children()
-    .filter('p')
-    .next()
-    // .find('a')
-    .find()
-    .filter('a')
-    .parent();
+
+
+// $('li.goofy')
+//     .parents('#jqdt2');
+//     .children('p')
+//     .next()
+//     .find('a')
+//     .parent();
 
 
 
