@@ -318,9 +318,9 @@ var a1_nnpp = t1.children().next().next().prev().prev();
 
 /**** Css tests ****/
 
-/*: Str */ t1.css("foo");
+// /*: Str */ t1.css("foo");
 
-/*: t1p */ t1p.css("foo", "bar");
+// /*: t1p */ t1p.css("foo", "bar");
 
 
 /**** Comprehensive cases ****/
@@ -333,6 +333,9 @@ var a1_nnpp = t1.children().next().next().prev().prev();
 
 // /*: Num */ p_t1p.children().filter("tr .author");
 
+
+
+/*: Num */ $("p > .tweet#id").children().eq(1).parent();
 
 
 
