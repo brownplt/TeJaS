@@ -11,6 +11,7 @@ module type CSS = sig
 	val speclist : t -> Css_syntax.spec list
 	val sel2regsels : t -> Css_syntax.regsel list
 	val regsel2sel : Css_syntax.regsel -> t
+  val sel_from_id : string -> t
 end
 
 module RealCSS : CSS

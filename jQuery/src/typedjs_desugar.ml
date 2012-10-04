@@ -338,7 +338,14 @@ struct
     (* If we've checked everything succesfully, just return original list *)
     dcs
 
-      
+
+  let id_num = ref 0
+    (* Generate unique, html-invalid id *)
+
+  let gen_id () = begin
+    id_num := !id_num + 1;
+    "LSID##" ^ (string_of_int !id_num)
+  end
 
   (* Consumes a list of top-levels declComps, and compiles the structure
    they represent into a structureEnv. Also compiles a list of bindings
@@ -411,10 +418,17 @@ struct
             ".!" ^ (String.concat ".!" classes) in
         let optclsel = if optClasses = [] then "" else
             ".?" ^ (String.concat ".?" optClasses) in
-        let idsel = if List.length ids = 1 then "#" ^ (List.hd ids) else "" in
-        let simple_str = nodesel ^ clsel ^ optclsel ^ idsel in
-        let simple = 
-          Css.singleton (if void_prev then "V0!D + " ^ simple_str else simple_str) in
+        let idsel = if List.length ids = 1 
+          then (List.hd ids) else gen_id () in
+        (* Don't include id, as this will be generated 
+           and intersected separately *)
+        let simple_str = nodesel ^ clsel ^ optclsel in
+        let simple = Css.intersect
+          (Css.singleton (
+            if void_prev then 
+              "V0!D + " ^ simple_str else 
+              simple_str))
+          (Css.sel_from_id idsel) in
         match comb with
         (* The Desc combinator should only be used as a dummy value *)
         | Desc -> simple

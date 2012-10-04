@@ -11,6 +11,7 @@ module type CSS = sig
 	val speclist : t -> Css_syntax.spec list
 	val sel2regsels : t -> Css_syntax.regsel list
 	val regsel2sel : Css_syntax.regsel -> t
+  val sel_from_id : string -> t
 end
 
 module Map2Sets (Src : Set.S) (Dst : Set.S) = struct
@@ -95,6 +96,12 @@ module RealCSS = struct
 	module SibSetExt = SetExt.Make (SibSet)
 	module AdjSetExt = SetExt.Make (AdjSet)
 	module SimpleSetExt = SetExt.Make (SimpleSet)
+
+  (* Generate an id sel from an arbitrary string. This hack
+     lets us get around the lexer when generating html-invalid unique ids
+     for local structure *)
+  let sel_from_id sel_str = 
+    SelSet.singleton (DK (KS (SA (AS (USel, [SpId sel_str])))))
 
 	let rec simple2regsel c s = [c, s]
 	and adj2regsel c a = match a with
@@ -372,7 +379,10 @@ module RealCSS = struct
 			| TSel t -> text t
       | VSel -> text "V0!D"
 		and pretty_spec s = List.map (fun s -> match s with
-			| SpId s -> squish [text "#"; text s]
+			| SpId s -> 
+        if (String.length s) >= 6 && (String.sub s 0 6) = "LSID##"
+        then squish [text ""]
+        else squish [text "#"; text s] 
 			| SpClass s -> squish [text "."; text s]
 			| SpSpecClass (s, true) -> squish [text ".!"; text s]
 			| SpSpecClass (s, false) -> squish [text ".?"; text s]
@@ -716,7 +726,7 @@ module RealCSS = struct
 
 			let (ids1, classes1, specclasses1, others1) = collect_specs s1s in
 			let (ids2, classes2, specclasses2, others2) = collect_specs s2s in
-			if (S.cardinal (S.union ids1 ids2) > 1) || ((S. cardinal (S.union ids1 ids2) == 1) && (not (S.equal ids1 ids2))) then SimpleSet.empty
+			if (S.cardinal (S.union ids1 ids2) > 1) then SimpleSet.empty
 			else
 				begin
 					let mergeSpecAndClasses classes specs =
