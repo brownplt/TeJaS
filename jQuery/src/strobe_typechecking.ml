@@ -330,15 +330,26 @@ struct
     | ERef (p, ref_kind, e) -> 
       begin match ref_kind, extract_ref "ERef" p env (check_kind p env (expose_simpl_typ env typ)) with
       | RefCell, TSource(_, t) -> 
-        let e_typ = Ext.extract_t (ExtTC.synth env default_typ e) in
-        if not (Sub.subtype env e_typ t) 
-        then Sub.typ_mismatch p (Sub.TypTyp ((fun t1 t2 -> sprintf "Expected TRef(%s), got TSource(%s)" 
-          (string_of_typ t1) (string_of_typ t2)), t, e_typ))
+        begin
+          try (Sub.with_typ_exns (fun () -> check env default_typ e t))
+          with Sub.Typ_error(p, exn) ->
+            traceMsg "Couldn't check ref as source directly; trying synthing: %s"
+              (Sub.typ_error_details_to_string exn);
+            let e_typ = Ext.extract_t (ExtTC.synth env default_typ e) in
+            if not (Sub.subtype env e_typ t) 
+            then Sub.typ_mismatch p (Sub.TypTyp ((fun t1 t2 -> sprintf "Expected TRef(%s), got TSource(%s)" 
+              (string_of_typ t1) (string_of_typ t2)), t, e_typ))
+        end
       | SinkCell, TRef (_, t) ->
-        let e_typ = Ext.extract_t (ExtTC.synth env default_typ e) in
-        if not (Sub.subtype env t e_typ) 
-        then Sub.typ_mismatch p (Sub.TypTyp ((fun t1 t2 -> sprintf "Expected TSink(%s), got TRef(%s)" 
-          (string_of_typ t1) (string_of_typ t2)), t, e_typ))
+        begin
+          try (Sub.with_typ_exns (fun () -> check env default_typ e t))
+          with Sub.Typ_error _ ->
+            traceMsg "Couldn't check sink as ref directly; trying synthing";
+            let e_typ = Ext.extract_t (ExtTC.synth env default_typ e) in
+            if not (Sub.subtype env t e_typ) 
+            then Sub.typ_mismatch p (Sub.TypTyp ((fun t1 t2 -> sprintf "Expected TSink(%s), got TRef(%s)" 
+              (string_of_typ t1) (string_of_typ t2)), t, e_typ))
+        end
       | SourceCell, TSource (_, t)
       | RefCell, TRef (_, t)
       | SinkCell, TSink (_, t) -> check env default_typ e t
