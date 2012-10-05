@@ -218,8 +218,29 @@ struct
 
     let filter_sel = Css.singleton sel_str in
 
+    let is_known_id = 
+      (not (Css.is_empty filter_sel)) && (* selector isn't trivially empty *)
+      Css.is_empty (Css.intersect filter_sel (Css.sel_from_id "#_THIS_IS_NOT_AN_ID_#")) && (* selector has an ID *)
+      1 = List.length (List.filter (fun (_, s, _) -> not (Css.is_empty (Css.intersect filter_sel s))) benv) in
+
+    let strip_element m =
+      if not is_known_id then m else
+      let rec collect_parts m = match m with
+        | MSum (m1, m2) -> collect_parts m1 @ collect_parts m2
+        | _ -> [m] in
+      let m_parts = collect_parts m in
+      match List.filter (fun m -> match canonical_multiplicity m with
+      | MZero (MPlain (TStrobe (Strobe.TId "Element")))
+      | MOne (MPlain (TStrobe (Strobe.TId "Element")))
+      | MZeroOne (MPlain (TStrobe (Strobe.TId "Element")))
+      | MOnePlus (MPlain (TStrobe (Strobe.TId "Element")))
+      | MZeroPlus (MPlain (TStrobe (Strobe.TId "Element"))) -> false
+      | m' -> true) m_parts with
+      | [] -> m
+      | m'::m_parts' -> List.fold_left (fun acc m -> MSum (acc, m)) m' m_parts' in
+
     let rec filter_m m = 
-      begin match m with 
+      begin match canonical_multiplicity m with 
       | MZero (MPlain t) -> m
       | MOne (MPlain t) -> MOne (filter_t t)
       | MZeroOne (MPlain t) -> MZeroOne (filter_t t)
@@ -244,9 +265,10 @@ struct
             if Css.is_empty inter then None
             else Some (TDom (s,name,node_typ,inter))
 
-          | TStrobe (Strobe.TSource (s, Strobe.TObject _))      (* The element case *)
-          | TStrobe (Strobe.TSource (s, Strobe.TId "Element")) ->
-            Some (TDom (s, "", t, filter_sel))
+          | TStrobe (Strobe.TSource (Some "Element", Strobe.TObject _)) -> 
+            (* This is a bit of a hack, because things have already been exposed.  But it's safe,
+               given how we've defined Element, and how we use it in our code *)
+            Some (TStrobe (Strobe.TId "Element"))
           | _ -> 
             (* Strobe.traceMsg "filtering type %s" (string_of_typ t); *)
             failwith "JQuery_env:filterSel: can only filter tdoms" in
@@ -274,7 +296,7 @@ struct
       | None -> MZero (MPlain (embed_t (Strobe.TId "Element"))) in
     (* END filter_t *)
 
-      canonical_multiplicity (filter_m fm)
+      canonical_multiplicity (strip_element (filter_m fm))
   (* END filterSel *)
 
     
