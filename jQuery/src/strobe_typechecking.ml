@@ -724,11 +724,24 @@ struct
           | None -> 
             raise (Sub.Typ_error (p, Sub.Typ((fun t -> sprintf "synth: expected function, got %s"
               (string_of_typ t)), quant_typ)))
-          | Some (typ_vars, (TArrow (expected_typs, _, r))) -> 
+          | Some (typ_vars, (TArrow (expected_typs, variadic, r))) -> 
             (* NEW ALGORITHM:
              * incrementally try checking arguments against a partial association, and if it works,
              * move on; otherwise, synth a type and build a new association, and try again
             *)
+            let args = fill (List.length expected_typs - List.length args) 
+              (EConst (p, JavaScript_syntax.CUndefined)) args in
+            let expected_typs = if (List.length expected_typs < List.length args) then
+                match variadic with
+                | None -> 
+                  raise 
+                    (Sub.Typ_error 
+                       (p, Sub.FixedString(sprintf "synth: expected %d arguments in a fixed-arity function, got %d"
+                                             (List.length expected_typs) (List.length args))))
+                | Some t -> 
+                  fill (List.length args - List.length expected_typs) t expected_typs 
+              else expected_typs in
+            
             let substitution_for (wanted : Typ.typ list) (offered : Typ.typ list) p typs t =
               Ext.extract_t 
                 (ExtTC.assoc_sub env
@@ -748,9 +761,12 @@ struct
                 with _ -> false in                
             let try_argument (rev_expecteds, rev_syntheds, sub) (expected_typ : Typ.typ) arg =
               traceMsg "In EApp, expected = %s, arg = %s" (string_of_typ expected_typ) (string_of_exp arg);
-              let subst_typ = (sub p typ_vars expected_typ) in
-              traceMsg "Substituted type = %s%!" (string_of_typ subst_typ);
-              let check_succeeded = (check_tc arg subst_typ) in
+              let check_succeeded =
+                try Sub.with_typ_exns
+                      (fun () -> let subst_typ = sub p typ_vars expected_typ in
+                                 traceMsg "Substituted type = %s%!" (string_of_typ subst_typ);
+                                 check_tc arg subst_typ)
+                with _ -> false in
               traceMsg "Check succeeded = %b" check_succeeded;
               if check_succeeded
               then begin
@@ -763,6 +779,7 @@ struct
                 let sub' = substitution_for rev_expected' rev_synthed' in
                 traceMsg "Computed new substitution";
                 (rev_expected', rev_synthed', sub') in
+            traceMsg "Got %d expected_typs, %d offered arguments" (List.length expected_typs) (List.length args);
             let (_, _, sub) = List.fold_left2 try_argument ([], [], (fun _ _ t -> traceMsg "No-op substitution"; t)) expected_typs args in
               
 

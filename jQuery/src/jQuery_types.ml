@@ -630,15 +630,15 @@ struct
         | S.TBot, _
         | _, S.TBot -> embed_t S.TBot
         | S.TPrim p1, S.TPrim p2 -> if p1 = p2 then embed_t t1 else embed_t S.TBot (* Prims are unique *)
-        | S.TEmbed (TForall(_, alpha, bound1, typ1) as t1), 
-          S.TEmbed (TForall(_, beta, bound2, typ2) as t2) ->
-          if equivalent_sigma IdMap.empty bound1 bound2
-          then TForall(n, alpha, bound1, 
-                       canonical_type
-                         (embed_t (S.TInter (None, extract_t typ1, 
-                                             extract_t
-                                               (typ_typ_subst beta (embed_t (S.TId alpha)) typ2)))))
-          else embed_t (S.TInter(n, extract_t t1, extract_t t2))
+        (* | S.TEmbed (TForall(_, alpha, bound1, typ1) as t1),  *)
+        (*   S.TEmbed (TForall(_, beta, bound2, typ2) as t2) -> *)
+        (*   if equivalent_sigma IdMap.empty bound1 bound2 *)
+        (*   then TForall(n, alpha, bound1,  *)
+        (*                canonical_type *)
+        (*                  (embed_t (S.TInter (None, extract_t typ1,  *)
+        (*                                      extract_t *)
+        (*                                        (typ_typ_subst beta (embed_t (S.TId alpha)) typ2))))) *)
+        (*   else embed_t (S.TInter(n, extract_t t1, extract_t t2)) *)
         | t1, t2 -> if t1 = t2 then embed_t t1 else embed_t (S.TInter(n, t1, t2))
     end
     | TStrobe t -> begin match S.canonical_type t with
