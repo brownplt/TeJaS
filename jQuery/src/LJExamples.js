@@ -46,6 +46,7 @@
                                     classes = [yearrow])
                          (NewsRow : tr
                                     classes = [newsrow]
+                                    optional classes = [alt] // XXX THIS WAS ADDED AND NEEDED!
                                     (NewsDate : td
                                                 classes = [date])
                                     (NewTitle : td
