@@ -333,8 +333,8 @@ struct
         begin
           try (Sub.with_typ_exns (fun () -> check env default_typ e t))
           with Sub.Typ_error(p, exn) ->
-            traceMsg "Couldn't check ref as source directly; trying synthing: %s"
-              (Sub.typ_error_details_to_string exn);
+            (* traceMsg "Couldn't check ref as source directly; trying synthing: %s" *)
+            (*   (Sub.typ_error_details_to_string exn); *)
             let e_typ = Ext.extract_t (ExtTC.synth env default_typ e) in
             if not (Sub.subtype env e_typ t) 
             then Sub.typ_mismatch p (Sub.TypTyp ((fun t1 t2 -> sprintf "Expected TRef(%s), got TSource(%s)" 
@@ -344,7 +344,7 @@ struct
         begin
           try (Sub.with_typ_exns (fun () -> check env default_typ e t))
           with Sub.Typ_error _ ->
-            traceMsg "Couldn't check sink as ref directly; trying synthing";
+            (* traceMsg "Couldn't check sink as ref directly; trying synthing"; *)
             let e_typ = Ext.extract_t (ExtTC.synth env default_typ e) in
             if not (Sub.subtype env t e_typ) 
             then Sub.typ_mismatch p (Sub.TypTyp ((fun t1 t2 -> sprintf "Expected TSink(%s), got TRef(%s)" 
@@ -760,27 +760,27 @@ struct
                        check env default_typ exp typ); true
                 with _ -> false in                
             let try_argument (rev_expecteds, rev_syntheds, sub) (expected_typ : Typ.typ) arg =
-              traceMsg "In EApp, expected = %s, arg = %s" (string_of_typ expected_typ) (string_of_exp arg);
+              (* traceMsg "In EApp, expected = %s, arg = %s" (string_of_typ expected_typ) (string_of_exp arg); *)
               let check_succeeded =
                 try Sub.with_typ_exns
                       (fun () -> let subst_typ = sub p typ_vars expected_typ in
-                                 traceMsg "Substituted type = %s%!" (string_of_typ subst_typ);
+                                 (* traceMsg "Substituted type = %s" (string_of_typ subst_typ); *)
                                  check_tc arg subst_typ)
                 with _ -> false in
-              traceMsg "Check succeeded = %b" check_succeeded;
+              (* traceMsg "Check succeeded = %b" check_succeeded; *)
               if check_succeeded
               then begin
                 (expected_typ :: rev_expecteds, expected_typ :: rev_syntheds, sub)
               end else 
                 let synthed = synth env default_typ arg in
-                traceMsg "Synthed argument type = %s" (string_of_typ synthed);
+                (* traceMsg "Synthed argument type = %s" (string_of_typ synthed); *)
                 let rev_expected' = expected_typ :: rev_expecteds in
                 let rev_synthed' = (expose_simpl_typ env synthed) :: rev_syntheds in
                 let sub' = substitution_for rev_expected' rev_synthed' in
-                traceMsg "Computed new substitution";
+                (* traceMsg "Computed new substitution"; *)
                 (rev_expected', rev_synthed', sub') in
-            traceMsg "Got %d expected_typs, %d offered arguments" (List.length expected_typs) (List.length args);
-            let (_, _, sub) = List.fold_left2 try_argument ([], [], (fun _ _ t -> traceMsg "No-op substitution"; t)) expected_typs args in
+            (* traceMsg "Got %d expected_typs, %d offered arguments" (List.length expected_typs) (List.length args); *)
+            let (_, _, sub) = List.fold_left2 try_argument ([], [], (fun _ _ t -> t)) expected_typs args in
               
 
             (* (\* guess-work breaks bidirectionality *\) *)
@@ -800,7 +800,7 @@ struct
             (*                         None, TTop)))) in *)
 	    (*       traceMsg "3In Eapp, original return type is %s" (string_of_typ r); *)
             let ret = (sub p typ_vars r) in
-	          traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret);
+	          (* traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret); *)
 	          ret
 
             (* IdMap.iter (fun k t -> *)

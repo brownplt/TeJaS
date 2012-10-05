@@ -900,7 +900,7 @@ struct
     | TId x -> 
       (try 
          expose typenv (simpl_typ typenv (fst2 (lookup_typ typenv x)))
-       with Not_found -> Printf.eprintf "Could not find type %s\n" x; raise Not_found)
+       with Not_found -> (* Printf.eprintf "Could not find type %s\n" x; *) raise Not_found)
     | TThis t -> TThis (expose typenv t)
     | _ -> canonical_type typ
 
