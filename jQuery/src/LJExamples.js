@@ -113,8 +113,8 @@ $('#news')
     .removeClass('alt')
     .end()
     .find('tbody')
-    .each(/*: cheat (Element -> Undef) */function() {
-        $(this).children(':visible').has('td')
+    .each(function() {
+        $(this).children(/*':visible'*/).has('td')
             .addClass('alt');
     });
 
@@ -124,7 +124,7 @@ $('#news')
 // Karl Swedberg (2006)x, How To Get Anything You Want - part 2
 // http://www.learningjquery.com/2006/12/how-to-get-anything-you-want-part-2
 
-// // Example 2
+// Example 2
 $('#jqdt2')
     .find('li.funny')
     .css('backgroundColor', '#0ff')
@@ -135,30 +135,30 @@ $('#jqdt2')
 // Example 4
 
 
-// $('li.goofy')
-//     .parents('#jqdt2');
-//     .children('p')
-//     .next()
-//     .find('a')
-//     .parent();
+$('li.goofy')
+    .parents('#jqdt2')
+    .children('p')
+    .next()
+    .find('a')
+    .parent();
 
 
 
-// End selected examples
+// // End selected examples
 
 
 
 
 
-// // Source:
-// // Karl Swedberg (2006), How to Get Anything You Want - part 1
-// // http://www.learningjquery.com/2006/11/how-to-get-anything-you-want-part-1
+// Source:
+// Karl Swedberg (2006), How to Get Anything You Want - part 1
+// http://www.learningjquery.com/2006/11/how-to-get-anything-you-want-part-1
 
-// $('li').eq(0);
+$('li').eq(0);
 // $('li').not('.goofy');
 
-// // selector with structural information
-// $('ol .goofy > strong');
+// selector with structural information
+$('ol .goofy > strong');
 
 // // cannot deal with attributes in selectors
 // $('li + li > a[href$=pdf]');
@@ -169,17 +169,17 @@ $('#jqdt2')
 // // transitive
 // $('#jqdt2').find('li').siblings();
 
-// // End HTGAYW
+// End HTGAYW
 
 
 // // p43-44, Listing 2.15
 // // chaining, stack
 // $('td')     // Find every cell containing "Henry"
 //     .parent()               // Select its parent
-//     .find('td:eq(1)')       // Find the 2nd descendant cell
+//     .find('td').eq(1)       // Find the 2nd descendant cell
 //     .addClass('highlight')  // Add the "highlight" class
-//     .end()              // Return to the parent of the cell containing "Henry"
-//     .find('td:eq(2)')       // Find the 3rd descendant cell
+//     .end().end()        // Return to the parent of the cell containing "Henry"
+//     .find('td').eq(2)       // Find the 3rd descendant cell
 //     .addClass('highlight'); // Add the "highlight" class
 
 
@@ -193,7 +193,7 @@ $('#jqdt2')
 // // p229-229, Listing 9.2
 // // selector with structural information
 // $('#topics a.selected').removeClass('selected');
-// $('#news tr').show();
+// // $('#news tr').show();
 
 
 
