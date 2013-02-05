@@ -610,7 +610,7 @@ struct
       let pieces = collect t in
       let nodups = remove_dups pieces in
       match List.rev nodups with
-      | [] -> failwith "impossible 7"
+      | [] -> failwith "impossible, 007"
       | hd::tl -> 
         embed_t (S.apply_name n (List.fold_left (fun acc t ->
                      if t = S.TBot

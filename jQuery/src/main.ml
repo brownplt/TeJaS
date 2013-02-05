@@ -5,13 +5,18 @@ open Prelude
 open SetExt
 module TestRealCSS = Css.TestRealCSS
 open JQuery_syntax
+open Bare_syntax
 module JQ = JQueryImpl
+module B = BareImpl
 module S = StrobeImpl
 module SimpleTests = Simple_tests
 
 module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
+module BareDesugar = Bare_desugar.Make (StrobeModB) (BareMod)
 module SEnv = Strobe_env.Make (StrobeMod) (Strobe_kind) (Desugar)
 module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (SEnv) (Desugar)
+module SEnvB = Strobe_env.Make (StrobeModB) (Strobe_kindB) (BareDesugar)
+module BareEnv = Bare_env.MakeExt (BareMod) (Bare_kind) (SEnvB) (BareDesugar)
 module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
                         with type typ = JQueryImpl.typ
   with type kind = JQueryImpl.kind

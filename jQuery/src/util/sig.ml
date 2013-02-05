@@ -196,3 +196,11 @@ module type TYP_ENV = sig
   val extend_global_env : env -> env_decl list -> env
   val set_global_object : env -> string -> env
 end
+
+module type DESUGAR = sig
+  type typ
+  type writtyp
+  exception Typ_stx_error of string
+  val desugar_typ : Pos.t -> writtyp -> typ
+end
+

@@ -12,7 +12,8 @@ module Make
   with type extTyp = Strobe.extTyp
   with type extKind = Strobe.extKind
   with type env = Strobe.env)
-  (Desugar : Typedjs_desugar.DESUGAR with type typ = Strobe.extTyp with type kind = Strobe.extKind)
+   (Desugar : DESUGAR with type typ = Strobe.extTyp
+                 with type writtyp = Typedjs_writtyp.WritTyp.t)
   : (TYP_ENV
      with type typ = Strobe.extTyp
   with type kind = Strobe.extKind

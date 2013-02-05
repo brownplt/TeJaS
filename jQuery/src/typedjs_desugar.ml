@@ -1,4 +1,5 @@
 open Prelude
+open Sig
 
 module W = Typedjs_writtyp.WritTyp
 module List = ListExt
@@ -6,8 +7,8 @@ module Pat = JQuery_syntax.Pat
 module StringMap = Map.Make (String)
 module StringMapExt = MapExt.Make (String) (StringMap)
 
-module type DESUGAR = sig
-  type typ
+module type JQUERY_DESUGAR = sig
+  include DESUGAR
   type kind
   type multiplicity
   type backformSel
@@ -22,9 +23,7 @@ module type DESUGAR = sig
                      prev : clauseMap;
                      next : clauseMap }
   type structureEnv = (backformEnv * clauseEnv)
-  exception Typ_stx_error of string
   val benv_eq : backformEnv -> backformEnv -> bool
-  val desugar_typ : Pos.t -> W.t -> typ
   val well_formed_structure : W.declComp list -> W.declComp list
   val desugar_structure : W.declComp list -> (typ IdMap.t * structureEnv) 
   val empty_structureEnv : structureEnv
@@ -38,14 +37,16 @@ module Make
   with type baseKind = S.kind
   with type typ = S.extTyp
   with type kind = S.extKind)
-  : (DESUGAR 
+  : (JQUERY_DESUGAR 
      with type typ = JQ.typ
+     with type writtyp = W.t
   with type kind = JQ.kind
   with type multiplicity = JQ.multiplicity
   with type backformSel = JQ.sel
   with type voidBackformSel = JQ.sel) =
 struct
   type typ = JQ.typ
+  type writtyp = W.t
   type kind = JQ.kind
   type multiplicity = JQ.multiplicity
   module Css = JQ.Css
