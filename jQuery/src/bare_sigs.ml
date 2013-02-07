@@ -77,11 +77,7 @@ end
 
 module type BARE_SUBTYPING = sig
   include BARE_ACTIONS
-  val subtype_typ : bool -> env -> typ -> typ -> bool
   val subtype : env -> typ -> typ -> bool
-  val num_cache_hits : unit -> int
-  val num_cache_misses : unit -> int
-  val print_cache : string -> FormatExt.printer
   val project_typs : typ -> typ -> env -> env
 end
 
