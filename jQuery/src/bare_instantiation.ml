@@ -107,6 +107,44 @@ module Actions : MAIN_ACTIONS = struct
         let typ_db = ReadTyps.read_typs js (List.rev !JavaScript_lexer.comments) in
         WeaveAnnotations.weave typ_db typedjs
 
+  let rec expose_twith env exp =
+    let open Exp in
+    let elim = expose_twith env in match exp with
+    | EAssertTyp(p, t, e) -> EAssertTyp(p, Bare.expose_twith env t, elim e)
+    | EArray(p, es) -> EArray(p, map elim es)
+    | EObject (p, props) -> EObject (p, map (second2 elim) props)
+    | EId _ -> exp
+    | EBracket (p, e1, e2) -> EBracket (p, elim e1, elim e2)
+    | EUpdate (p, e1, e2, e3) -> EUpdate (p, elim e1, elim e2, elim e3)
+    | EPrefixOp (p, op, e) -> EPrefixOp (p, op, elim e)
+    | EInfixOp (p, op, e1, e2) -> EInfixOp (p, op, elim e1, elim e2)
+    | EIf (p, e1, e2, e3) -> EIf (p, elim e1, elim e2, elim e3)
+    | EApp (p, e, es) -> EApp (p, elim e, map elim es)
+    | EFunc (p, xs, info, e) -> EFunc (p, xs, info, elim e)
+    | ELet (p, x, e1, e2) ->
+      let e1' = elim e1 in
+      let e2' = elim e2 in
+      ELet (p, x, e1', e2')
+    | ERec (p, binds, e) -> ERec (p, map (third3 elim) binds, elim e)
+    | ESeq (p, e1, e2) -> ESeq (p, elim e1, elim e2)
+    | ELabel (p, x, e) -> ELabel (p, x, elim e)
+    | EBreak (p, x, e) -> EBreak (p, x, elim e)
+    | ETryCatch (p, e1, x, e2) -> ETryCatch (p, elim e1, x, elim e2)
+    | ETryFinally (p, e1, e2) -> ETryFinally (p, elim e1, elim e2)
+    | EThrow (p, e) -> EThrow (p, elim e)
+    | ETypecast (p, rt, e) -> ETypecast (p, rt, elim e)
+    | ERef (p, k, e) -> ERef (p, k, elim e)
+    | EDeref (p, e) -> EDeref (p, elim e)
+    | ESetRef (p, e1, e2) -> ESetRef (p, elim e1, elim e2)
+    | EParen (p, e) -> EParen (p, elim e)
+    | ESubsumption (p, t, e) -> ESubsumption (p, Bare.expose_twith env t, elim e)
+    | EDowncast (p, t, e) -> EDowncast (p, Bare.expose_twith env t, elim e)
+    | ETypAbs (p, x, t, e) -> ETypAbs (p, x, Bare.expose_twith env t, elim e)
+    | ETypApp (p, e, t) -> ETypApp (p, elim e, Bare.expose_twith env t)
+    | ECheat (p, t, e) -> ECheat (p, Bare.expose_twith env t, elim e)
+    | EBot _
+    | EConst _ -> exp
+
   let actual_data () =
     let open Typedjs_writtyp.WritTyp in
     let env =
@@ -119,7 +157,7 @@ module Actions : MAIN_ACTIONS = struct
     let new_decls = ReadTyps.new_decls (List.rev !JavaScript_lexer.comments) in
     let env = BareEnv.extend_global_env env new_decls in
     set_env env;
-    let annot_js = weave_annotations typedjs in
+    let annot_js = expose_twith env (weave_annotations typedjs) in
     (env, annot_js)
 
   let default_typ : B.typ option ref = ref None

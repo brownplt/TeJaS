@@ -93,6 +93,35 @@ struct
     match typ with
     | TStrobe t -> embed_t (Strobe.simpl_typ env (extract_t typ))
 
+  let expose_twith env t =
+    let rec optsquash t = match t with None -> None | Some t -> Some (squash_s t)
+    and squash_s t =
+      let open Strobe in
+      match t with
+      | TWith _ -> Strobe.simpl_typ env t
+      | TRef (n, t) -> TRef (n, squash_s t)
+      | TSource (n, t) -> TSource (n, squash_s t)
+      | TSink (n, t) -> TSink (n, squash_s t)
+      | TUnion (n, t1, t2) -> TUnion(n, squash_s t1, squash_s t2)
+      | TInter(n, t1, t2) -> TInter(n, squash_s t1, squash_s t2)
+      | TArrow(args, vararg, ret) -> TArrow(map squash_s args, optsquash vararg, squash_s ret)
+      | TObject ot -> TObject (mk_obj_typ (map (third3 squash_s) (fields ot)) (absent_pat ot))
+      | TTop
+      | TBot -> t
+      | TForall(n, id, t, b) -> TForall(n, id, squash_s t, squash_s b)
+      | TId _
+      | TRegex _
+      | TPrim _ -> t
+      | TThis t -> TThis (squash_s t)
+      | TRec(n, id, t) -> TRec(n, id, squash_s t)
+      | TLambda (n, args, t) -> TLambda(n, args, squash_s t)
+      | TApp(t, ts) -> TApp(squash_s t, map squash_s ts)
+      | TFix(n, id, k, t) -> TFix(n, id, k, squash_s t)
+      | TUninit ty -> ty := optsquash !ty; t
+      | TEmbed t -> extract_t (squash_t t)
+    and squash_t t = embed_t (squash_s (extract_t t))
+    in squash_t t
+
   let assoc_merge = IdMap.merge (fun x opt_s opt_t -> match opt_s, opt_t with
     | Some (BStrobe (Strobe.BTermTyp (Strobe.TId y))), 
       Some (BStrobe (Strobe.BTermTyp (Strobe.TId z))) ->

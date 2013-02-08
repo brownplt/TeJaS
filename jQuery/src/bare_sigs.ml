@@ -60,6 +60,7 @@ module type BARE_ACTIONS = sig
   val string_of_typ : typ -> string
   val string_of_kind : kind -> string
   val simpl_typ : env -> typ -> typ
+  val expose_twith : env -> typ -> typ
   val typ_assoc : env -> typ -> typ -> binding IdMap.t
 end
 

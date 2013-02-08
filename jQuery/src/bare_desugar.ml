@@ -69,7 +69,7 @@ struct
   let rec typ (writ_typ : W.t) : S.typ =
     let get_typ t = match t with
       | W.Typ t -> typ t
-      | _ -> failwith "BareDesugar: Got non-type in type application"
+      | _ -> failwith (sprintf "BareDesugar: Got non-type in type application: %s" (W.sigma_of_typ t))
     in
     let open S in
     let opt_map f v = match v with None -> None | Some v -> Some (f v) in

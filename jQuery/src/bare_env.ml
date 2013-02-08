@@ -147,10 +147,7 @@ struct
            raise (Not_wf_typ (sprintf "the type %s is already defined" x))
          with Not_found ->
            let t' = Desugar.desugar_typ p writ_typ in
-           (* TODO(joe): What the squash? *)
-           let t'' = t' in
-           (* let t'' = Bare.squash env t' in *)
-           (* Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t)); *)
+           let t'' = Bare.expose_twith env t' in
            let k = kind_check env recIds t'' in
            raw_bind_typ_id x (extract_t (apply_name (Some x) t'')) (extract_k k) env)
       | EnvPrim (p, s) ->
