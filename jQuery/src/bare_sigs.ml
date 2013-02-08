@@ -102,7 +102,6 @@ module type BARE_TYPECHECKING = sig
   val disable_flows : unit -> unit
   val bind_forall_vars : env -> typ -> env * typ
   val typecheck : env -> typ option -> exp -> unit
-  val trace : string -> ('a -> bool) -> (exp -> 'a) -> exp -> 'a
   val forall_arrow : typ -> ((id * binding) list * typ) option
   val assoc_sub : env -> typ -> typ -> (Pos.t -> (id * binding) list -> typ -> typ)
 end
