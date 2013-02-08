@@ -262,8 +262,8 @@ module Actions : MAIN_ACTIONS = struct
       ("-print-env", Arg.Unit set_print_env,
        "Print the current environment");
       ("-simple-tests", Arg.Unit (set_action SimpleTests.run_tests),
-       "Run a suite of simple tests")
-(*      ("-strict-selections", Arg.Unit (JQEnv.do_use_strict_selections),
-       "When making a selection that is not isolated, return 0<Element>") *)
+       "Run a suite of simple tests");
+      ("-strict-selections", Arg.Unit (JQEnv.do_use_strict_selections),
+       "When making a selection that is not isolated, return 0<Element>")
        ]
 end

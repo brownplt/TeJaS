@@ -5,7 +5,7 @@ open Prelude
 open SetExt
 module BI = Bare_instantiation
 module JQI = JQuery_instantiation
-module Actions = BI.Actions
+module Actions = JQI.Actions
 
 let string_of_cin cin =
   let buf = Buffer.create 5000 in
@@ -142,15 +142,20 @@ try
   exit (!action ());
 with
     Failure s ->  eprintf "%s\n" s; exit 3
-  | _ -> eprintf "Unknown failure\n"; exit 4
-    (*
-  | LJSfromEJS.Not_well_formed (p, s) ->
+  | Invalid_argument s -> eprintf "Invalid argument: %s\n" s; exit 2
+  | BI.LJSfromEJS.Not_well_formed (p, s)
+  | JQI.LJSfromEJS.Not_well_formed (p, s) ->
       eprintf "%s not well-formed:\n%s\n" (Pos.toString p) s; exit 2
-  | StrobeSub.Typ_error (p, s) ->
-      eprintf "fatal type error at %s: %s\n" (Pos.toString p) (StrobeSub.typ_error_details_to_string s); exit 2
-  | Strobe.Kind_error s ->
+  | JQI.StrobeSub.Typ_error (p, s) ->
+      eprintf "fatal type error at %s: %s\n" (Pos.toString p) (JQI.StrobeSub.typ_error_details_to_string s); exit 2
+  | BI.StrobeSub.Typ_error (p, s) ->
+      eprintf "fatal type error at %s: %s\n" (Pos.toString p) (BI.StrobeSub.typ_error_details_to_string s); exit 2
+  | JQI.StrobeSub.Kind_error s
+  | BI.StrobeSub.Kind_error s ->
       eprintf "type error (kinding): %s\n" s; exit 2
-  | Desugar.Typ_stx_error s ->
+  | BI.Desugar.Typ_stx_error s
+  | JQI.Desugar.Typ_stx_error s ->
       eprintf "type error (annotation): %s\n" s; exit 2 
-  | Desugar.Local_structure_error s ->
-    eprintf "local structure error: %s\n" s; exit 2 *)
+  | JQI.Desugar.Local_structure_error s ->
+    eprintf "local structure error: %s\n" s; exit 2
+  | e -> eprintf "Unknown failure: %s\n" (Printexc.to_string e); exit 4

@@ -6,9 +6,9 @@ open Main_actions
 
 module B = BareImpl
 module S = StrobeImpl
-module BareDesugar = Bare_desugar.Make (StrobeMod) (BareMod)
-module SEnv = Strobe_env.Make (StrobeMod) (Strobe_kind) (BareDesugar)
-module BareEnv = Bare_env.MakeExt (BareMod) (Bare_kind) (SEnv) (BareDesugar)
+module Desugar = Bare_desugar.Make (StrobeMod) (BareMod)
+module SEnv = Strobe_env.Make (StrobeMod) (Strobe_kind) (Desugar)
+module BareEnv = Bare_env.MakeExt (BareMod) (Bare_kind) (SEnv) (Desugar)
 
 module rec BareSub : (Bare_sigs.BARE_SUBTYPING
                         with type typ = BareImpl.typ
@@ -68,7 +68,7 @@ and BareTC : (Bare_sigs.BARE_TYPECHECKING
   with type exp = Exp.exp) =
   Bare_typechecking.Make (BareMod) (Exp) (BareEnv) (BareSub) (Bare_kind) (StrobeTC)
 
-module WeaveAnnotations = Bare_weaveAnnotations.Make (Exp) (BareDesugar)
+module WeaveAnnotations = Bare_weaveAnnotations.Make (Exp) (Desugar)
 module LJSfromEJS = Typedjs_fromExpr.Make (Exp)
 
 module Actions : MAIN_ACTIONS = struct
