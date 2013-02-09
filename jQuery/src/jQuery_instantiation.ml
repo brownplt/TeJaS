@@ -219,7 +219,7 @@ module Actions : MAIN_ACTIONS = struct
     end
   ) ()
 
-  let parseTyp_to_ref typStr typref =
+  let parseTyp_to_opt typStr =
     let open Lexing in
     let start_pos = { pos_fname = "<string>"; pos_lnum = 1; pos_bol = 0; pos_cnum = 0 } in
     let len = String.length typStr in
@@ -228,8 +228,9 @@ module Actions : MAIN_ACTIONS = struct
     match LJSfromEJS.parse_annotation pos typStr with
     | Typedjs_writtyp.WritTyp.ATyp typ ->
       let typ = Desugar.desugar_typ pos typ in
-      typref := Some typ
-    | _ -> ()
+      Some typ
+    | _ -> None
+  let parseTyp_to_ref typStr typRef = typRef := parseTyp_to_opt typStr
 
   let allow_unbound typStr : unit =
     parseTyp_to_ref typStr default_typ
@@ -255,8 +256,13 @@ module Actions : MAIN_ACTIONS = struct
       ("-assert-typ", Arg.String assert_typ,
        "Assert that all un-annotated assignments have a given type");
       ("-print-typ", Arg.String (fun ty ->
-        let (typ, _) = JQEnv.lookup_typ_id ty (get_env ()) in
-        horz [text ty; text "="; JQueryMod.Pretty.typ (JQueryMod.replace_name None typ)] std_formatter;
+        begin match parseTyp_to_opt ty with
+        | None -> horz [text ty; text "was not parseable"] std_formatter
+        | Some typ -> 
+          let env = get_env () in
+          let typ = JQueryMod.simpl_typ env (JQEnv.resolve_special_functions env !JQEnv.senv (JQuerySub.subtype_mult true) typ) in
+          horz [text ty; text "="; JQueryMod.Pretty.typ (JQueryMod.replace_name None typ)] std_formatter
+        end;
         Format.pp_print_flush std_formatter ()),
        "Print the definition of a single type");
       ("-print-env", Arg.Unit set_print_env,
