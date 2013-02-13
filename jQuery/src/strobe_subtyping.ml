@@ -54,6 +54,11 @@ struct
      with Not_found -> None)
   | t -> Some t
 
+  let rec unfold_typdefs (env : STROBE.env) t = match t with
+    | TId x ->
+      (try unfold_typdefs env (Ext.extract_t (fst2 (Env.lookup_typ_alias x env)))
+       with Not_found -> t)
+    | t -> t
 
   let expose_arrow env typ = 
     let clear_id t = match t with TId x -> (try fst2 (lookup_typ env x) with Not_found -> t) | _ -> t in
@@ -67,7 +72,8 @@ struct
   let pat_env (env : env) : pat IdMap.t =
     let select_pat_bound (x, bs) = 
       match (L.filter_map (fun b -> match Ext.extract_b b with
-      | BTypBound(TRegex p, _) -> Some (x, p)
+      | BTypBound(TRegex p, _) -> failwith "We don't think this could happen"
+      | BTypDef(TRegex p, _) -> Some (x, p)
       | _ -> None) bs) with
       | [xp] -> Some xp
       | _ -> None in
@@ -230,7 +236,7 @@ struct
     try incr cache_hits; (cache, TPMap.find (project_typs s t env, (s, t)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if s = t then (cache, true)
       else if equivalent_typ env s t then cache, true
-      else match Ext.unwrap_bt (expose env s), Ext.unwrap_bt (expose env t) with
+      else match (Ext.unwrap_bt (unfold_typdefs env s)), Ext.unwrap_bt (unfold_typdefs env t) with
       (* UNSOUND: Type constructor might not be covariant in its arguments *)
       (* | TApp(sf, sargs), TApp(tf, targs) when Ext.unwrap_bt sf = Ext.unwrap_bt tf -> *)
       (*   List.fold_left2 subtype_typ_list (cache, true) sargs targs *)
@@ -240,8 +246,8 @@ struct
       | s, TEmbed t -> tc_cache := cache; cache, ExtSub.subtype env (Ext.embed_t s) t
       | s, t ->
         (* let _ = traceMsg "Not equivalent, so simplfying." in *)
-        let simpl_s = expose env (simpl_typ env s) in
-        let simpl_t = expose env (simpl_typ env t) in
+        let simpl_s = unfold_typdefs env (simpl_typ env s) in
+        let simpl_t = unfold_typdefs env (simpl_typ env t) in
         (* traceMsg "STROBE ASSUMING %s <: %s, checking for consistency" (string_of_typ s) (string_of_typ t); *)
         (* traceMsg "Is %s <?: %s?" (string_of_typ simpl_s) (string_of_typ simpl_t); *)
         try (cache, TPMap.find (project_typs simpl_s simpl_t env, (simpl_s, simpl_t)) cache)

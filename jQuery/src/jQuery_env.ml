@@ -88,7 +88,7 @@ struct
                    (s, (extract_t (expose_tdoms env (embed_t t1))),
                     (extract_t (expose_tdoms env (embed_t t2)))))
       | Strobe.TId "Element" -> t
-      | Strobe.TId id -> expose_tdoms env (fst (lookup_typ_id id env))
+      | Strobe.TId id -> expose_tdoms env (fst (lookup_typ_alias id env))
       | t' ->  raise
         (Strobe.Typ_error
            (Pos.dummy,
@@ -461,7 +461,7 @@ struct
       (* Helper: Given an id, lookups up the current TDom associated with id
          and returns a one plus of that tdom with an updated sel *)
       let optd id sel =  
-        let cur_tdom = fst (lookup_typ_id id env) in
+        let cur_tdom = fst (lookup_typ_alias id env) in
         match cur_tdom with 
         | TDom(s,_,nt,_) -> MOnePlus (MPlain (TDom (s,id,nt,sel)))
         | _ -> failwith 
@@ -519,6 +519,7 @@ struct
     let bs = List.filter (fun b' -> match unwrap_b b', b with
       | BMultBound _, BMultBound _
       | BStrobe (Strobe.BTermTyp _), BStrobe (Strobe.BTermTyp _)
+      | BStrobe (Strobe.BTypDef _), BStrobe (Strobe.BTypDef _)
       | BStrobe (Strobe.BTypBound _), BStrobe (Strobe.BTypBound _)
       | BStrobe (Strobe.BTyvar _), BStrobe (Strobe.BTyvar _)
       | BStrobe (Strobe.BLabelTyp _), BStrobe (Strobe.BLabelTyp _) -> false
@@ -527,6 +528,12 @@ struct
   let bind' x b (env : env) = bind x (JQuery.embed_b b) env
   let bind_id x t (env : env) = bind' x (Strobe.BTermTyp (JQuery.extract_t t)) env
   let bind_lbl x t env = bind' x (Strobe.BLabelTyp (JQuery.extract_t t)) env
+
+  let bind_typdef x t k env =
+    match JQuery.embed_k k with
+    | JQuery.KMult _ -> raise (Strobe.Kind_error (Printf.sprintf "Trying to bind typedef %s : %s with kind %s"
+                                                    x (Strobe.string_of_typ t) (Strobe.string_of_kind k)))
+    | _ -> bind' x (Strobe.BTypDef (t, k)) env
   let raw_bind_typ_id x t k (env : env) =
     match JQuery.embed_k k with
     | JQuery.KMult _ -> raise (Strobe.Kind_error (Printf.sprintf "Trying to bind %s at type %s with kind %s"
@@ -557,6 +564,7 @@ struct
   let lookup_id x env = Env.lookup_id x env
 
   let lookup_typ_id x env = Env.lookup_typ_id x env
+  let lookup_typ_alias x env = Env.lookup_typ_alias x env
 
   let lookup_mult_id x (env : env) =
     let bs = IdMap.find x env in
@@ -564,11 +572,11 @@ struct
     | BMultBound (m,_) -> Some m
     | _ -> None) bs) with
     | [m] -> m
-    | _ -> raise Not_found
+    | _ -> ((* Printf.eprintf "Couldn't find %s in lookup_mult_id\n" x; *) raise Not_found)
 
   let rec set_global_object (env : env) cname =
     let (ci_typ, ci_kind) =
-      try lookup_typ_id cname env
+      try lookup_typ_alias cname env
       with Not_found ->
         raise (Not_wf_typ ("global object, " ^ cname ^ ", not found")) in
     match (Strobe.expose env (Strobe.simpl_typ env (extract_t ci_typ)), extract_k ci_kind) with
@@ -620,11 +628,11 @@ struct
     (* 3) Add bindings compiled in desugar_structure to the env *)
     let env = IdMap.fold (fun id t new_env ->
       (try
-         ignore (lookup_typ_id id new_env);
+         ignore (lookup_typ_alias id new_env);
          raise (Not_wf_typ (sprintf "the type %s is already defined" id))
        with Not_found ->
          let k = kind_check new_env [] (STyp t) in
-         raw_bind_typ_id id (extract_t (apply_name (Some id) t)) (extract_k k) new_env))
+         bind_typdef id (extract_t (apply_name (Some id) t)) (extract_k k) new_env))
       bindings env in
 
 
@@ -646,14 +654,14 @@ struct
            bind_id x t env)
       | EnvType (p, x, writ_typ) ->
         (try
-           ignore (lookup_typ_id x env);
+           ignore (lookup_typ_alias x env);
            raise (Not_wf_typ (sprintf "the type %s is already defined" x))
          with Not_found ->
            let t' = Desugar.desugar_typ p writ_typ in
            let t'' = JQuery.squash env t' in
            (* Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t)); *)
            let k = kind_check env recIds (STyp t'') in
-           raw_bind_typ_id x (extract_t (apply_name (Some x) t'')) (extract_k k) env)
+           bind_typdef x (extract_t (apply_name (Some x) t'')) (extract_k k) env)
       | EnvPrim (p, s) ->
         JQueryKinding.new_prim_typ s;
         env
@@ -728,9 +736,9 @@ struct
         let (k_c, k_p, k_i) = (kind_check env [c_id; p_id; i_id] (STyp constructor),
                                kind_check env [c_id; p_id; i_id] (STyp prototype),
                                kind_check env [c_id; p_id; i_id] (STyp instance)) in
-        (raw_bind_typ_id c_id (extract_t constructor) (extract_k k_c)
-           (raw_bind_typ_id p_id (extract_t prototype) (extract_k k_p)
-              (raw_bind_typ_id i_id (extract_t instance) (extract_k k_i) env)))
+        (bind_typdef c_id (extract_t constructor) (extract_k k_c)
+           (bind_typdef p_id (extract_t prototype) (extract_k k_p)
+              (bind_typdef i_id (extract_t instance) (extract_k k_i) env)))
       | RecBind (binds) ->
         let ids = List.concat (List.map (fun b -> match b with
           | EnvBind (_, x, _) -> [x]

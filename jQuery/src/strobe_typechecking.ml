@@ -388,7 +388,7 @@ struct
     end
     | _ -> 
       let synthed = Ext.extract_t (ExtTC.synth env default_typ exp) in
-      let synth_typ = expose_simpl_typ env synthed in
+      let synth_typ = simpl_typ env synthed in
       (* traceMsg "synthed is: %s | synth_typ is: %s"  *)
       (*   (string_of_typ synthed)  (string_of_typ synth_typ); *)
       (* traceMsg "About to subtype:  %s <?: %s" (string_of_typ synth_typ)  *)
@@ -487,12 +487,12 @@ struct
     | EDeref (p, e) -> 
       let typ = (synth env default_typ e) in
       (* traceMsg "In EDeref, synthed type of %s is %s" (string_of_exp e) (string_of_typ typ); *)
-      let typ = expose_simpl_typ env typ in
+      let exposed_typ = expose_simpl_typ env typ in
       (* traceMsg "In EDeref, exposed type is %s" (string_of_typ typ); *)
       let typ = 
         try ((check_kind p env typ)) 
         with _ -> traceMsg "Bad kind for %s!" (string_of_typ typ); typ in
-      if typ = TPrim "Unsafe" 
+      if exposed_typ = TPrim "Unsafe"
       then raise (Sub.Typ_error (p, Sub.FixedString "synth: Cannot dereference an unsafe value"))
       else begin match typ with
       (* Auto-boxing of primitives *)

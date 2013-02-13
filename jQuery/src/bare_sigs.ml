@@ -80,6 +80,7 @@ module type BARE_SUBTYPING = sig
   include BARE_ACTIONS
   val subtype : env -> typ -> typ -> bool
   val project_typs : typ -> typ -> env -> env
+  val unfold_typdefs : env -> typ -> typ
 end
 
 module type BARE_KINDING = sig

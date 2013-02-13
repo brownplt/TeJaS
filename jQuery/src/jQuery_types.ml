@@ -572,6 +572,7 @@ struct
       (n1 = n2) ||
         (try
            (match IdMap.find n1 env, IdMap.find n2 env with
+           | [BStrobe (Strobe.BTypDef(t1, k1))], [BStrobe (Strobe.BTypDef(t2, k2))]
            | [BStrobe (Strobe.BTypBound(t1, k1))], [BStrobe (Strobe.BTypBound(t2, k2))] -> 
              k1 = k2 && equivalent_typ env (embed_t t1) (embed_t t2)
            | [BStrobe (Strobe.BTermTyp t1)], [BStrobe (Strobe.BTermTyp t2)] -> equivalent_typ env (embed_t t1) (embed_t t2)
@@ -788,7 +789,6 @@ struct
         raise (Invalid_argument msg)
     end
     | _ -> typ
-
 
 
   let squash env t = 

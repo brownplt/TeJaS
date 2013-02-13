@@ -137,6 +137,7 @@ module type EXT_TYP_SUBTYPING = sig
   include EXT_TYP_ACTIONS
   val subtype : env -> typ -> typ -> bool
   val project_typs : typ -> typ -> env -> env
+  val unfold_typdefs : env -> typ -> typ
 end
 
 module type EXT_KINDING = sig
@@ -189,6 +190,7 @@ module type TYP_ENV = sig
   val clear_labels : env -> env
   val lookup_id : id -> env -> typ
   val lookup_typ_id : id -> env -> typ * kind
+  val lookup_typ_alias : id -> env -> typ * kind
   val lookup_lbl : id -> env -> typ
   val parse_env_buf : Lexing.lexbuf -> string -> env_decl list
   val parse_env : string -> string -> env_decl list

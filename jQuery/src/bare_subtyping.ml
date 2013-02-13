@@ -33,6 +33,10 @@ struct
   open Bare
   open ListExt
 
+  let rec unfold_typdefs env typ =
+    match typ with
+    | TStrobe t -> embed_t (StrobeSub.unfold_typdefs env t)
+
   let project t env =
     let free = free_ids t in
     let add_id_bindings set map = IdSet.fold (fun id acc ->
@@ -47,6 +51,7 @@ struct
         let free_ids' = IdMap.fold (fun id bs acc -> 
           let free_ids = List.fold_left (fun ids b -> match unwrap_b b with
             | BStrobe (Strobe.BTermTyp t) -> ids
+            | BStrobe (Strobe.BTypDef(t, _))
             | BStrobe (Strobe.BTypBound(t, _))
             | BStrobe (Strobe.BLabelTyp t) -> 
               let free = Bare.free_ids (embed_t t) in

@@ -56,7 +56,7 @@ module Make : STROBE_TYP = functor (Pat : SET) -> functor (EXT : TYPS) -> struct
 
   type extBinding = EXT.binding
   type binding =
-      BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind | BLabelTyp of typ | BTyvar of kind
+      BEmbed of extBinding | BTermTyp of typ | BTypDef of typ * kind | BTypBound of typ * kind | BLabelTyp of typ | BTyvar of kind
 
   type env = extBinding list IdMap.t
   let proto_str = "__proto__"
@@ -368,17 +368,19 @@ struct
       if IdMap.cardinal env = 0 then [text "Empty environment"] else
       let partition_env e = 
         IdMap.fold
-          (fun i bs (ids, typs, kinds, labels, others) -> 
-            List.fold_left (fun (ids, typs, kinds, labels, others) b -> match Ext.extract_b b with
-            | BTermTyp t -> (IdMap.add i t ids, typs, kinds, labels, others)
-            | BTypBound(t, k) -> (ids, IdMap.add i (t, k) typs, kinds, labels, others)
-            | BLabelTyp t -> (ids, typs, kinds, IdMap.add i t labels, others)
-            | BTyvar k -> (ids, typs, IdMap.add i k kinds, labels, others)
+          (fun i bs (ids, typdefs, typbounds, kinds, labels, others) -> 
+            List.fold_left (fun (ids, typdefs, typbounds, kinds, labels, others) b -> match Ext.extract_b b with
+            | BTermTyp t -> (IdMap.add i t ids, typdefs, typbounds, kinds, labels, others)
+            | BTypDef(t, k) -> (ids, IdMap.add i (t, k) typdefs, typbounds, kinds, labels, others)
+            | BTypBound(t, k) -> (ids, typdefs, IdMap.add i (t, k) typbounds, kinds, labels, others)
+            | BLabelTyp t -> (ids, typdefs, typbounds, kinds, IdMap.add i t labels, others)
+            | BTyvar k -> (ids, typdefs, typbounds, IdMap.add i k kinds, labels, others)
             | BEmbed b' ->
               let bs' = try IdMap.find i others with Not_found -> [] in
-              (ids, typs, kinds, labels, IdMap.add i (b'::bs') others)) (ids, typs, kinds, labels, others) bs)
-          e (IdMap.empty, IdMap.empty, IdMap.empty, IdMap.empty, IdMap.empty) in
-      let (id_typs, typ_ids, tyvars, labels, other) = partition_env env in
+              (ids, typdefs, typbounds, kinds, labels, IdMap.add i (b'::bs') others))
+              (ids, typdefs, typbounds, kinds, labels, others) bs)
+          e (IdMap.empty, IdMap.empty, IdMap.empty, IdMap.empty, IdMap.empty, IdMap.empty) in
+      let (id_typs, typ_defs, typ_ids, tyvars, labels, other) = partition_env env in
       let unname t = if shouldUseNames() then t else replace_name None t in
       let other_print = Ext.Pretty.env other in
       let ids = if IdMap.cardinal id_typs > 0 
@@ -386,6 +388,13 @@ struct
                  text (fun t -> typ (unname t)) 
                  id_typs]
         else [] in
+      let typdefs = if IdMap.cardinal typ_defs > 0
+        then [IdMapExt.p_map "Type definitions: " cut
+                 text
+                 (fun (t, k) ->
+                   horzOrVert [typ (unname t);
+                               horz [text "::"; kind k]]) typ_defs]
+        else [text "No type defintions"] in
       let typs = if IdMap.cardinal typ_ids > 0
         then [IdMapExt.p_map "Bounded type variables: " cut
                  text 
@@ -401,7 +410,7 @@ struct
                  text (fun t -> typ (unname t))
                  labels]
         else [] in
-      add_sep_between (text ",") (ids @ typs @ tyvars @ labels @ other_print)
+      add_sep_between (text ",") (ids @ typdefs @ typs @ tyvars @ labels @ other_print)
   end
 
   let string_of_typ = FormatExt.to_string Pretty.typ
@@ -674,6 +683,7 @@ struct
       (n1 = n2) ||
         (try
            (match List.map Ext.extract_b (IdMap.find n1 env), List.map Ext.extract_b (IdMap.find n2 env) with
+           | [BTypDef(t1, k1)], [BTypDef(t2, k2)] -> k1 = k2 && equivalent_typ env t1 t2
            | [BTypBound(t1, k1)], [BTypBound(t2, k2)] -> k1 = k2 && equivalent_typ env t1 t2
            | [BTermTyp t1], [BTermTyp t2] -> equivalent_typ env t1 t2
            | [BEmbed _], [BEmbed _] ->
@@ -802,10 +812,18 @@ struct
   and lookup_typ env x =
     let bs = IdMap.find x env in
     match (ListExt.filter_map (fun b -> match Ext.extract_b b with
+    | BTypDef (t,k) -> Some (t, k)
+    | _ -> None) bs) with
+    | [tk] -> tk
+    | _ -> ((* traceMsg "Couldn't find %s in Strobe_Typ.lookup_typ" x; *) raise Not_found)
+
+  and lookup_typ_bound env x =
+    let bs = IdMap.find x env in
+    match (ListExt.filter_map (fun b -> match Ext.extract_b b with
     | BTypBound (t,k) -> Some (t, k)
     | _ -> None) bs) with
     | [tk] -> tk
-    | _ -> raise Not_found
+    | _ -> ((* traceMsg "Couldn't find %s in Strobe_Typ.lookup_typ" x; *) raise Not_found)
 
   and expose_twith (typenv : env) typ = 
     let expose_twith = expose_twith typenv in 
@@ -825,6 +843,16 @@ struct
     | TThis t -> TThis (expose_twith t)
     | _ -> canonical_type (typ)
 
+  and unfold_typdefs env typ =
+    match typ with
+    | TId x -> begin
+      let bs = try IdMap.find x env with Not_found -> [] in
+      match (List.filter (fun b -> match b with BTypDef _ -> true | _ -> false) (List.map Ext.extract_b bs)) with
+      | [BTypDef (t,k)] -> simpl_typ env t
+      | _ -> typ
+    end
+    | _ -> typ
+
   and simpl_typ typenv typ = 
     match typ with
     | TEmbed t -> Ext.extract_t (Ext.simpl_typ typenv t)
@@ -840,9 +868,9 @@ struct
     | TBot _
     | TLambda _
     | TObject _
-    | TId _
     | TThis _
     | TForall _ -> typ
+    | TId x -> unfold_typdefs typenv typ (* will call simpl_typ again *)
     | TWith(t, flds) -> expose_twith typenv typ
     | TFix (n, x, k, t) -> 
       (* traceMsg "Substituting %s[%s/%s]\n" (string_of_typ t) (string_of_typ typ) x; *)
@@ -896,11 +924,11 @@ struct
       | None -> typ
       | Some t -> simpl_typ typenv t
 
-  and expose typenv typ = match typ with
+  and expose typenv typ = match unfold_typdefs typenv typ with
     | TId x -> 
       (try 
-         expose typenv (simpl_typ typenv (fst2 (lookup_typ typenv x)))
-       with Not_found -> (* Printf.eprintf "Could not find type %s\n" x; *) raise Not_found)
+         expose typenv (simpl_typ typenv (fst2 (lookup_typ_bound typenv x)))
+       with Not_found -> (* traceMsg "Could not find type %s" x; *) raise Not_found)
     | TThis t -> TThis (expose typenv t)
     | _ -> canonical_type typ
 

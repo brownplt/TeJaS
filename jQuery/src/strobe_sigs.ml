@@ -54,7 +54,7 @@ module type STROBE_TYPS = sig
 
   type extBinding
   type binding = 
-      BEmbed of extBinding | BTermTyp of typ | BTypBound of typ * kind | BLabelTyp of typ | BTyvar of kind
+      BEmbed of extBinding | BTermTyp of typ | BTypDef of typ * kind | BTypBound of typ * kind | BLabelTyp of typ | BTyvar of kind
 
   type env = extBinding list IdMap.t
   val proto_str : string
@@ -153,6 +153,7 @@ end
 module type STROBE_SUBTYPING = sig
   include STROBE_ACTIONS
   val subtype : env -> typ -> typ -> bool
+  val unfold_typdefs : env -> typ -> typ
 
   val pat_env : env -> pat IdMap.t
 

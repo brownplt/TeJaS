@@ -63,6 +63,7 @@ struct
     let bs = try IdMap.find x env with Not_found -> [] in
     let bs = List.filter (fun b' -> match unwrap_b b', b with
       | BStrobe (Strobe.BTermTyp _), BStrobe (Strobe.BTermTyp _)
+      | BStrobe (Strobe.BTypDef _), BStrobe (Strobe.BTypDef _)
       | BStrobe (Strobe.BTypBound _), BStrobe (Strobe.BTypBound _)
       | BStrobe (Strobe.BTyvar _), BStrobe (Strobe.BTyvar _)
       | BStrobe (Strobe.BLabelTyp _), BStrobe (Strobe.BLabelTyp _) -> false
@@ -72,9 +73,10 @@ struct
   let bind' x b (env : env) = bind x (Bare.embed_b b) env
   let bind_id x t (env : env) = bind' x (Strobe.BTermTyp (Bare.extract_t t)) env
   let bind_lbl x t env = bind' x (Strobe.BLabelTyp (Bare.extract_t t)) env
-  let raw_bind_typ_id x t k (env : env) =
-    match Bare.embed_k k with
-    | _ -> bind' x (Strobe.BTypBound (t, k)) env
+
+  let bind_typdef x t k env = bind' x (Strobe.BTypDef (t, k)) env
+
+  let raw_bind_typ_id x t k (env : env) = bind' x (Strobe.BTypBound (t, k)) env
 
   let bind_rec_typ_id (x : id) recIds (t : typ) (env : env) =
     let k = kind_check env recIds t in
@@ -93,10 +95,11 @@ struct
   let lookup_id x env = Env.lookup_id x env
 
   let lookup_typ_id x env = Env.lookup_typ_id x env
+  let lookup_typ_alias x env = Env.lookup_typ_alias x env
 
   let rec set_global_object (env : env) cname =
     let (ci_typ, ci_kind) =
-      try lookup_typ_id cname env
+      try lookup_typ_alias cname env
       with Not_found ->
         raise (Not_wf_typ ("global object, " ^ cname ^ ", not found")) in
     match (Strobe.expose env (Strobe.simpl_typ env (extract_t ci_typ)), extract_k ci_kind) with
@@ -143,13 +146,13 @@ struct
            bind_id x t env)
       | EnvType (p, x, writ_typ) ->
         (try
-           ignore (lookup_typ_id x env);
+           ignore (lookup_typ_alias x env);
            raise (Not_wf_typ (sprintf "the type %s is already defined" x))
          with Not_found ->
            let t' = Desugar.desugar_typ p writ_typ in
            let t'' = Bare.expose_twith env t' in
            let k = kind_check env recIds t'' in
-           raw_bind_typ_id x (extract_t (apply_name (Some x) t'')) (extract_k k) env)
+           bind_typdef x (extract_t (apply_name (Some x) t'')) (extract_k k) env)
       | EnvPrim (p, s) ->
         BareKinding.new_prim_typ s;
         env
@@ -224,9 +227,9 @@ struct
         let (k_c, k_p, k_i) = (kind_check env [c_id; p_id; i_id] constructor,
                                kind_check env [c_id; p_id; i_id] prototype,
                                kind_check env [c_id; p_id; i_id] instance) in
-        (raw_bind_typ_id c_id (extract_t constructor) (extract_k k_c)
-           (raw_bind_typ_id p_id (extract_t prototype) (extract_k k_p)
-              (raw_bind_typ_id i_id (extract_t instance) (extract_k k_i) env)))
+        (bind_typdef c_id (extract_t constructor) (extract_k k_c)
+           (bind_typdef p_id (extract_t prototype) (extract_k k_p)
+              (bind_typdef i_id (extract_t instance) (extract_k k_i) env)))
       | RecBind (binds) ->
         let ids = List.concat (List.map (fun b -> match b with
           | EnvBind (_, x, _) -> [x]

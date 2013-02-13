@@ -94,11 +94,12 @@ struct
       begin 
         try 
           let bs = IdMap.find x env in
-          let b = List.find (fun b -> match b with BTyvar _ | BTypBound _ -> true | _ -> false) (List.map Ext.extract_b bs) in
+          let b = List.find (fun b -> match b with BTyvar _ | BTypDef _ | BTypBound _ -> true | _ -> false) (List.map Ext.extract_b bs) in
           (match b with
           | BTyvar k -> k
+          | BTypDef (_, k) -> k
           | BTypBound (_, k) -> k
-          | _ -> failwith "impossible: List.find should only have returned BTyvars")
+          | _ -> failwith "impossible: List.find should only have returned BTyvars, BTypDefs or BTypBounds")
         with Not_found ->
           if (not (List.mem x recIds)) then
             let envText = FormatExt.to_string (fun e -> FormatExt.braces (Strobe.Pretty.env e)) env in

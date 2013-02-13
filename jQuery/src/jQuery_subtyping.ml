@@ -45,6 +45,26 @@ struct
   module SPMap = Map.Make (SigmaPair)
   module SPMapExt = MapExt.Make (SigmaPair) (SPMap)
 
+
+  let rec unfold_typdefs env t = match t with
+    | TStrobe t -> embed_t (StrobeSub.unfold_typdefs env t)
+    | TApp (t, ts) -> TApp(unfold_typdefs env t, List.map (unfold_typdefs_sigma env) ts)
+    | TForall(name, x, s, t) -> TForall(name, x, unfold_typdefs_sigma env s, unfold_typdefs env t)
+    | TLambda(name, iks, ts) -> TLambda(name, iks, unfold_typdefs env ts)
+    | TDom(name, id, t, sel) -> TDom(name, id, unfold_typdefs env t, sel)
+  and unfold_typdefs_sigma env s = match s with
+    | STyp t -> STyp (unfold_typdefs env t)
+    | SMult m -> SMult (unfold_typdefs_mult env m)
+  and unfold_typdefs_mult env m = match m with
+    | MId _ -> m
+    | MPlain t -> MPlain (unfold_typdefs env t)
+    | MZero m -> MZero (unfold_typdefs_mult env m)
+    | MOne m -> MOne (unfold_typdefs_mult env m)
+    | MZeroOne m -> MZeroOne (unfold_typdefs_mult env m)
+    | MOnePlus m -> MOnePlus (unfold_typdefs_mult env m)
+    | MZeroPlus m -> MZeroPlus (unfold_typdefs_mult env m)
+    | MSum(m1, m2) -> MSum (unfold_typdefs_mult env m1, unfold_typdefs_mult env m2)
+
   (* returns an env containing only the (transitively) free variables in s *)
   let rec project s (env : env) =
     let (free_t, free_m) = free_sigma_ids s in
@@ -68,6 +88,7 @@ struct
         let free_ids' = IdMap.fold (fun id bs acc -> 
           let free_ids = List.fold_left (fun ids b -> match unwrap_b b with
             | BStrobe (Strobe.BTermTyp t) -> ids
+            | BStrobe (Strobe.BTypDef(t, _))
             | BStrobe (Strobe.BTypBound(t, _))
             | BStrobe (Strobe.BLabelTyp t) -> 
               let (free_t, free_m) = JQ.free_sigma_ids (STyp (embed_t t)) in
@@ -127,7 +148,7 @@ struct
     let addToCache (cache, ret) = (SPMap.add (project_typs t1 t2 env, STyps (t1, t2)) ret cache, ret) in
     try incr cache_hits; (cache, SPMap.find (project_typs t1 t2 env, STyps (t1, t2)) cache)
     with Not_found -> begin decr cache_hits; incr cache_misses; addToCache (if t1 = t2 then (cache, true)
-      else match unwrap_t t1, unwrap_t t2 with
+      else match unwrap_t (unfold_typdefs env t1), unwrap_t (unfold_typdefs env t2) with
       (* Case for handling two-arg jQ types *)
       | TApp (TStrobe (Strobe.TId "jQ"), args), t2 ->
         let jQ_exposed = embed_t (fst2 (Strobe.lookup_typ env "jQ")) in
@@ -147,8 +168,8 @@ struct
         subtype_typ env cache jq1 t2
       (* default cases *)
       | t1, t2 ->
-        let simpl_t1 = simpl_typ env t1 in
-        let simpl_t2 = simpl_typ env t2 in
+        let simpl_t1 = unfold_typdefs env (simpl_typ env t1) in
+        let simpl_t2 = unfold_typdefs env (simpl_typ env t2) in
         let env' = project_typs simpl_t1 simpl_t2 env in
         try (cache, SPMap.find (env', STyps (simpl_t1, simpl_t2)) cache)
         with Not_found ->

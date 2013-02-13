@@ -116,6 +116,7 @@ end
 
 module type JQUERY_SUBTYPING = sig
   include JQUERY_ACTIONS
+  val unfold_typdefs : env -> typ -> typ
   val subtype_sigma : bool -> env -> sigma -> sigma -> bool
   val subtype_typ : bool -> env -> typ -> typ -> bool
   val subtype_mult : bool -> env -> multiplicity -> multiplicity -> bool

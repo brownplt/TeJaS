@@ -42,6 +42,7 @@ struct
     let bs = try IdMap.find x env with Not_found -> [] in
     let bs = List.filter (fun b' -> match Ext.extract_b b', Ext.extract_b b with
       | BTermTyp _, BTermTyp _
+      | BTypDef _, BTypDef _
       | BTypBound _, BTypBound _
       | BTyvar _, BTyvar _
       | BLabelTyp _, BLabelTyp _
@@ -66,7 +67,15 @@ struct
     | BTermTyp t -> Some (Ext.embed_t t)
     | _ -> None) bs) with
     | [t] -> t
-    | _ -> raise Not_found
+    | _ -> ((* Printf.eprintf "Couldn't find %s in lookup_id\n" x; *) raise Not_found)
+
+  let lookup_typ_alias x env =
+    let bs = IdMap.find x env in
+    match (ListExt.filter_map (fun b -> match Ext.extract_b b with
+    | BTypDef (t,k) -> Some (Ext.embed_t t, Ext.embed_k k)
+    | _ -> None) bs) with
+    | [tk] -> tk
+    | _ -> ((* Printf.eprintf "Couldn't find %s in lookup_typ_alias\n" x; *) raise Not_found)
 
   let lookup_typ_id x env =
     let bs = IdMap.find x env in
@@ -74,7 +83,7 @@ struct
     | BTypBound (t,k) -> Some (Ext.embed_t t, Ext.embed_k k)
     | _ -> None) bs) with
     | [tk] -> tk
-    | _ -> raise Not_found
+    | _ -> ((* Printf.eprintf "Couldn't find %s in lookup_typ_id\n" x; *) raise Not_found)
 
 
   let lookup_lbl x (env : env) = 
@@ -83,7 +92,7 @@ struct
     | BLabelTyp t -> Some (Ext.embed_t t)
     | _ -> None) bs) with
     | [t] -> t
-    | _ -> raise Not_found
+    | _ -> ((* Printf.eprintf "Couldn't find %s in lookup_lbl\n" x; *) raise Not_found)
 
   let clear_labels env =
     let env' = IdMap.map 
@@ -128,14 +137,15 @@ struct
            (* Printf.eprintf "Binding type for %s to %s\n" x (string_of_typ t); *)
            bind_id x (Ext.embed_t t) env)
       | W.EnvType (p, x, writ_typ) ->
+        Printf.eprintf "Trying to bind alias %s\n" x;
         (try 
-           ignore (lookup_typ_id x env);
+           ignore (lookup_typ_alias x env);
            raise (Not_wf_typ (sprintf "the type %s is already defined" x))
          with Not_found ->
            let t = expose_twith env (desugar_typ p writ_typ) in
-           (* Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t)); *)
+           Printf.eprintf "Binding %s to %s\n" x (string_of_typ (apply_name (Some x) t));
            let k = StrobeKinding.kind_check env recIds t in
-           bind' x (BTypBound(apply_name (Some x) t, k)) env)
+           bind' x (BTypDef(apply_name (Some x) t, k)) env)
       | W.EnvPrim (p, s) ->
         StrobeKinding.new_prim_typ s;
         env
@@ -193,9 +203,9 @@ struct
         let (k_c, k_p, k_i) = (StrobeKinding.kind_check env [c_id; p_id; i_id] constructor,
                                StrobeKinding.kind_check env [c_id; p_id; i_id] prototype,
                                StrobeKinding.kind_check env [c_id; p_id; i_id] instance) in
-        (bind' c_id (BTypBound(constructor, k_c))
-           (bind' p_id (BTypBound(prototype, k_p))
-              (bind' i_id (BTypBound(instance, k_i)) env)))
+        (bind' c_id (BTypDef(constructor, k_c))
+           (bind' p_id (BTypDef(prototype, k_p))
+              (bind' i_id (BTypDef(instance, k_i)) env)))
       | W.RecBind (binds) ->
         let ids = List.concat (List.map (fun b -> match b with
           | W.EnvBind (_, x, _) -> [x]
