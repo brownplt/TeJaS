@@ -145,7 +145,7 @@ module Actions : MAIN_ACTIONS = struct
     | EBot _
     | EConst _ -> exp
 
-  let actual_data () =
+  let extract_new_decls () =
     let open Typedjs_writtyp.WritTyp in
     let env =
       BareEnv.set_global_object (get_env ()) (get_global_object ()) in
@@ -153,10 +153,14 @@ module Actions : MAIN_ACTIONS = struct
       (* Typedjs_env.set_global_object *)
       (*   (extend_env IdMap.empty typ_vars (get_env ())) *)
       (*   (get_global_object ()) in *)
-    let typedjs = get_typedjs () in
     let new_decls = ReadTyps.new_decls (List.rev !JavaScript_lexer.comments) in
     let env = BareEnv.extend_global_env env new_decls in
-    set_env env;
+    set_env env
+
+  let actual_data () =
+    extract_new_decls ();
+    let typedjs = get_typedjs () in
+    let env = get_env () in
     let annot_js = expose_twith env (weave_annotations typedjs) in
     (env, annot_js)
 
@@ -180,6 +184,12 @@ module Actions : MAIN_ACTIONS = struct
     Exp.Pretty.exp typedjs std_formatter;
     0
 
+  let print_env () : int =
+    extract_new_decls ();
+    BareEnv.print_env (get_env ()) std_formatter;
+    Format.pp_print_flush std_formatter ();
+    0
+
   let provided_actions set_action = [
       ("-env", Arg.String (fun s -> load_env s),
        "<file> read environment types from <file>");
@@ -187,13 +197,16 @@ module Actions : MAIN_ACTIONS = struct
        "type-check the source program (default when no options are given)");
       ("-pretc", Arg.Unit (set_action action_pretypecheck),
        "basic well-formedness checks before type-checking and flow-analysis");
-      ("-print-typ", Arg.String (fun ty ->
+      ("-print-typ", Arg.String (fun ty -> set_action (fun () ->
+        extract_new_decls ();
         let (typ, _) = BareEnv.lookup_typ_id ty (get_env ()) in
         horz [text ty; text "="; BareMod.Pretty.typ (BareMod.replace_name None typ)] std_formatter;
-        Format.pp_print_flush std_formatter ()),
+        Format.pp_print_flush std_formatter (); 0) ()),
        "Print the definition of a single type");
       ("-verbose-errors", Arg.Unit (fun () -> BareMod.Pretty.useNames false),
        "Print types structurally, rather than with pretty names");
+      ("-print-env", Arg.Unit (set_action print_env),
+       "Print the current environment");
       (*
       ("-print-cache", Arg.Unit show_cache,
        "Print cache results after typechecking");
@@ -203,8 +216,6 @@ module Actions : MAIN_ACTIONS = struct
        "Permit unbound global variables, with default type given by the argument");
       ("-assert-typ", Arg.String assert_typ,
        "Assert that all un-annotated assignments have a given type");
-      ("-print-env", Arg.Unit set_print_env,
-       "Print the current environment");
       ("-simple-tests", Arg.Unit (set_action SimpleTests.run_tests),
        "Run a suite of simple tests")*)
        ]
