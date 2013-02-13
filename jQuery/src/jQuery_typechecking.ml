@@ -68,8 +68,8 @@ struct
     | TForall (_, x, b, typ') -> begin match forall_arrow typ' with
       | None -> None
       | Some (xs, typ) -> match b with
-  | STyp t -> Some ((x, BStrobe (Strobe.BTypBound(extract_t t, Strobe.KStar))) :: xs, typ)
-  | SMult m -> Some ((x, BMultBound (m, KMult (KStrobe Strobe.KStar))) :: xs, typ)
+        | STyp t -> Some ((x, BStrobe (Strobe.BTypBound(extract_t t, Strobe.KStar))) :: xs, typ)
+        | SMult m -> Some ((x, BMultBound (m, KMult (KStrobe Strobe.KStar))) :: xs, typ)
     end
     | _ -> None
 
