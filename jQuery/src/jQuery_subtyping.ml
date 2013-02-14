@@ -46,7 +46,7 @@ struct
   module SPMapExt = MapExt.Make (SigmaPair) (SPMap)
 
 
-  let rec unfold_typdefs env t = match t with
+  let rec unfold_typdefs env t = match unwrap_t t with
     | TStrobe t -> embed_t (StrobeSub.unfold_typdefs env t)
     | TApp (t, ts) -> TApp(unfold_typdefs env t, List.map (unfold_typdefs_sigma env) ts)
     | TForall(name, x, s, t) -> TForall(name, x, unfold_typdefs_sigma env s, unfold_typdefs env t)
@@ -178,6 +178,8 @@ struct
           let (|||) c thunk = if (snd c) then c else thunk (fst c) in
           let (&&&) c thunk = if (snd c) then thunk (fst c) else c in
           match unwrap_t simpl_t1, unwrap_t simpl_t2 with
+          | TStrobe Strobe.TBot, _ -> cache, true
+          | _, TStrobe Strobe.TTop -> cache, true
           | TApp _, TApp _ -> cache, false
           (* UNSOUND: Type constructor might not be covariant in its arguments *)
           (* | TApp(t1, args1), TApp(t2, args2) -> *)
@@ -297,7 +299,13 @@ struct
       List.fold_left (fun c  m1_part ->
         c &&& (fun c -> 
           List.fold_left 
-            (fun c m2_part -> c ||| (fun c -> subtype_mult c m1_part m2_part))
+            (fun c m2_part -> c ||| (fun c ->
+              try
+                subtype_mult c m1_part m2_part
+              with
+              | Invalid_argument _ ->
+                (c, false) (* could fail because we try applying an unexpanded primitive multiplicity function *)
+              | e -> Strobe.traceMsg "subtype_mult failed! %s" (Printexc.to_string e); raise e))
             (c, false) m2_parts)) (cache, true) m1_parts
     end
     | MSum _, _ -> subtype_mult cache (simplify_msum m1) m2 (* S-Transitive *)
