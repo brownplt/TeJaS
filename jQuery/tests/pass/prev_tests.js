@@ -1,20 +1,20 @@
 
 /*:: (Tweet : """A structure for tweets"""
-                   DivElement
+                   Div
                    optional classes = [first, last]
                    classes = [tweet]
-                   (Author : DivElement classes = [author]
-                      <Other>)
-                   (Time : DivElement classes = [time] )
-                   (Content : DivElement classes = [content] ... <Other> ...)
+                   (Author : Div classes = [author]
+                      (Other : Div classes=[other]))
+                   (Time : Div classes = [time] )
+                   (Content : Div classes = [content] ... )
                )
 
 
-type t0 = jQ<0<Tweet>><DefaultPrev>;
-type t1 = jQ<1<Tweet>><DefaultPrev>;
-type t01 = jQ<01<Tweet>><DefaultPrev>;
-type t1p = jQ<1+<Tweet>><DefaultPrev>;
-type t0p = jQ<0+<Tweet>><DefaultPrev>;
+type t0 = jQ<0<Tweet>,DefaultPrev>;
+type t1 = jQ<1<Tweet>,DefaultPrev>;
+type t01 = jQ<01<Tweet>,DefaultPrev>;
+type t1p = jQ<1+<Tweet>,DefaultPrev>;
+type t0p = jQ<0+<Tweet>,DefaultPrev>;
 
 
 */
@@ -36,9 +36,9 @@ var t0p = /*: cheat t0p */0;
 // /*: DefaultPrev */t0p.end();
 
 
-var i = t1.children().nextSib().nextSib();
-/*: jQ<1+<Content+Time>><AnyJQ> */i.end();
-/*: jQ<1+<Author+Content+Time>><AnyJQ> */i.end().end();
+var i = t1.children().next().next();
+/*: jQ<1+<Content+Time>,AnyJQ> */i.end();
+/*: jQ<1+<Author+Content+Time>,AnyJQ> */i.end().end();
 /*: t1 */i.end().end().end();
 
 

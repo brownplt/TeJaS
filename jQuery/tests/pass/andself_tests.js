@@ -1,11 +1,13 @@
-/*:: (Tweet : """A structure for tweets"""
-                   DivElement
+/*::
+(Tweet : """A structure for tweets"""
+                   Div
                    optional classes = [first, last]
                    classes = [tweet]
-                   (Author : DivElement classes = [author]
+                   (Author : Div classes = [author]
+                      (Other : Div classes = [other])
                       <Other>)
-                   (Time : DivElement classes = [time] )
-                   (Content : DivElement classes = [content] ... <Other> ...)
+                   (Time : Div classes = [time] )
+                   (Content : Div classes = [content] ...)
                )
 
 
@@ -21,11 +23,11 @@ var t1 = /*: cheat t1 */0;
 var t1p = /*: cheat t1p */0;
 
 /*: jQ<1+<Author+Content+Time>, Any> */ t1.children();
-/*: jQ<1+<Author>, Any> */t1.children().nextSib().nextSib().prevSib().prevSib();
+/*: jQ<1+<Author>, Any> */t1.children().next().next().prev().prev();
 /*: jQ<1+<Tweet+Author+Content+Time>, jQ<1+<Author+Content+Time>, Any>> */t1p.children().andSelf();
 
 
-// /*: jQ<1+<Tweet+Author+Content+Time>, Any> */t1.children().andSelf();
+/*: jQ<1+<Tweet+Author+Content+Time>, Any> */t1.children().andSelf();
 
 t1.children().andSelf();
 

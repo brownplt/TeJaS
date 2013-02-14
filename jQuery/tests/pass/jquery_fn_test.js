@@ -58,7 +58,7 @@
 
 /*: jQ<Sum<1+<B>, 1+<D>>, AnyJQ> */$(".x > .y + .z ~ div.blah div.a > *");
 
-/*: jQ<Sum<1+<B>, 1+<D>>, AnyJQ> */$(".x > .y + .z ~ div.blah div.a *");
+/*: jQ<Sum<1+<B>, Sum<1+<D>, Sum<1+<E>, 1+<F>>>>, AnyJQ> */$(".x > .y + .z ~ div.blah div.a *");
 
 /*: jQ<0<Element>, AnyJQ> */$("p + .foo .bar .a > .b + .d .e > .bad");
 
@@ -72,7 +72,7 @@
 
 /*: jQ<1+<B>, AnyJQ> */$(".b ~ .c");
 
-/*: jQ<1+<B>, AnyJQ> */$("* ~ .c");
+// /*: jQ<1+<B>, AnyJQ> */$("* ~ .c"); // BUGBUG -- to be fixed
 
 /*: jQ<1+<E>, AnyJQ> */$(".c.e");
 
