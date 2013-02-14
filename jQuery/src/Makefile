@@ -5,7 +5,7 @@ TARGET=main
 comma:= ,
 empty:=
 space:= $(empty) $(empty)
-INCLUDES = util,RegLang,patterns,css,DomStructure,LambdaJS/src
+INCLUDES = util,RegLang,patterns,css,DomStructure,LambdaJS/src,bare,jquery
 
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
