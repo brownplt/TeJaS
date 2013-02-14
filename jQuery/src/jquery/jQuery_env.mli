@@ -22,7 +22,7 @@ module MakeExt :
   with type binding = JQuery.binding
   with type env = JQuery.env
   with type env_decl = Typedjs_writtyp.WritTyp.env_decl) ->
-        functor (Desugar : Typedjs_desugar.JQUERY_DESUGAR
+        functor (Desugar : JQuery_desugar.JQUERY_DESUGAR
                  with type typ = JQuery.typ
                  with type writtyp = Typedjs_writtyp.WritTyp.t
   with type kind = JQuery.kind

@@ -9,7 +9,7 @@ module SimpleTests = Simple_tests
 module JQ = JQueryImpl
 module S = StrobeImpl
 
-module Desugar = Typedjs_desugar.Make (StrobeMod) (JQueryMod)
+module Desugar = JQuery_desugar.Make (StrobeMod) (JQueryMod)
 module SEnv = Strobe_env.Make (StrobeMod) (Strobe_kind) (Desugar)
 module JQEnv = JQuery_env.MakeExt (JQueryMod) (JQuery_kind) (SEnv) (Desugar)
 module rec JQuerySub : (JQuery_sigs.JQUERY_SUBTYPING
@@ -74,7 +74,7 @@ and JQueryTC : (JQuery_sigs.JQUERY_TYPECHECKING
   with type exp = Exp.exp) =
   JQuery_typechecking.Make (JQueryMod) (Exp) (JQEnv) (JQuerySub) (JQuery_kind) (StrobeTC)
 
-module WeaveAnnotations = WeaveAnnotations.Make (Exp) (Desugar)
+module WeaveAnnotations = JQuery_weaveAnnotations.Make (Exp) (Desugar)
 module LJSfromEJS = Typedjs_fromExpr.Make (Exp)
 
 module Actions : MAIN_ACTIONS = struct

@@ -3,7 +3,7 @@ open Sig
 
 module Make 
   (EXP : Typedjs_syntax.EXP)
-  (DESUGAR : Typedjs_desugar.JQUERY_DESUGAR
+  (DESUGAR : JQuery_desugar.JQUERY_DESUGAR
       with type typ = EXP.Typs.extTyp
       with type writtyp = Typedjs_writtyp.WritTyp.t
       with type kind = EXP.Typs.extKind) =
