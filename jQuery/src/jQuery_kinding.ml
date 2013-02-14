@@ -16,7 +16,6 @@ module Make
   with type env = JQuery.env) =
 struct
   include JQuery
-  open JQuery
       
   let list_prims = StrobeKind.list_prims
   let new_prim_typ = StrobeKind.new_prim_typ

@@ -14,8 +14,6 @@ module Make
   with type env = Strobe.env) =
 struct
   include Strobe
-  open Strobe
-  exception Kind_error of string
 
   let valid_prims = ref (IdSetExt.from_list [ ])
 
