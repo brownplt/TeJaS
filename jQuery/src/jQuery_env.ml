@@ -520,6 +520,9 @@ struct
       | BMultBound _, BMultBound _
       | BStrobe (Strobe.BTermTyp _), BStrobe (Strobe.BTermTyp _)
       | BStrobe (Strobe.BTypDef _), BStrobe (Strobe.BTypDef _)
+      (* Type bounds (forall 'a <: 'bound) must shadow type aliases (type t = ...),
+         or else unfolding aliases while under a bound will result in unsound behavior *)
+      | BStrobe (Strobe.BTypDef _), BStrobe (Strobe.BTypBound _)
       | BStrobe (Strobe.BTypBound _), BStrobe (Strobe.BTypBound _)
       | BStrobe (Strobe.BTyvar _), BStrobe (Strobe.BTyvar _)
       | BStrobe (Strobe.BLabelTyp _), BStrobe (Strobe.BLabelTyp _) -> false

@@ -43,6 +43,9 @@ struct
     let bs = List.filter (fun b' -> match Ext.extract_b b', Ext.extract_b b with
       | BTermTyp _, BTermTyp _
       | BTypDef _, BTypDef _
+      (* Type bounds (forall 'a <: 'bound) must shadow type aliases (type t = ...),
+         or else unfolding aliases while under a bound will result in unsound behavior *)
+      | BTypDef _, BTypBound _
       | BTypBound _, BTypBound _
       | BTyvar _, BTyvar _
       | BLabelTyp _, BLabelTyp _
