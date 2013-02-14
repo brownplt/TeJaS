@@ -12,6 +12,7 @@ module type TYPESCRIPT_TYPS = sig
 
   type typ = 
     | TStrobe of baseTyp
+    | TArrow of typ list * typ option * typ
 
   type baseBinding
   type binding = BStrobe of baseBinding

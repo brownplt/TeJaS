@@ -40,11 +40,11 @@ struct
   open Exp
   open TypeScript
 
+  let trace msg success thunk exp = StrobeTC.trace msg success thunk exp
 
   let rec bind_forall_vars (env : env) (typ : typ) : env * typ = match typ with
     | TStrobe t -> let (env, t) = StrobeTC.bind_forall_vars env t in (env, embed_t t)
-    (* Your extended types go here *)
-    (* | typ -> (env, typ) *)
+    | typ -> (env, typ)
 
   let disable_flows () = StrobeTC.disable_flows () 
   (* need () because otherwise this is a value, not a function, and ML gets angry at that *)
@@ -55,8 +55,7 @@ struct
         | None -> None
         | Some (ids, t) -> Some (ids, embed_t t)
       end
-    (* Your extended types go here *)
-    (* | _ -> None *)
+    | _ -> None
 
 
   let rec assoc_sub env t1 t2 =
@@ -95,11 +94,16 @@ struct
       resolved in
     do_substitution
 
-  let check (env : env) (default_typ : typ option) (exp : exp) (typ : typ) : unit = 
+  let rec check (env : env) (default_typ : typ option) (exp : exp) (typ : typ) : unit =
+    try trace "Check" (fun _ -> true) (fun exp -> check' env default_typ exp typ) exp
+    (* typ_mismatch normally records the error and proceeds. If we're in a
+       [with_typ_exns] context, it will re-raise the error. *)
+    with Strobe.Typ_error (p, s) -> Strobe.typ_mismatch p s
+      
+  and check' (env : env) (default_typ : typ option) (exp : exp) (typ : typ) : unit = 
     match typ with
     | TStrobe t -> StrobeTC.check env default_typ exp t
-    (* Your new types go here *)
-    (* | _ -> Strobe.typ_mismatch (Exp.pos exp) (Strobe.FixedString "TypeScript.check NYI") *)
+    | _ -> Strobe.typ_mismatch (Exp.pos exp) (Strobe.FixedString "TypeScript.check NYI")
 
   let synth env default_typ exp : typ = 
     let ret = embed_t (StrobeTC.synth env default_typ exp) in 

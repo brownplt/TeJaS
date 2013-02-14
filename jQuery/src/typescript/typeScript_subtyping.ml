@@ -36,6 +36,7 @@ struct
   let rec unfold_typdefs env typ =
     match typ with
     | TStrobe t -> embed_t (StrobeSub.unfold_typdefs env t)
+    | TArrow _ -> typ
 
   let project t env =
     let free = free_ids t in
@@ -70,7 +71,7 @@ struct
     match unwrap_t s, unwrap_t t with
       | TStrobe t1, TStrobe t2 -> 
         StrobeSub.subtype env t1 t2
-      (* Your extended subtyping relation goes here, probably falls through *)
-      (* | _ -> false *)
+      | TArrow(args1, varargs1, ret1), TArrow(args2, varargs2, ret2) -> failwith "NYI"
+      | _ -> false
 
 end

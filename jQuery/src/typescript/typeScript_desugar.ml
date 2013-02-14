@@ -73,14 +73,17 @@ struct
     in
     let open S in
     let opt_map f v = match v with None -> None | Some v -> Some (f v) in
+    let embed_typ t = TypeScript.embed_t (typ t) in
     match writ_typ with
     | W.Str -> TRegex Pat.all
     | W.Prim p -> TPrim p
     | W.Bool -> TUnion (Some "Bool", TPrim "True", TPrim "False")
     | W.Union (t1, t2) -> TUnion (None, typ t1, typ t2)
     | W.Inter (t1, t2) -> TInter (None, typ t1, typ t2)
-    | W.Arrow (None, args, var, r) -> TArrow (map typ args, opt_map typ var, typ r)
-    | W.Arrow (Some this, args, var, r) -> TArrow ((typ this):: (map typ args), opt_map typ var, typ r)
+    | W.Arrow (None, args, var, r) -> 
+      TypeScript.extract_t (TypeScript.TArrow (map embed_typ args, opt_map embed_typ var, embed_typ r))
+    | W.Arrow (Some this, args, var, r) -> 
+      TypeScript.extract_t (TypeScript.TArrow ((embed_typ this):: (map embed_typ args), opt_map embed_typ var, embed_typ r))
     | W.This t -> TThis (typ t)
     | W.Object flds -> object_typ flds
     | W.With(t, flds) -> (match object_typ flds with 
