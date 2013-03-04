@@ -158,6 +158,7 @@ module type TYPECHECKING = sig
   type exp
   val check : env -> typ option -> exp -> typ -> unit
   val synth : env -> typ option -> exp -> typ
+  val check_app : env -> typ option -> exp -> exp list -> typ -> typ
   val disable_flows : unit -> unit
   val bind_forall_vars : env -> typ -> env * typ
   val typecheck : env -> typ option -> exp -> unit
@@ -169,6 +170,7 @@ module type EXT_TYPECHECKING = sig
   type exp
   val check : env -> typ option -> exp -> typ -> unit
   val synth : env -> typ option -> exp -> typ
+  val check_app : env -> typ option -> exp -> exp list -> typ -> typ
   val disable_flows : unit -> unit
   val typecheck : env -> typ option -> exp -> unit
   val bind_forall_vars : env -> typ -> env * typ

@@ -64,18 +64,29 @@ struct
     let do_substitution p typ_vars t =
       let apply_typ_var tacc (tvar, binding) =
         try
+          let print_binding x b = match b with
+            | BStrobe (Strobe.BTypBound (b, _)) -> Strobe.traceMsg "Typ-bound %s %s" x (string_of_typ (embed_t b))
+            | BStrobe (Strobe.BTermTyp (t)) -> Strobe.traceMsg "TermTyp-bound %s %s" x (string_of_typ (embed_t t))
+            | _ -> Strobe.traceMsg "Weird bound"
+          in
+          IdMap.iter print_binding assocmap;
           typ_subst tvar 
             (match IdMap.find tvar assocmap, binding with
             | BStrobe (Strobe.BTermTyp t), BStrobe (Strobe.BTypBound(bindt, _)) -> 
-              if not (Sub.subtype env (embed_t t) (embed_t bindt))
-              then begin
-                Strobe.typ_mismatch p
-                  (Strobe.FixedString
-                     (Printf.sprintf "%s is associated to %s, but this isn't a subtype of the bound %s"
-                        tvar (string_of_typ (embed_t t)) (string_of_typ (embed_t bindt))));
-                embed_t t
-              end else
-                embed_t t
+              begin try
+                if not (Sub.subtype env (embed_t t) (embed_t bindt))
+                then begin
+                  Strobe.typ_mismatch p
+                    (Strobe.FixedString
+                       (Printf.sprintf "%s is associated to %s, but this isn't a subtype of the bound %s"
+                          tvar (string_of_typ (embed_t t)) (string_of_typ (embed_t bindt))));
+                  embed_t t
+                end else
+                  embed_t t
+              with
+                e -> Strobe.traceMsg "Error during bound checking: %s" (Printexc.to_string e);
+                raise e
+              end
             | BStrobe (Strobe.BTermTyp _), _ ->
               failwith "impossible: somehow associated a type-id to a non-type bound"
             | _ -> failwith "impossible: never added anything but BTermTyps to the association map!"
@@ -104,6 +115,12 @@ struct
   let synth env default_typ exp : typ = 
     let ret = embed_t (StrobeTC.synth env default_typ exp) in 
     canonical_type ret
+
+  let check_app env default_typ f args tfun =
+    (* Checking your special arrow/function types against args (or re-checking
+       f if you want) goes here *)
+    raise (Strobe.Typ_error (pos f,
+                             Strobe.FixedString "Bare: No special functions"))
 
   let typecheck env default_typ exp =
     let _ = synth env default_typ exp in

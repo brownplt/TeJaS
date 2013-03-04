@@ -192,6 +192,7 @@ module type STROBE_TYPECHECKING = sig
   type exp
   val check : env -> extTyp option -> exp -> typ -> unit
   val synth : env -> extTyp option -> exp -> typ
+  val check_app : env -> extTyp option -> exp -> exp list -> typ -> typ
   val disable_flows : unit -> unit
   val bind_forall_vars : env -> typ -> env * typ
   val typecheck : env -> extTyp option -> exp -> unit

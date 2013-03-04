@@ -67,11 +67,48 @@ struct
     helper free_ids IdMap.empty
   let project_typs t1 t2 (env : env) = IdMap.fold IdMap.add (project t1 env) (project t2 env)
 
-  let subtype env s t =
+  let rec subtype env s t =
     match unwrap_t s, unwrap_t t with
       | TStrobe t1, TStrobe t2 -> 
         StrobeSub.subtype env t1 t2
-      | TArrow(args1, varargs1, ret1), TArrow(args2, varargs2, ret2) -> failwith "NYI"
+      | TArrow (args1, None, ret1), TArrow (args2, None, ret2) ->
+        if (List.length args1 <> List.length args2) then false
+        else
+          (List.for_all2 (fun t1 t2 ->
+            (subtype env t1 t2) || (subtype env t2 t1))
+          (args1) (args2)) &&
+          subtype env ret1 ret2
+      (*
+      | TArrow (args1, None, ret1), TArrow (args2, Some var2, ret2) ->
+        if (List.length args1 < List.length args2) then (cache, false)
+        else 
+          let args2' = L.fill (List.length args1 - List.length args2) var2 args2 in
+          (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2') (ret2::args1))
+      | TArrow (args1, Some var1, ret1), TArrow (args2, None, ret2) ->
+        if (List.length args1 > List.length args2) then (cache, false)
+        else 
+          let args1' = L.fill (List.length args2 - List.length args1) var1 args1 in
+          (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
+      | TArrow (args1, Some var1, ret1), TArrow (args2, Some var2, ret2) ->
+        if (List.length args1 > List.length args2) then
+          let args2' = L.fill (List.length args1 - List.length args2) var2 args2 in
+          (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2') (ret2::args1))
+        else 
+          let args1' = L.fill (List.length args2 - List.length args1) var1 args1 in
+          (List.fold_left2 subtype_typ_list (cache, true) (ret1::args2) (ret2::args1'))
+          *)
+      | TStrobe (Strobe.TUnion (_, t1, t2)), (TArrow(args1, varargs1, ret1) as arr) ->
+        StrobeSub.subtype env t1 (extract_t arr) &&
+        StrobeSub.subtype env t2 (extract_t arr)
+      | TArrow(args1, varargs1, ret1) as arr, TStrobe (Strobe.TUnion (_, t1, t2)) ->
+        StrobeSub.subtype env (extract_t arr) t1 ||
+        StrobeSub.subtype env (extract_t arr) t2
+      | TArrow(args1, varargs1, ret1) as arr, TStrobe (Strobe.TInter (_, t1, t2)) ->
+        StrobeSub.subtype env (extract_t arr) t1 &&
+        StrobeSub.subtype env (extract_t arr) t2
+      | TStrobe (Strobe.TInter (_, t1, t2)), (TArrow(args1, varargs1, ret1) as arr) ->
+        StrobeSub.subtype env t1 (extract_t arr) ||
+        StrobeSub.subtype env t2 (extract_t arr)
       | _ -> false
 
 end

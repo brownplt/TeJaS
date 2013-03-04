@@ -190,6 +190,10 @@ struct
     in 
     Env.resolve_special_functions env !Env.senv (Sub.subtype_mult true) (canonical_type ret)
 
+  and check_app env default_typ f args tfun =
+    raise (Strobe.Typ_error (pos f,
+                             Strobe.FixedString "jQuery: No implementation of special function types, so unexpected call to check_app"))
+
   let typecheck env default_typ exp =
     let _ = synth env default_typ exp in
     ()

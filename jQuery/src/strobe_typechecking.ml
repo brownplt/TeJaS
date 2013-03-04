@@ -291,7 +291,7 @@ struct
              sprintf "Expected function to have type %s, but it failed to have (second-part) type %s because %s"
                (string_of_typ t1) (string_of_typ t2) (Sub.typ_error_details_to_string e)),
                    t, t1)))
-      | (env, TArrow (arg_typs, None, result_typ)) ->
+      | (env, TArrow (arg_typs, _, result_typ)) ->
         if not (List.length arg_typs = List.length args) then
           Sub.typ_mismatch p
             (Sub.NumNum(sprintf "given %d argument names, but %d argument types", (List.length args), (List.length arg_typs)))
@@ -308,22 +308,7 @@ struct
              (IdSetExt.p_set FormatExt.text) func_info.func_owned);
              printf "Rewritten to:\n%s\n\n\n" (string_of_exp body);  *)
           check env default_typ body result_typ
-      | (env, TArrow (arg_typs, Some vararg_typ, result_typ)) ->
-        let bind_arg env x t = Env.bind_id x (Ext.embed_t t) env in
-        let bind_vararg env x = bind_arg env x vararg_typ in
-        let (req_args, var_args) = ListExt.split_at (List.length arg_typs) args in
-        let env = List.fold_left2 bind_arg env req_args arg_typs in
-        let env = List.fold_left bind_vararg env var_args in
-        let body = 
-          if !is_flows_enabled then
-            Semicfa.semicfa owned_vars env body 
-          else 
-            body in
-        (* printf "Owned = %s\n" (FormatExt.to_string
-           (IdSetExt.p_set FormatExt.text) func_info.func_owned);
-           printf "Rewritten to:\n%s\n\n\n" (string_of_exp body);  *)
-        check env default_typ body result_typ
-      | (env, TEmbed t) -> ExtTC.check env default_typ body t
+      | (env, TEmbed t) -> ExtTC.check env default_typ exp t
       | _, t -> 
         raise (Sub.Typ_error (p, Sub.Typ((fun t -> sprintf "invalid type annotation on a function: %s" (string_of_typ t)), t)))
       end
@@ -387,14 +372,17 @@ struct
       | _ -> Sub.typ_mismatch p (Sub.Typ((fun t -> sprintf "expected TObject, got %s" (string_of_typ t)), typ))
     end
     | _ -> 
+      traceMsg "About to synth:  %s\n" (string_of_exp exp);
       let synthed = Ext.extract_t (ExtTC.synth env default_typ exp) in
+      traceMsg "Just synthed:  %s\n" (string_of_typ synthed);
       let synth_typ = simpl_typ env synthed in
+      traceMsg "About to subtype:  %s <?: %s\n" (string_of_typ synth_typ)
+        (string_of_typ typ);
       (* traceMsg "synthed is: %s | synth_typ is: %s"  *)
       (*   (string_of_typ synthed)  (string_of_typ synth_typ); *)
       (* traceMsg "About to subtype:  %s <?: %s" (string_of_typ synth_typ)  *)
       (*   (string_of_typ (expose_simpl_typ env typ)); *)
       if not (Sub.subtype env synth_typ typ) then begin
-        (* Printf.printf "failed.\n"; *)
         Sub.typ_mismatch (Exp.pos exp)
           (Sub.TypTyp((fun t1 t2 -> sprintf "%%expected %s to have type %s, got %s" (string_of_exp exp) (string_of_typ (collapse_if_possible env t1)) (string_of_typ (collapse_if_possible env t2))), (expose_simpl_typ env typ), synth_typ))
       end (* else *)
@@ -663,174 +651,9 @@ struct
     | EPrefixOp (p, op, e) -> synth env default_typ (EApp (p, EId (p, op), [e]))
     | EInfixOp (p, op, e1, e2) -> synth env default_typ (EApp (p, EId (p, op), [e1; e2]))
     | EApp (p, f, args) -> 
-      (* traceMsg "Strobe_synth: EApp with function %s | args %s" (string_of_exp f) *)
-      (*   (List.fold_left (fun acc a -> (acc ^ (string_of_exp a))) "" args); *)
-      let rec check_app tfun =
-        (* traceMsg "Checking EApp@%s with function type %s" (Pos.toString p) (string_of_typ tfun); *)
-        begin match expose_simpl_typ env tfun with 
-        | TArrow (expected_typs, None, result_typ) -> 
-          let args = fill (List.length expected_typs - List.length args) 
-            (EConst (p, JavaScript_syntax.CUndefined)) args in
-          begin
-            try List.iter2 (check env default_typ) args expected_typs
-            with Invalid_argument "List.iter2" -> 
-              Sub.typ_mismatch p
-                (Sub.NumNum(sprintf "arity-mismatch:  %d args expected, but %d given",
-                            (List.length expected_typs), (List.length args)))
-          end;
-          (* traceMsg "Strobe_synth EApp TArrow: result_typ is %s"(string_of_typ result_typ); *)
-          result_typ
-        | TArrow (expected_typs, Some vararg_typ, result_typ) -> 
-          if (List.length expected_typs > List.length args) then
-            let args = fill (List.length expected_typs - List.length args) 
-              (EConst (p, JavaScript_syntax.CUndefined)) args in
-            List.iter2 (check env default_typ) args expected_typs
-          else begin
-            let (req_args, var_args) = ListExt.split_at (List.length expected_typs) args in
-            let req_args = fill (List.length expected_typs - List.length req_args)
-              (EConst (p, JavaScript_syntax.CUndefined)) req_args in
-            List.iter2 (check env default_typ) req_args expected_typs;
-            List.iter (fun t -> check env default_typ t vararg_typ) var_args
-          end;
-          result_typ
-        | TInter (n, t1, t2) -> 
-          (* Trying for **ORDERED** Intersection *)
-          (Sub.with_typ_exns
-             (fun () ->
-               try check_app t1
-               with Sub.Typ_error _ -> check_app t2))
-        (* Sub.with_typ_exns *)
-        (*   (fun () -> *)
-        (*     try  *)
-        (*       let r1 = check_app t1 in  *)
-        (*       begin  *)
-        (*         try *)
-        (*           let r2 = check_app t2 in *)
-        (*           apply_name n (typ_intersect env r1 r2) *)
-        (*         with | Sub.Typ_error _ -> r1 *)
-        (*       end *)
-        (*     with | Sub.Typ_error _ -> check_app t2) *)
-        | TUnion (n, t1, t2) ->
-          let typ_or_err t = Sub.with_typ_exns (fun () -> try Some (check_app t) with Sub.Typ_error _ -> None) in
-          let r1 = typ_or_err t1 in
-          let r2 = typ_or_err t2 in
-          (match r1, r2 with
-          | Some r, None
-          | None, Some r -> apply_name n r
-          | _ -> raise (Sub.Typ_error (p, Sub.FixedString "synth2: Ambiguous union of functions")))
-        | ((TForall _) as quant_typ)
-        | ((TEmbed _) as quant_typ) -> 
-          begin match forall_arrow quant_typ with
-          | None -> 
-            raise (Sub.Typ_error (p, Sub.Typ((fun t -> sprintf "synth: expected function, got %s"
-              (string_of_typ t)), quant_typ)))
-          | Some (typ_vars, (TArrow (expected_typs, variadic, r))) -> 
-            (* NEW ALGORITHM:
-             * incrementally try checking arguments against a partial association, and if it works,
-             * move on; otherwise, synth a type and build a new association, and try again
-            *)
-            let args = fill (List.length expected_typs - List.length args) 
-              (EConst (p, JavaScript_syntax.CUndefined)) args in
-            let expected_typs = if (List.length expected_typs < List.length args) then
-                match variadic with
-                | None -> 
-                  raise 
-                    (Sub.Typ_error 
-                       (p, Sub.FixedString(sprintf "synth: expected %d arguments in a fixed-arity function, got %d"
-                                             (List.length expected_typs) (List.length args))))
-                | Some t -> 
-                  fill (List.length args - List.length expected_typs) t expected_typs 
-              else expected_typs in
-            
-            let substitution_for (wanted : Typ.typ list) (offered : Typ.typ list) p typs t =
-              Ext.extract_t 
-                (ExtTC.assoc_sub env
-                   (Ext.embed_t (TArrow (List.rev wanted, None, TTop)))
-                   (Ext.embed_t (TArrow (List.rev offered, None, TTop)))
-                   p typs (Ext.embed_t t)) in
-            let check_tc exp (typ : Typ.typ) =
-              (* let from_typ_vars = IdSetExt.from_list (map fst typ_vars) in *)
-              (* let free_ids = free_typ_ids typ in *)
-              (* let any_free = IdSet.inter from_typ_vars free_ids in *)
-              (* if not (IdSet.is_empty any_free) then *)
-              (*   false *)
-              (* else  *)
-                try
-                     Sub.with_typ_exns (fun () -> 
-                       check env default_typ exp typ); true
-                with _ -> false in                
-            let try_argument (rev_expecteds, rev_syntheds, sub) (expected_typ : Typ.typ) arg =
-              (* traceMsg "In EApp, expected = %s, arg = %s" (string_of_typ expected_typ) (string_of_exp arg); *)
-              let check_succeeded =
-                try Sub.with_typ_exns
-                      (fun () -> let subst_typ = sub p typ_vars expected_typ in
-                                 (* traceMsg "Substituted type = %s" (string_of_typ subst_typ); *)
-                                 check_tc arg subst_typ)
-                with _ -> false in
-              (* traceMsg "Check succeeded = %b" check_succeeded; *)
-              if check_succeeded
-              then begin
-                (expected_typ :: rev_expecteds, expected_typ :: rev_syntheds, sub)
-              end else 
-                let synthed = synth env default_typ arg in
-                (* traceMsg "Synthed argument type = %s" (string_of_typ synthed); *)
-                let rev_expected' = expected_typ :: rev_expecteds in
-                let rev_synthed' = (expose_simpl_typ env synthed) :: rev_syntheds in
-                let sub' = substitution_for rev_expected' rev_synthed' in
-                (* traceMsg "Computed new substitution"; *)
-                (rev_expected', rev_synthed', sub') in
-            (* traceMsg "Got %d expected_typs, %d offered arguments" (List.length expected_typs) (List.length args); *)
-            let (_, _, sub) = List.fold_left2 try_argument ([], [], (fun _ _ t -> t)) expected_typs args in
-              
-
-            (* (\* guess-work breaks bidirectionality *\) *)
-            (* let arg_typs = map (synth env default_typ) args in *)
-            (* traceMsg "In EApp, arg_typs are:"; *)
-            (* List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs; *)
-            (* traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ); *)
-            (* traceMsg "2In Eapp, tarrow is    %s" *)
-            (*   (string_of_typ (TArrow (arg_typs, None, r))); *)
-            (* let sub = (ExtTC.assoc_sub env  *)
-	    (*         (\* NOTE: Can leave the return type out, because we're just *)
-	    (*                  copying it, so it will never yield any information *\) *)
-	    (*         (Ext.embed_t (TArrow (expected_typs, None, TTop))) *)
-            (*   (\* Need to expose arg_typs before association to eliminate TIds *\) *)
-            (*   (Ext.embed_t (TArrow ((List.map (fun t ->  *)
-            (*     expose_simpl_typ env t) arg_typs),  *)
-            (*                         None, TTop)))) in *)
-	    (*       traceMsg "3In Eapp, original return type is %s" (string_of_typ r); *)
-            let ret = (sub p typ_vars r) in
-	          (* traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret); *)
-	          ret
-
-            (* IdMap.iter (fun k t -> *)
-            (*   traceMsg "  [%s => %s]" k (string_of_typ t)) assoc; *)
-            (* let guess_typ_app exp typ_var =  *)
-            (*   try *)
-            (*     let guessed_typ =  *)
-            (*       try IdMap.find typ_var assoc *)
-            (*       with Not_found -> *)
-            (*         if (List.length expected_typs > List.length args)  *)
-            (*         then (TPrim "Undef") *)
-            (*         else raise Not_found in *)
-            (*     ETypApp (p, exp, Ext.embed_t guessed_typ) *)
-            (*   with Not_found -> begin *)
-            (*     raise (Sub.Typ_error  *)
-            (*              (p, Sub.FixedString (sprintf "synth: could not instantiate typ_var %s" typ_var))) end in *)
-            (* let guessed_exp =  *)
-            (*   fold_left guess_typ_app (ECheat (p, Ext.embed_t quant_typ, f))  *)
-            (*     typ_vars in *)
-            (* let synthed_exp = EApp(p, guessed_exp, assumed_arg_exps) in *)
-            (* traceMsg "In EApp, synthed_exp = %s" (Exp.string_of_exp synthed_exp); *)
-            (* synth env default_typ synthed_exp *)
-          | Some _ -> failwith "expected TArrow from forall_arrow"
-          end
-        | not_func_typ -> 
-          (* even in an intersection, this should count as a genuine error *)
-          raise (Sub.Typ_error 
-                   (p, Sub.Typ((fun t -> sprintf "expected function, got %s" (string_of_typ t)), not_func_typ)))
-        end in 
-      check_app (un_null (synth env default_typ f))
+      traceMsg "Strobe_synth: EApp with function %s | args %s" (string_of_exp f)
+         (List.fold_left (fun acc a -> (acc ^ (string_of_exp a))) "" args);
+      check_app env default_typ f args (un_null (synth env default_typ f))
     | ERec (p, binds, body) -> 
       (* No kinding check here, but it simply copies the type from the function.
          Let it work. (Actual reason: no position available) *)
@@ -896,6 +719,184 @@ struct
     | EParen (p, e) ->  synth env default_typ e
 
   and synths env default_typ es = map (synth env default_typ) es
+
+  and check_app env default_typ f args tfun =
+    let p = pos f in
+    let check_app = check_app env default_typ f args in
+    traceMsg "Checking EApp@%s with function type %s" (Pos.toString p) (string_of_typ tfun);
+    match expose_simpl_typ env tfun with 
+      | TArrow (expected_typs, None, result_typ) -> 
+        let args = fill (List.length expected_typs - List.length args) 
+          (EConst (p, JavaScript_syntax.CUndefined)) args in
+        begin
+          try List.iter2 (check env default_typ) args expected_typs
+          with Invalid_argument "List.iter2" -> 
+            Sub.typ_mismatch p
+              (Sub.NumNum(sprintf "arity-mismatch:  %d args expected, but %d given",
+                          (List.length expected_typs), (List.length args)))
+        end;
+        (* traceMsg "Strobe_synth EApp TArrow: result_typ is %s"(string_of_typ result_typ); *)
+        result_typ
+      | TArrow (expected_typs, Some vararg_typ, result_typ) -> 
+        if (List.length expected_typs > List.length args) then
+          let args = fill (List.length expected_typs - List.length args) 
+            (EConst (p, JavaScript_syntax.CUndefined)) args in
+          List.iter2 (check env default_typ) args expected_typs
+        else begin
+          let (req_args, var_args) = ListExt.split_at (List.length expected_typs) args in
+          let req_args = fill (List.length expected_typs - List.length req_args)
+            (EConst (p, JavaScript_syntax.CUndefined)) req_args in
+          List.iter2 (check env default_typ) req_args expected_typs;
+          List.iter (fun t -> check env default_typ t vararg_typ) var_args
+        end;
+        result_typ
+      | TInter (n, t1, t2) -> 
+        (* Trying for **ORDERED** Intersection *)
+        (Sub.with_typ_exns
+           (fun () ->
+             try let res = check_app t1 in
+             res
+             with Sub.Typ_error _ -> check_app t2))
+      (* Sub.with_typ_exns *)
+      (*   (fun () -> *)
+      (*     try  *)
+      (*       let r1 = check_app t1 in  *)
+      (*       begin  *)
+      (*         try *)
+      (*           let r2 = check_app t2 in *)
+      (*           apply_name n (typ_intersect env r1 r2) *)
+      (*         with | Sub.Typ_error _ -> r1 *)
+      (*       end *)
+      (*     with | Sub.Typ_error _ -> check_app t2) *)
+      | TUnion (n, t1, t2) ->
+        let typ_or_err t = Sub.with_typ_exns (fun () -> try Some (check_app t) with Sub.Typ_error _ -> None) in
+        let r1 = typ_or_err t1 in
+        let r2 = typ_or_err t2 in
+        (match r1, r2 with
+        | Some r, None
+        | None, Some r -> apply_name n r
+        | _ -> raise (Sub.Typ_error (p, Sub.FixedString "synth2: Ambiguous union of functions")))
+      | ((TForall _) as quant_typ)
+      | ((TEmbed _) as quant_typ) -> 
+        begin match forall_arrow quant_typ with
+        | None -> 
+          raise (Sub.Typ_error (p, Sub.Typ((fun t -> sprintf "synth: expected function, got %s"
+            (string_of_typ t)), quant_typ)))
+        | Some ([], (TArrow _ as arr)) -> check_app arr
+        | Some (typ_vars, (TArrow (expected_typs, variadic, r) as arrow_typ)) -> 
+          let print_binding (x,b) = match Ext.extract_b b with
+            | BTypBound (b, _) -> traceMsg "Typ-bound %s %s" x (string_of_typ b)
+            | _ -> traceMsg "Weird bound"
+          in
+          List.iter print_binding typ_vars;
+          (* NEW ALGORITHM:
+           * incrementally try checking arguments against a partial association, and if it works,
+           * move on; otherwise, synth a type and build a new association, and try again
+          *)
+          let args = fill (List.length expected_typs - List.length args) 
+            (EConst (p, JavaScript_syntax.CUndefined)) args in
+          let expected_typs = if (List.length expected_typs < List.length args) then
+              match variadic with
+              | None -> 
+                raise 
+                  (Sub.Typ_error 
+                     (p, Sub.FixedString(sprintf "synth: [Any] Ref ({|[Any]  Ref (a) -> /.*/|})-> /.*/expected %d arguments in a fixed-arity function, got %d"
+                                           (List.length expected_typs) (List.length args))))
+              | Some t -> 
+                fill (List.length args - List.length expected_typs) t expected_typs 
+            else expected_typs in
+          
+          let substitution_for (wanted : Typ.typ list) (offered : Typ.typ list) p typs t =
+            Ext.extract_t 
+              (ExtTC.assoc_sub env
+                 (Ext.embed_t (TArrow (List.rev wanted, None, TTop)))
+                 (Ext.embed_t (TArrow (List.rev offered, None, TTop)))
+                 p typs (Ext.embed_t t)) in
+          let check_tc exp (typ : Typ.typ) =
+            (* let from_typ_vars = IdSetExt.from_list (map fst typ_vars) in *)
+            (* let free_ids = free_typ_ids typ in *)
+            (* let any_free = IdSet.inter from_typ_vars free_ids in *)
+            (* if not (IdSet.is_empty any_free) then *)
+            (*   false *)
+            (* else  *)
+              try
+                   Sub.with_typ_exns (fun () -> 
+                     check env default_typ exp typ); true
+              with _ -> false in                
+          let try_argument (found_subst, rev_expecteds, rev_syntheds, sub) (expected_typ : Typ.typ) arg =
+            traceMsg "In EApp, expected = %s, arg = %s" (string_of_typ expected_typ) (string_of_exp arg);
+            let check_succeeded =
+              try Sub.with_typ_exns
+                    (fun () -> let subst_typ = sub p typ_vars expected_typ in
+                               traceMsg "Substituted type = %s\n" (string_of_typ subst_typ);
+                               traceMsg "Checking %s : %s\n" (string_of_exp arg) (string_of_typ subst_typ);
+                               let result = check_tc arg subst_typ in
+                               traceMsg "Succeeded? %b\n" result;
+                               result)
+              with _ -> false in
+            traceMsg "Check succeeded = %b" check_succeeded;
+            if check_succeeded
+            then begin
+              (true, expected_typ :: rev_expecteds, expected_typ :: rev_syntheds, sub)
+            end else 
+              let synthed = synth env default_typ arg in
+              traceMsg "Synthed argument type = %s" (string_of_typ synthed);
+              let rev_expected' = expected_typ :: rev_expecteds in
+              let rev_synthed' = (expose_simpl_typ env synthed) :: rev_syntheds in
+              let sub' = substitution_for rev_expected' rev_synthed' in
+              (* traceMsg "Computed new substitution"; *)
+              (found_subst, rev_expected', rev_synthed', sub') in
+          (* traceMsg "Got %d expected_typs, %d offered arguments" (List.length expected_typs) (List.length args); *)
+          let (found_subst, _, _, sub) = List.fold_left2 try_argument (false, [], [], (fun _ _ t -> t)) expected_typs args in
+            
+
+          (* (\* guess-work breaks bidirectionality *\) *)
+          let arg_typs = map (synth env default_typ) args in
+          traceMsg "In EApp, arg_typs are:"; 
+          List.iter (fun t -> traceMsg "  %s" (string_of_typ t)) arg_typs;
+           traceMsg "1In Eapp, arrow_typ is %s" (string_of_typ arrow_typ); 
+           traceMsg "2In Eapp, tarrow is    %s" 
+             (string_of_typ (TArrow (arg_typs, None, r)));
+          (* let sub = (ExtTC.assoc_sub env  *)
+    (*         (\* NOTE: Can leave the return type out, because we're just *)
+    (*                  copying it, so it will never yield any information *\) *)
+    (*         (Ext.embed_t (TArrow (expected_typs, None, TTop))) *)
+          (*   (\* Need to expose arg_typs before association to eliminate TIds *\) *)
+          (*   (Ext.embed_t (TArrow ((List.map (fun t ->  *)
+          (*     expose_simpl_typ env t) arg_typs),  *)
+          (*                         None, TTop)))) in *)
+           traceMsg "3In Eapp, original return type is %s" (string_of_typ r); 
+            let ret = (sub p typ_vars r) in
+             traceMsg "4In Eapp, substituted return type is %s" (string_of_typ ret); 
+            ret
+
+          (* IdMap.iter (fun k t -> *)
+          (*   traceMsg "  [%s => %s]" k (string_of_typ t)) assoc; *)
+          (* let guess_typ_app exp typ_var =  *)
+          (*   try *)
+          (*     let guessed_typ =  *)
+          (*       try IdMap.find typ_var assoc *)
+          (*       with Not_found -> *)
+          (*         if (List.length expected_typs > List.length args)  *)
+          (*         then (TPrim "Undef") *)
+          (*         else raise Not_found in *)
+          (*     ETypApp (p, exp, Ext.embed_t guessed_typ) *)
+          (*   with Not_found -> begin *)
+          (*     raise (Sub.Typ_error  *)
+          (*              (p, Sub.FixedString (sprintf "synth: could not instantiate typ_var %s" typ_var))) end in *)
+          (* let guessed_exp =  *)
+          (*   fold_left guess_typ_app (ECheat (p, Ext.embed_t quant_typ, f))  *)
+          (*     typ_vars in *)
+          (* let synthed_exp = EApp(p, guessed_exp, assumed_arg_exps) in *)
+          (* traceMsg "In EApp, synthed_exp = %s" (Exp.string_of_exp synthed_exp); *)
+          (* synth env default_typ synthed_exp *)
+        | Some (_, TEmbed t) -> Ext.extract_t (ExtTC.check_app env default_typ f args t)
+        | Some _ -> failwith "expected TArrow from forall_arrow"
+        end
+      | not_func_typ -> 
+        (* even in an intersection, this should count as a genuine error *)
+        raise (Sub.Typ_error 
+                 (p, Sub.Typ((fun t -> sprintf "expected function, got %s" (string_of_typ t)), not_func_typ)))
 
   let typecheck env default_typ exp =
     let _ = synth env default_typ exp in

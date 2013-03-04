@@ -9,7 +9,7 @@ INCLUDES = util,RegLang,patterns,css,DomStructure,LambdaJS/src,bare,jquery,types
 
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
-MENHIR := /contrib/projects/ocaml3.12.1/share/menhir
+MENHIR := /usr/share/menhir
 else
 MENHIR := \"C:\cygwin\usr\local\share\menhir\"
 endif
