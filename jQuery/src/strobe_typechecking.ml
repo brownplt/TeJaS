@@ -243,8 +243,8 @@ struct
     | _ -> None
 
 
-  let trace (msg : string) (success : 'a -> bool) (thunk : exp -> 'a) (exp : exp) = thunk exp 
-  (* Typ.trace msg (simpl_print exp) success (fun () -> thunk exp) *)
+  let trace (msg : string) (success : 'a -> bool) (thunk : exp -> 'a) (exp : exp) = (* thunk exp  *)
+   Typ.trace msg (simpl_print exp) success (fun () -> thunk exp) 
 
   let rec check (env : env) (default_typ : Typ.extTyp option) (exp : exp) (typ : Typ.typ) : unit =
     try trace "Check" (fun _ -> true) (fun exp -> check' env default_typ exp typ) exp
@@ -293,6 +293,14 @@ struct
                    t, t1)))
       | (env, TArrow (arg_typs, _, result_typ)) ->
         if not (List.length arg_typs = List.length args) then
+          let print_arg_list args = List.iter (fun a -> traceMsg "Arg: %s" a) args
+          in
+          let print_typ_list args = List.iter (fun a -> traceMsg "Arg: %s" (string_of_typ a)) args
+          in
+          traceMsg "arrow args:";
+          print_arg_list args;
+          traceMsg "arrow typs:";
+          print_typ_list arg_typs;
           Sub.typ_mismatch p
             (Sub.NumNum(sprintf "given %d argument names, but %d argument types", (List.length args), (List.length arg_typs)))
         else
@@ -304,9 +312,9 @@ struct
               Semicfa.semicfa owned_vars env body 
             else 
               body in
-          (* printf "Owned = %s\n" (FormatExt.to_string
+          (* traceMsg "Owned = %s\n" (FormatExt.to_string
              (IdSetExt.p_set FormatExt.text) func_info.func_owned);
-             printf "Rewritten to:\n%s\n\n\n" (string_of_exp body);  *)
+             traceMsg "Rewritten to:\n%s\n\n\n" (string_of_exp body);  *)
           check env default_typ body result_typ
       | (env, TEmbed t) -> ExtTC.check env default_typ exp t
       | _, t -> 
@@ -437,12 +445,11 @@ struct
       with Not_found -> match default_typ with
       | None -> raise (Sub.Typ_error (p, Sub.String(sprintf "%s is not defined", x))) (* severe *)
       | Some t -> let t = Ext.extract_t t in
-        Printf.eprintf "Warning: Unbound identifier %s at %s\n" x (Pos.toString p);
-        Printf.eprintf "Currently bound identifiers are:\n";
+        traceMsg "Warning: Unbound identifier %s at %s\n" x (Pos.toString p);
+        traceMsg "Currently bound identifiers are:\n";
         IdMap.iter (fun id bs -> 
           if (List.exists (fun b -> match Ext.extract_b b with BTermTyp _ -> true | _ -> false) bs) 
-          then Printf.eprintf "%s, " id) env;
-        Printf.eprintf "\n";
+          then traceMsg "%s, " id) env;
         t (* Should probably warn about undefined identifier here *)
     end
     | ELet (_, x, e1, e2) -> synth (Env.bind_id x (Ext.embed_t (synth env default_typ e1)) env) default_typ e2
@@ -538,10 +545,10 @@ struct
         | TRef (_, TUninit ty) -> begin match !ty with
           | None -> 
             let newTy = synth env default_typ e2 in
-          (* Printf.printf "Updating typ at %s to %s\n" (Pos.toString p) (string_of_typ newTy); *)
+          (* traceMsg "Updating typ at %s to %s\n" (Pos.toString p) (string_of_typ newTy); *)
             ty := Some newTy;
             newTy
-          | Some s -> (* Printf.printf "Checking typ at %s\n" (Pos.toString p); *) check env default_typ e2 s; 
+          | Some s -> (* traceMsg "Checking typ at %s\n" (Pos.toString p); *) check env default_typ e2 s; 
             s
         end
         | TRef (_, TPrim "Unsafe") -> TPrim "Unsafe" (* BSL: PUNTING ON ASSIGNMENT TO UNSAFE *)
@@ -626,7 +633,7 @@ struct
         end;
         begin
           if Pat.is_overlapped idx_pat (absent_pat o) then
-            (* Printf.eprintf "ERROR: %s failed at field '%s' \nwith type %s, \nwhen absent_pat = %s in typ %s\n" (string_of_exp exp) (Pat.pretty idx_pat) (string_of_typ typ) (Pat.pretty (absent_pat o)) (string_of_typ tobj); *)
+            (* traceMsg "ERROR: %s failed at field '%s' \nwith type %s, \nwhen absent_pat = %s in typ %s\n" (string_of_exp exp) (Pat.pretty idx_pat) (string_of_typ typ) (Pat.pretty (absent_pat o)) (string_of_typ tobj); *)
             Sub.typ_mismatch p (Sub.PatPatTyp((fun p1 p2 t -> sprintf "synth: Assigning to field '%s' when absent_pat = %s in typ %s" (Pat.pretty p1) (Pat.pretty p2) (string_of_typ t)), idx_pat, (absent_pat o), tobj))
         end;
         let fs : field list = fields o in

@@ -50,6 +50,15 @@ struct
   let disable_flows () = StrobeTC.disable_flows () 
   (* need () because otherwise this is a value, not a function, and ML gets angry at that *)
 
+  let mapopt f s = match s with
+    | None -> None
+    | Some s' -> Some (f s')
+
+  let shift_arrow typ = match typ with
+    | TArrow (args, var, ret) ->
+      TStrobe (Strobe.TArrow (map extract_t args, mapopt extract_t var, extract_t ret))
+    | TStrobe _ -> typ
+
   let rec forall_arrow (typ : typ) : ((id * binding) list * typ) option = match typ with
     | TStrobe s -> begin
       match StrobeTC.forall_arrow s with
@@ -57,7 +66,7 @@ struct
         | Some (ids, t) -> Some (ids, embed_t t)
       end
     | TArrow _ as t ->
-      Some ([], t)
+      Some ([], shift_arrow t)
 
   let rec assoc_sub env t1 t2 =
     traceMsg "In assoc_sub with %s %s" (string_of_typ t1)(string_of_typ t2);
@@ -132,29 +141,32 @@ struct
   let rec fill n a l = if n <= 0 then l else fill (n-1) a (List.append l [a])
 
 
-  let rec synth env default_typ exp : typ = match exp with
+  let rec synth env default_typ exp : typ = 
+    trace "Synth" (fun _ -> true) (synth' env default_typ) exp
+
+  and synth' env default_typ exp : typ = match exp with
     | EApp (p, f, args) -> 
       (* traceMsg "TS_synth: EApp with function %s | args %s" (string_of_exp f)
          (List.fold_left (fun acc a -> (acc ^ (string_of_exp a))) "" args); *)
       let ftyp = synth env default_typ f in
       let res_typ = check_app env default_typ f args ftyp in
-      printf "TS_synth: EApp with function %s | args %s\n" (string_of_exp f)
+      Strobe.traceMsg "TS_synth: EApp with function %s | args %s" (string_of_exp f)
          (List.fold_left (fun acc a -> (acc ^ (string_of_exp a))) "" args);
-      printf "          Resulted in: %s\n" (string_of_typ res_typ);
+      Strobe.traceMsg "          Resulted in: %s" (string_of_typ res_typ);
       res_typ
     | _ ->
-      printf "fallthrough in synth expr match: %s\n" (string_of_exp exp);
+      Strobe.traceMsg "fallthrough in synth expr match: %s" (string_of_exp exp);
       let ret = canonical_type (embed_t (StrobeTC.synth env default_typ exp)) in
-      printf "got synthed type: %s\n" (string_of_typ ret);
+      Strobe.traceMsg "got synthed type: %s" (string_of_typ ret);
       ret
 
   and check_app env default_typ f args tfun =
       (* traceMsg "Checking EApp@%s with function type %s" (Pos.toString p) (string_of_typ tfun); *)
     let p = pos f in
-    printf "TS_synth: Function type is %s\n" (string_of_typ tfun);
+    Strobe.traceMsg "TS_synth: Function type is %s" (string_of_typ tfun);
     match embed_t (Strobe.expose env (extract_t (simpl_typ env tfun))) with
       | TArrow (expected_typs, None, result_typ) -> 
-        printf "TS_synth: Using an arrow type is %s\n" (string_of_typ tfun);
+        Strobe.traceMsg "TS_synth: Using an arrow type is %s" (string_of_typ tfun);
         let args = fill (List.length expected_typs - List.length args) 
           (EConst (p, JavaScript_syntax.CUndefined)) args in
         begin
@@ -180,8 +192,8 @@ struct
         end;
         result_typ
       | TStrobe t ->
-  (*          (printf "Fell through: %s" (string_of_typ (TStrobe t))) *)
-        (* printf "fallthrough: %s\n" (string_of_exp exp); *)
+  (*          (Strobe.traceMsg "Fell through: %s" (string_of_typ (TStrobe t))) *)
+        (* Strobe.traceMsg "fallthrough: %s" (string_of_exp exp); *)
         let ret = embed_t (StrobeTC.check_app env default_typ f args t) in 
         canonical_type ret 
 

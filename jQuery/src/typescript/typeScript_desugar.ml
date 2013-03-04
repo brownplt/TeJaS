@@ -75,6 +75,17 @@ struct
     let opt_map f v = match v with None -> None | Some v -> Some (f v) in
     let embed_typ t = TypeScript.embed_t (typ t) in
     match writ_typ with
+    | W.Ref(W.Object([W.Present(code, t);
+                    W.Present(proto, W.TId "Object");
+                    W.Present(prototypePat, W.TId "Ext");
+                    W.Star(Some (W.TId "Ext"))])) when
+        code = Pat.singleton "-*- code -*-" &&
+        proto = Pat.singleton "__proto__" &&
+        prototypePat = Pat.singleton "prototype" && false ->
+      typ (W.Source(W.Object([W.Present(code, t);
+                    W.Present(proto, W.TId "Object");
+                    W.Present(prototypePat, W.TId "Ext");
+                    W.Star(Some (W.TId "Ext"))])))
     | W.Str -> TRegex Pat.all
     | W.Prim p -> TPrim p
     | W.Bool -> TUnion (Some "Bool", TPrim "True", TPrim "False")

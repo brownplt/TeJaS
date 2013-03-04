@@ -68,15 +68,26 @@ struct
   let project_typs t1 t2 (env : env) = IdMap.fold IdMap.add (project t1 env) (project t2 env)
 
   let rec subtype env s t =
+     Strobe.trace "TS_subtype" (string_of_typ s ^ " <?: " ^ string_of_typ t) (fun x -> x) (fun () -> subtype' env s t)
+  and subtype' (env : env) s t : bool = 
     match unwrap_t s, unwrap_t t with
       | TStrobe t1, TStrobe t2 -> 
         StrobeSub.subtype env t1 t2
       | TArrow (args1, None, ret1), TArrow (args2, None, ret2) ->
-        if (List.length args1 <> List.length args2) then false
+        if (List.length args1 > List.length args2) then false
         else
+          let (right_args, _) = ListExt.split_at (List.length args1) args2 in
+          let print_typ_list ts = List.iter (fun t ->
+            Strobe.traceMsg "Argtyp: %s" (string_of_typ t)) ts in
+          Strobe.traceMsg "rightargs:";
+          print_typ_list right_args;
+          Strobe.traceMsg "args2:";
+          print_typ_list args2;
+          Strobe.traceMsg "args1:";
+          print_typ_list args1;
           (List.for_all2 (fun t1 t2 ->
             (subtype env t1 t2) || (subtype env t2 t1))
-          (args1) (args2)) &&
+          args1 right_args) &&
           subtype env ret1 ret2
       (*
       | TArrow (args1, None, ret1), TArrow (args2, Some var2, ret2) ->
